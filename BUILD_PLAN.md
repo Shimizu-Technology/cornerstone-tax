@@ -20,18 +20,28 @@ Reference the PRD.md for detailed specifications.
 | Phase 5: Workflow Tracking | ✅ Complete | Tax returns, status changes, audit trail, activity page |
 | Phase 6: Time Tracking | ✅ Complete | Entries, categories, day/week views, admin reports |
 | Phase 7: Document Upload | ⬜ Not Started | |
-| Phase 8: Notifications | ⬜ Not Started | |
+| Phase 8: Notifications | 🔄 Partial | Resend email setup complete, SMS pending |
 | Phase 9: Transmittal Maker | ⬜ Not Started | |
-| Phase 10: Polish & Deploy | ⬜ Not Started | |
+| Phase 10: Polish & Deploy | ✅ Complete | Deployed to Netlify + Render + Neon |
 
-### What's Running
+### Production URLs
+- **Frontend:** https://cornerstone-accounting.tax (Netlify)
+- **Backend:** https://cornerstone-tax-backend.onrender.com (Render)
+- **Database:** Neon PostgreSQL (production)
+
+### Local Development
 - **Frontend:** http://localhost:5173 (Vite dev server)
 - **Backend:** http://localhost:3000 (Rails API server)
-- **Database:** Local PostgreSQL (`backend_development`) - migrated & seeded
+- **Database:** Local PostgreSQL (`backend_development`)
+
+### Services Configured
+- **Clerk Production:** ✅ 5/5 DNS records verified
+- **Resend Email:** ✅ Domain verified, invitation emails working
+- **SSL/HTTPS:** ✅ Let's Encrypt via Netlify
 
 ### Next Steps
 1. Build Phase 7: Document Upload (S3)
-2. Build Phase 8: Notifications (Email/SMS)
+2. Complete Phase 8: Notifications (SMS via ClickSend)
 3. Build Phase 9: Transmittal Maker (AI)
 
 ---
@@ -376,13 +386,13 @@ Reference the PRD.md for detailed specifications.
 - [ ] Lazy load images
 - [ ] Compress assets
 
-### 10.3 Deployment
-- [ ] Deploy frontend to Netlify
-- [ ] Deploy Rails API to Render
-- [ ] Deploy FastAPI to Render
-- [ ] Set up environment variables
-- [ ] Configure custom domain (when ready)
-- [ ] Set up SSL certificates
+### 10.3 Deployment ✅
+- [x] Deploy frontend to Netlify (https://cornerstone-accounting.tax)
+- [x] Deploy Rails API to Render
+- [ ] Deploy FastAPI to Render (when Phase 9 ready)
+- [x] Set up environment variables
+- [x] Configure custom domain
+- [x] Set up SSL certificates (Let's Encrypt)
 
 ### 10.4 Monitoring
 - [ ] Set up error tracking (Sentry or similar)
