@@ -1,0 +1,66 @@
+---
+description: AI service rules for FastAPI/Python
+globs: ["ai-service/**/*"]
+alwaysApply: false
+---
+
+# AI Service Rules (FastAPI)
+
+## General
+- Python 3.11+
+- FastAPI for API framework
+- SQLAlchemy for database ORM
+- Pydantic for request/response validation
+
+## Purpose
+This service handles AI-powered features:
+- Transmittal generation (chat-based, like Invoice Maker)
+- Future: Customer service chatbot (RAG-based)
+
+## Database
+- Connects to the SAME PostgreSQL database as Rails
+- Rails manages all migrations - FastAPI just reads the schema
+- SQLAlchemy models must match Rails table structure exactly
+- Use `autoload=True` or manually define models to match
+
+## File Structure
+```
+ai-service/
+├── app/
+│   ├── main.py              # FastAPI app entry
+│   ├── config.py            # Settings, env vars
+│   ├── database.py          # SQLAlchemy setup
+│   ├── routers/
+│   │   ├── transmittals.py  # Transmittal endpoints
+│   │   └── chat.py          # Chatbot endpoints (future)
+│   ├── services/
+│   │   ├── llm_service.py   # OpenAI integration
+│   │   └── pdf_service.py   # PDF generation
+│   └── models/              # SQLAlchemy models
+├── requirements.txt
+└── .env
+```
+
+## OpenAI Integration
+- Use OpenAI API key from environment variable
+- Never hardcode API keys
+- Use structured outputs where possible
+- Handle rate limits and errors gracefully
+
+## Naming Conventions
+- Files: snake_case (`transmittal_service.py`)
+- Classes: PascalCase (`TransmittalService`)
+- Functions: snake_case (`create_transmittal`)
+- Constants: UPPER_SNAKE_CASE (`OPENAI_API_KEY`)
+
+## API Design
+- RESTful endpoints
+- Use Pydantic models for request/response validation
+- Return consistent JSON structure
+- Proper HTTP status codes
+
+## Environment Variables
+```
+DATABASE_URL=postgresql://...  # Same as Rails
+OPENAI_API_KEY=sk-...
+```

@@ -1,0 +1,675 @@
+// API client for backend communication
+// Updated: Phase 5 - Workflow Tracking
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+interface ApiResponse<T> {
+  data?: T;
+  error?: string;
+  errors?: string[];
+}
+
+// Store for the auth token getter function
+let getAuthToken: (() => Promise<string | null>) | null = null;
+
+// Set the auth token getter (called from AuthProvider)
+export function setAuthTokenGetter(getter: () => Promise<string | null>) {
+  getAuthToken = getter;
+}
+
+async function fetchApi<T>(
+  endpoint: string,
+  options: RequestInit = {},
+  requireAuth: boolean = true
+): Promise<ApiResponse<T>> {
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string>),
+    };
+
+    // Add auth token if available and required
+    if (requireAuth && getAuthToken) {
+      const token = await getAuthToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+
+    // Handle 204 No Content (empty response body)
+    if (response.status === 204) {
+      return { data: undefined as unknown as T };
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      // Handle 401 specifically
+      if (response.status === 401) {
+        return {
+          error: data.error || 'Authentication required',
+          errors: data.errors || ['Please sign in to continue'],
+        };
+      }
+      return {
+        error: data.error || 'Something went wrong',
+        errors: data.errors || [],
+      };
+    }
+
+    return { data };
+  } catch (error) {
+    console.error('API Error:', error);
+    return {
+      error: error instanceof Error ? error.message : 'Network error',
+      errors: [],
+    };
+  }
+}
+
+// Fetch without auth (for public endpoints)
+async function fetchApiPublic<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<ApiResponse<T>> {
+  return fetchApi(endpoint, options, false);
+}
+
+// Types
+export interface IntakeSubmitResponse {
+  message: string;
+  client: {
+    id: number;
+    full_name: string;
+    email: string;
+  };
+  tax_return: {
+    id: number;
+    tax_year: number;
+    status: string;
+  };
+}
+
+export interface WorkflowStage {
+  id: number;
+  name: string;
+  slug: string;
+  position: number;
+  color: string | null;
+  notify_client: boolean;
+}
+
+export interface ClientSummary {
+  id: number;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  is_new_client: boolean;
+  created_at: string;
+  tax_return: {
+    id: number;
+    tax_year: number;
+    status: string;
+    status_slug: string;
+    status_color: string;
+    assigned_to: string | null;
+  } | null;
+}
+
+export interface ClientsResponse {
+  clients: ClientSummary[];
+  meta: {
+    current_page: number;
+    per_page: number;
+    total_count: number;
+    total_pages: number;
+  };
+}
+
+export interface ClientDetailResponse {
+  client: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    full_name: string;
+    date_of_birth: string;
+    email: string;
+    phone: string;
+    mailing_address: string;
+    filing_status: string;
+    is_new_client: boolean;
+    has_prior_year_return: boolean;
+    changes_from_prior_year: string;
+    spouse_name: string;
+    spouse_dob: string;
+    denied_eic_actc: boolean;
+    denied_eic_actc_year: number | null;
+    has_crypto_transactions: boolean;
+    wants_direct_deposit: boolean;
+    created_at: string;
+    updated_at: string;
+    dependents: Array<{
+      id: number;
+      name: string;
+      date_of_birth: string;
+      relationship: string;
+      months_lived_with_client: number;
+      is_student: boolean;
+      is_disabled: boolean;
+    }>;
+    tax_returns: Array<{
+      id: number;
+      tax_year: number;
+      status: string;
+      status_slug: string;
+      status_color: string;
+      assigned_to: { id: number; name: string } | null;
+      created_at: string;
+      income_sources: Array<{ id: number; source_type: string; payer_name: string }>;
+      workflow_events: Array<{
+        id: number;
+        event_type: string;
+        old_value: string | null;
+        new_value: string | null;
+        description: string;
+        actor: string;
+        created_at: string;
+      }>;
+    }>;
+  };
+}
+
+export interface TaxReturnSummary {
+  id: number;
+  tax_year: number;
+  client: {
+    id: number;
+    full_name: string;
+    email: string;
+  };
+  status: string;
+  status_slug: string;
+  status_color: string;
+  assigned_to: { id: number; name: string } | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IncomeSource {
+  id: number;
+  source_type: string;
+  payer_name: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaxReturnsResponse {
+  tax_returns: TaxReturnSummary[];
+  meta: {
+    current_page: number;
+    per_page: number;
+    total_count: number;
+    total_pages: number;
+  };
+}
+
+export interface TaxReturnDetail {
+  id: number;
+  tax_year: number;
+  notes: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  client: {
+    id: number;
+    full_name: string;
+    email: string;
+    phone: string;
+    filing_status: string;
+  };
+  workflow_stage: {
+    id: number;
+    name: string;
+    slug: string;
+    color: string;
+  } | null;
+  assigned_to: {
+    id: number;
+    name: string;
+    email: string;
+  } | null;
+  reviewed_by: {
+    id: number;
+    name: string;
+  } | null;
+  income_sources: Array<{
+    id: number;
+    source_type: string;
+    payer_name: string;
+  }>;
+  documents: Array<{
+    id: number;
+    filename: string;
+    document_type: string;
+    created_at: string;
+  }>;
+  workflow_events: Array<{
+    id: number;
+    event_type: string;
+    old_value: string | null;
+    new_value: string | null;
+    description: string;
+    actor: string;
+    created_at: string;
+  }>;
+}
+
+export interface CurrentUser {
+  id: number;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string;
+  role: 'admin' | 'employee' | 'client';
+  is_admin: boolean;
+  is_staff: boolean;
+  created_at: string;
+}
+
+export interface UserSummary {
+  id: number;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string;
+  role: string;
+}
+
+export interface AdminWorkflowStage extends WorkflowStage {
+  is_active: boolean;
+  tax_returns_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminUser {
+  id: number;
+  email: string;
+  role: 'admin' | 'employee';
+  is_active: boolean;
+  is_pending: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowEventItem {
+  id: number;
+  event_type: string;
+  description: string;
+  old_value: string | null;
+  new_value: string | null;
+  created_at: string;
+  user: {
+    id: number;
+    name: string;
+    email: string;
+  } | null;
+  tax_return: {
+    id: number;
+    tax_year: number;
+    client: {
+      id: number;
+      name: string;
+    };
+    current_status: string | null;
+  };
+}
+
+export interface WorkflowEventsResponse {
+  events: WorkflowEventItem[];
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total_count: number;
+    total_pages: number;
+  };
+}
+
+// Audit Log Types
+export interface AuditLog {
+  id: number;
+  auditable_type: string;
+  auditable_id: number;
+  action: 'created' | 'updated' | 'deleted';
+  description: string;
+  changes_made: Record<string, { from: unknown; to: unknown }> | null;
+  metadata: string | null;
+  created_at: string;
+  user: {
+    id: number;
+    email: string;
+  } | null;
+}
+
+export interface AuditLogsResponse {
+  audit_logs: AuditLog[];
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total_count: number;
+    total_pages: number;
+  };
+}
+
+// Time Tracking Types
+export interface TimeCategory {
+  id: number;
+  name: string;
+  description: string | null;
+}
+
+export interface AdminTimeCategory extends TimeCategory {
+  is_active: boolean;
+  time_entries_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TimeEntry {
+  id: number;
+  work_date: string;
+  hours: number;
+  description: string | null;
+  user: {
+    id: number;
+    email: string;
+  };
+  time_category: {
+    id: number;
+    name: string;
+  } | null;
+  client: {
+    id: number;
+    name: string;
+  } | null;
+  tax_return: {
+    id: number;
+    tax_year: number;
+  } | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TimeEntriesResponse {
+  time_entries: TimeEntry[];
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total_count: number;
+    total_pages: number;
+  };
+  summary: {
+    total_hours: number;
+    entry_count: number;
+  };
+}
+
+// API functions
+export const api = {
+  // Auth
+  getCurrentUser: (email?: string) =>
+    fetchApi<{ user: CurrentUser }>('/api/v1/auth/me', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  // Intake (public - no auth required)
+  submitIntake: (data: Record<string, unknown>) =>
+    fetchApiPublic<IntakeSubmitResponse>('/api/v1/intake', {
+      method: 'POST',
+      body: JSON.stringify({ intake: data }),
+    }),
+
+  // Workflow stages (public - no auth required)
+  getWorkflowStages: () =>
+    fetchApiPublic<{ workflow_stages: WorkflowStage[] }>('/api/v1/workflow_stages'),
+
+  // Clients
+  getClients: (params?: { page?: number; search?: string; per_page?: number; stage?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
+    if (params?.stage) searchParams.set('stage', params.stage);
+    const query = searchParams.toString();
+    return fetchApi<ClientsResponse>(`/api/v1/clients${query ? `?${query}` : ''}`);
+  },
+
+  getClient: (id: number) =>
+    fetchApi<ClientDetailResponse>(`/api/v1/clients/${id}`),
+
+  createClient: (data: Record<string, unknown>) =>
+    fetchApi<{ client: ClientSummary }>('/api/v1/clients', {
+      method: 'POST',
+      body: JSON.stringify({ client: data }),
+    }),
+
+  updateClient: (id: number, data: Record<string, unknown>) =>
+    fetchApi<{ client: ClientDetailResponse['client'] }>(`/api/v1/clients/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ client: data }),
+    }),
+
+  // Tax Returns
+  getTaxReturns: (params?: { page?: number; search?: string; stage?: string; year?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.stage) searchParams.set('stage', params.stage);
+    if (params?.year) searchParams.set('year', params.year.toString());
+    const query = searchParams.toString();
+    return fetchApi<TaxReturnsResponse>(`/api/v1/tax_returns${query ? `?${query}` : ''}`);
+  },
+
+  getTaxReturn: (id: number) =>
+    fetchApi<{ tax_return: TaxReturnDetail }>(`/api/v1/tax_returns/${id}`),
+
+  updateTaxReturn: (id: number, data: Record<string, unknown>) =>
+    fetchApi<{ tax_return: TaxReturnSummary }>(`/api/v1/tax_returns/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ tax_return: data }),
+    }),
+
+  assignTaxReturn: (id: number, userId: number) =>
+    fetchApi<{ message: string; tax_return: TaxReturnSummary }>(
+      `/api/v1/tax_returns/${id}/assign`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId }),
+      }
+    ),
+
+  // Income Sources (nested under tax returns)
+  getIncomeSources: (taxReturnId: number) =>
+    fetchApi<{ income_sources: IncomeSource[] }>(`/api/v1/tax_returns/${taxReturnId}/income_sources`),
+
+  createIncomeSource: (taxReturnId: number, data: { source_type: string; payer_name: string; notes?: string }) =>
+    fetchApi<{ income_source: IncomeSource }>(`/api/v1/tax_returns/${taxReturnId}/income_sources`, {
+      method: 'POST',
+      body: JSON.stringify({ income_source: data }),
+    }),
+
+  updateIncomeSource: (taxReturnId: number, id: number, data: { source_type?: string; payer_name?: string; notes?: string }) =>
+    fetchApi<{ income_source: IncomeSource }>(`/api/v1/tax_returns/${taxReturnId}/income_sources/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ income_source: data }),
+    }),
+
+  deleteIncomeSource: (taxReturnId: number, id: number) =>
+    fetchApi<void>(`/api/v1/tax_returns/${taxReturnId}/income_sources/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Users (for assignment dropdowns)
+  getUsers: () =>
+    fetchApi<{ users: UserSummary[] }>('/api/v1/users'),
+
+  // Admin: Workflow Stages
+  getAdminWorkflowStages: () =>
+    fetchApi<{ workflow_stages: AdminWorkflowStage[] }>('/api/v1/admin/workflow_stages'),
+
+  createWorkflowStage: (data: { name: string; slug: string; color?: string; notify_client?: boolean }) =>
+    fetchApi<{ workflow_stage: AdminWorkflowStage }>('/api/v1/admin/workflow_stages', {
+      method: 'POST',
+      body: JSON.stringify({ workflow_stage: data }),
+    }),
+
+  updateWorkflowStage: (id: number, data: Partial<{ name: string; slug: string; color: string; notify_client: boolean; is_active: boolean }>) =>
+    fetchApi<{ workflow_stage: AdminWorkflowStage }>(`/api/v1/admin/workflow_stages/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ workflow_stage: data }),
+    }),
+
+  deleteWorkflowStage: (id: number) =>
+    fetchApi<{ message: string }>(`/api/v1/admin/workflow_stages/${id}`, {
+      method: 'DELETE',
+    }),
+
+  reorderWorkflowStages: (stageIds: number[]) =>
+    fetchApi<{ workflow_stages: AdminWorkflowStage[] }>('/api/v1/admin/workflow_stages/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ stage_ids: stageIds }),
+    }),
+
+  // Workflow Events (Activity)
+  getWorkflowEvents: (queryString?: string) =>
+    fetchApi<WorkflowEventsResponse>(`/api/v1/workflow_events${queryString ? `?${queryString}` : ''}`),
+
+  // Audit Logs
+  getAuditLogs: (params?: {
+    page?: number;
+    auditable_type?: string;
+    action_type?: string;
+    user_id?: number;
+    start_date?: string;
+    end_date?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.auditable_type) searchParams.set('auditable_type', params.auditable_type);
+    if (params?.action_type) searchParams.set('action_type', params.action_type);
+    if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
+    if (params?.start_date) searchParams.set('start_date', params.start_date);
+    if (params?.end_date) searchParams.set('end_date', params.end_date);
+    const query = searchParams.toString();
+    return fetchApi<AuditLogsResponse>(`/api/v1/audit_logs${query ? `?${query}` : ''}`);
+  },
+
+  // Admin: User Management
+  getAdminUsers: () =>
+    fetchApi<{ users: AdminUser[] }>('/api/v1/admin/users'),
+
+  inviteUser: (email: string, role: 'admin' | 'employee') =>
+    fetchApi<{ user: AdminUser }>('/api/v1/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    }),
+
+  updateUserRole: (id: number, role: 'admin' | 'employee') =>
+    fetchApi<{ user: AdminUser }>(`/api/v1/admin/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    }),
+
+  deleteUser: (id: number) =>
+    fetchApi<void>(`/api/v1/admin/users/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Time Tracking
+  getTimeEntries: (params?: {
+    page?: number;
+    date?: string;
+    week?: string;
+    start_date?: string;
+    end_date?: string;
+    time_category_id?: number;
+    client_id?: number;
+    user_id?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.date) searchParams.set('date', params.date);
+    if (params?.week) searchParams.set('week', params.week);
+    if (params?.start_date) searchParams.set('start_date', params.start_date);
+    if (params?.end_date) searchParams.set('end_date', params.end_date);
+    if (params?.time_category_id) searchParams.set('time_category_id', params.time_category_id.toString());
+    if (params?.client_id) searchParams.set('client_id', params.client_id.toString());
+    if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
+    const query = searchParams.toString();
+    return fetchApi<TimeEntriesResponse>(`/api/v1/time_entries${query ? `?${query}` : ''}`);
+  },
+
+  createTimeEntry: (data: {
+    work_date: string;
+    hours: number;
+    description?: string;
+    time_category_id?: number;
+    client_id?: number;
+    tax_return_id?: number;
+  }) =>
+    fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries', {
+      method: 'POST',
+      body: JSON.stringify({ time_entry: data }),
+    }),
+
+  updateTimeEntry: (id: number, data: Partial<{
+    work_date: string;
+    hours: number;
+    description: string;
+    time_category_id: number;
+    client_id: number;
+    tax_return_id: number;
+  }>) =>
+    fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ time_entry: data }),
+    }),
+
+  deleteTimeEntry: (id: number) =>
+    fetchApi<void>(`/api/v1/time_entries/${id}`, {
+      method: 'DELETE',
+    }),
+
+  getTimeCategories: () =>
+    fetchApi<{ time_categories: TimeCategory[] }>('/api/v1/time_categories'),
+
+  // Admin: Time Categories
+  getAdminTimeCategories: () =>
+    fetchApi<{ time_categories: AdminTimeCategory[] }>('/api/v1/admin/time_categories'),
+
+  createTimeCategory: (data: { name: string; description?: string }) =>
+    fetchApi<{ time_category: AdminTimeCategory }>('/api/v1/admin/time_categories', {
+      method: 'POST',
+      body: JSON.stringify({ time_category: data }),
+    }),
+
+  updateTimeCategory: (id: number, data: Partial<{ name: string; description: string; is_active: boolean }>) =>
+    fetchApi<{ time_category: AdminTimeCategory }>(`/api/v1/admin/time_categories/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ time_category: data }),
+    }),
+
+  deleteTimeCategory: (id: number) =>
+    fetchApi<void>(`/api/v1/admin/time_categories/${id}`, {
+      method: 'DELETE',
+    }),
+};

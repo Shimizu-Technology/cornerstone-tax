@@ -1,0 +1,77 @@
+---
+description: Backend development rules for Rails API
+globs: ["backend/**/*"]
+alwaysApply: false
+---
+
+# Rails Backend Rules
+
+## General
+- Rails 7+ in API mode (no views, no asset pipeline)
+- Ruby 3.2+
+- PostgreSQL database (Neon)
+
+## Naming Conventions
+- Models: singular, CamelCase (`TaxReturn`, `WorkflowEvent`)
+- Tables: plural, snake_case (`tax_returns`, `workflow_events`)
+- Controllers: plural (`TaxReturnsController`)
+- Foreign keys: `{table_singular}_id` (`client_id`, `user_id`)
+
+## API Structure
+- Namespace under `Api::V1`
+- RESTful routes
+- JSON responses with snake_case keys
+- Use serializers for response formatting (e.g., Alba, Blueprinter, or jbuilder)
+
+## Controllers
+- Keep controllers thin
+- Complex logic goes in service objects (`app/services/`)
+- Use strong parameters
+- Handle errors gracefully with proper HTTP status codes
+
+## Models
+- Validations in models
+- Use scopes for common queries
+- Callbacks only for simple side effects (prefer service objects for complex logic)
+
+## Services
+- Put business logic in `app/services/`
+- Name pattern: `{Action}{Resource}Service` (e.g., `CreateClientService`)
+- Single responsibility per service
+
+## Background Jobs
+- Use Sidekiq (or Solid Queue for simplicity)
+- Jobs for: email sending, SMS sending, heavy processing
+- Keep jobs idempotent
+
+## Database
+- Always add indexes for foreign keys and commonly queried columns
+- Use database-level constraints where appropriate
+- Encrypt sensitive data (bank account numbers, SSN if stored)
+
+## Authentication
+- Clerk handles auth (JWT verification)
+- Sync Clerk users to local `users` table
+- Use `before_action :authenticate_user!` for protected routes
+
+## File Structure
+```
+backend/
+├── app/
+│   ├── controllers/
+│   │   └── api/v1/          # All API controllers
+│   ├── models/              # ActiveRecord models
+│   ├── services/            # Business logic
+│   ├── jobs/                # Background jobs
+│   └── serializers/         # Response formatting
+├── config/
+├── db/
+│   └── migrate/             # Migrations
+└── spec/ or test/           # Tests
+```
+
+## Shared Database with FastAPI
+- Rails OWNS the schema (all migrations through Rails)
+- FastAPI reads the same database but doesn't manage migrations
+- Both can read/write to all tables
+- Coordinate column/table changes through Rails first

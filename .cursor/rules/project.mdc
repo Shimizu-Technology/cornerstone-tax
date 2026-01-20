@@ -1,0 +1,62 @@
+---
+description: Core project context and guiding principles for Cornerstone Accounting
+alwaysApply: true
+---
+
+# Cornerstone Accounting Project
+
+## What This Project Is
+A unified digital platform for Cornerstone Accounting & Business Services (Guam):
+- Public website (marketing, services, contact)
+- Digital client intake form (online + iPad kiosk mode)
+- Admin dashboard for workflow tracking, time tracking, and audit trail
+- AI-powered transmittal generator (future phase)
+
+## Tech Stack
+- **Frontend**: React + Vite + Tailwind CSS
+- **Main Backend**: Ruby on Rails (API mode)
+- **AI Backend**: Python + FastAPI (for transmittal AI, shares same database)
+- **Database**: 
+  - Development: Local PostgreSQL
+  - Production: PostgreSQL on Neon (shared between Rails and FastAPI)
+- **Auth**: Clerk
+- **File Storage**: AWS S3 (private, pre-signed URLs)
+- **Email**: Resend
+- **SMS**: ClickSend
+- **Hosting**: Netlify (frontend), Render (backend services)
+
+## Guiding Principles (ALWAYS FOLLOW)
+
+### 1. Mobile-First, Responsive Always
+- Every feature must work on mobile AND desktop from day one
+- Minimum 44x44px touch targets (48px for primary actions)
+- Test on real devices, not just browser resize
+- Mobile is NOT a "Phase 2" thing
+
+### 2. Ease of Use Over Feature Richness
+- If users need instructions, we've failed
+- Reduce clicks, reduce friction, reduce cognitive load
+- Design for the least technical user
+
+### 3. Do It Right, Not Quick
+- Prefer proper solutions over bandaid fixes
+- Build for the long run, not just "make it work now"
+- Good architecture upfront > technical debt later
+
+### 4. Configurability Over Hardcoding
+- Workflow stages are admin-configurable (stored in database)
+- Time tracking categories are admin-configurable
+- Avoid hardcoding values that might change
+
+## User Roles
+- **Admin**: Full access, user management, settings
+- **Employee**: Workflow management, time tracking, assigned returns
+- **Client**: View own return status, upload documents (future)
+
+## Key Domain Concepts
+- **Client**: Person who submits intake form for tax preparation
+- **Tax Return**: The workflow item being tracked through stages
+- **Workflow Stage**: Configurable status (intake_received → complete)
+- **Workflow Event**: Audit log entry (who did what, when)
+- **Time Entry**: Employee hours logged against categories
+- **Transmittal**: Document sent with tax return materials

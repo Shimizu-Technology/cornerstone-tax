@@ -1,0 +1,68 @@
+---
+description: Database schema and conventions
+globs: ["backend/db/**/*", "ai-service/app/models/**/*"]
+alwaysApply: false
+---
+
+# Database Rules
+
+## General
+- **Development**: Local PostgreSQL (`cornerstone_development`)
+- **Production**: PostgreSQL on Neon (via DATABASE_URL)
+- Rails manages all migrations
+- FastAPI mirrors schema with SQLAlchemy (no migrations)
+- Both environments share the same schema
+
+## Naming Conventions
+- Tables: plural, snake_case (`tax_returns`, `workflow_stages`)
+- Columns: snake_case (`first_name`, `created_at`)
+- Foreign keys: `{singular_table}_id` (`client_id`)
+- Indexes: Rails default naming is fine
+
+## Required Columns
+Every table should have:
+- `id` (primary key, auto-increment)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+## Configurable Tables
+These tables allow admin customization without code changes:
+
+### workflow_stages
+- Stores configurable workflow statuses
+- `position` determines order
+- `notify_client` flag triggers notifications
+- `is_active` for soft delete
+- Default stages seeded on setup
+
+### time_categories
+- Stores configurable time tracking categories
+- `is_active` for soft delete
+- Default categories seeded on setup
+
+## Relationships
+- `clients` → has many `dependents`
+- `clients` → has many `tax_returns`
+- `tax_returns` → belongs to `workflow_stage`
+- `tax_returns` → has many `documents`
+- `tax_returns` → has many `workflow_events` (audit trail)
+- `tax_returns` → has many `income_sources`
+- `users` → has many `time_entries`
+- `time_entries` → belongs to `time_category`
+
+## Security
+- Encrypt sensitive data: bank account numbers, SSN (if stored)
+- Use Rails encrypted attributes or application-level encryption
+- Never store plain text passwords (Clerk handles auth)
+
+## Indexes
+Always add indexes for:
+- Foreign keys
+- Columns used in WHERE clauses
+- Columns used for sorting
+
+## Soft Delete Pattern
+Use `is_active` boolean instead of deleting records:
+- Preserves historical data
+- Audit trail remains intact
+- Filter with `where(is_active: true)` by default

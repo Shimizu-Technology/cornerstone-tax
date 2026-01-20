@@ -1,0 +1,156 @@
+# frozen_string_literal: true
+
+module Api
+  module V1
+    module Admin
+      class UsersController < BaseController
+        before_action :authenticate_user!
+        before_action :require_admin!
+        before_action :set_user, only: [:show, :update, :destroy]
+
+        # GET /api/v1/admin/users
+        def index
+          @users = User.order(created_at: :desc)
+
+          # Filter by role
+          if params[:role].present?
+            @users = @users.where(role: params[:role])
+          end
+
+          # Filter by status (active = has clerk_id, pending = no clerk_id)
+          if params[:status] == "active"
+            @users = @users.where.not(clerk_id: nil)
+          elsif params[:status] == "pending"
+            @users = @users.where(clerk_id: nil)
+          end
+
+          render json: {
+            users: @users.map { |user| serialize_user(user) }
+          }
+        end
+
+        # GET /api/v1/admin/users/:id
+        def show
+          render json: { user: serialize_user(@user) }
+        end
+
+        # POST /api/v1/admin/users
+        # Invite a new user by email
+        def create
+          email = params[:email]&.downcase&.strip
+          role = params[:role] || "employee"
+
+          # Validate email
+          if email.blank?
+            return render json: { error: "Email is required" }, status: :unprocessable_entity
+          end
+
+          unless email.match?(/\A[^@\s]+@[^@\s]+\.[^@\s]+\z/)
+            return render json: { error: "Invalid email format" }, status: :unprocessable_entity
+          end
+
+          # Check if email already exists
+          if User.exists?(["LOWER(email) = ?", email])
+            return render json: { error: "A user with this email already exists" }, status: :unprocessable_entity
+          end
+
+          # Validate role
+          unless %w[admin employee].include?(role)
+            return render json: { error: "Role must be admin or employee" }, status: :unprocessable_entity
+          end
+
+          # Create the user (without clerk_id - they'll get linked when they sign up)
+          @user = User.new(
+            email: email,
+            role: role,
+            clerk_id: "pending_#{SecureRandom.hex(8)}" # Temporary placeholder until they sign up
+          )
+
+          if @user.save
+            # Send invitation email
+            send_invitation_email(@user)
+            
+            render json: { user: serialize_user(@user) }, status: :created
+          else
+            render json: { error: @user.errors.full_messages.join(", ") }, status: :unprocessable_entity
+          end
+        end
+
+        # PATCH /api/v1/admin/users/:id
+        def update
+          # Prevent changing own role (safety)
+          if @user.id == current_user.id && params[:role].present? && params[:role] != current_user.role
+            return render json: { error: "You cannot change your own role" }, status: :unprocessable_entity
+          end
+
+          permitted = {}
+          permitted[:role] = params[:role] if params[:role].present? && %w[admin employee].include?(params[:role])
+
+          if @user.update(permitted)
+            render json: { user: serialize_user(@user) }
+          else
+            render json: { error: @user.errors.full_messages.join(", ") }, status: :unprocessable_entity
+          end
+        end
+
+        # DELETE /api/v1/admin/users/:id
+        def destroy
+          # Prevent deleting yourself
+          if @user.id == current_user.id
+            return render json: { error: "You cannot delete your own account" }, status: :unprocessable_entity
+          end
+
+          # Soft delete by clearing clerk_id and marking as inactive
+          # Or we can just destroy - for now let's just destroy
+          @user.destroy
+          head :no_content
+        end
+
+        private
+
+        def set_user
+          @user = User.find(params[:id])
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "User not found" }, status: :not_found
+        end
+
+        def serialize_user(user)
+          {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            is_active: !user.clerk_id&.start_with?("pending_"),
+            is_pending: user.clerk_id&.start_with?("pending_"),
+            created_at: user.created_at.iso8601,
+            updated_at: user.updated_at.iso8601
+          }
+        end
+
+        def send_invitation_email(user)
+          api_key = ENV["RESEND_API_KEY"]
+          
+          unless api_key.present?
+            Rails.logger.warn "RESEND_API_KEY not configured, skipping invitation email"
+            return
+          end
+
+          Rails.logger.info "RESEND_API_KEY present: #{api_key.present?}, length: #{api_key&.length}"
+
+          begin
+            response = UserMailer.invitation_email(user: user, invited_by: current_user)
+            
+            if response.is_a?(Hash) && response[:error]
+              Rails.logger.error "Resend error: #{response[:error]}"
+            else
+              Rails.logger.info "Invitation email sent to #{user.email}"
+            end
+          rescue => e
+            Rails.logger.error "Failed to send invitation email to #{user.email}: #{e.message}"
+            Rails.logger.error e.backtrace.first(5).join("\n")
+            # Don't fail the request if email fails - user is still created
+          end
+        end
+      end
+    end
+  end
+end

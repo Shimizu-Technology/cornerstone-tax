@@ -1,0 +1,64 @@
+---
+description: Frontend development rules for React/Vite/Tailwind
+globs: ["frontend/**/*"]
+alwaysApply: false
+---
+
+# Frontend Rules
+
+## Tech
+- React with Vite (not Next.js or CRA)
+- Tailwind CSS for styling (no CSS modules, no styled-components)
+- TypeScript preferred
+
+## Component Patterns
+- Functional components with hooks only (no class components)
+- Keep components small and focused
+- Extract reusable UI components to `components/ui/`
+- Page components go in `pages/`
+
+## Styling
+- Use Tailwind utility classes
+- Mobile-first approach: start with mobile styles, add `md:` and `lg:` for larger screens
+- Minimum touch targets: 44x44px (use `min-h-11 min-w-11` or `p-3` on buttons)
+- Primary actions: 48x48px minimum
+
+## Branding (Cornerstone)
+- Warm/neutral palette: beige, cream, browns
+- Light pink as subtle accent (not dominant)
+- Professional and approachable feel
+
+## Forms
+- Use controlled components
+- Show validation errors inline, below the field
+- Required fields clearly marked with asterisk (*)
+- Large input fields on mobile
+- Sticky submit button on long forms (mobile)
+
+## Accessibility
+- All interactive elements must be keyboard accessible
+- Use semantic HTML (`<button>`, `<nav>`, `<main>`, etc.)
+- Form inputs must have associated labels
+- Sufficient color contrast
+
+## API Calls
+- Use a centralized API client (e.g., `lib/api.ts`)
+- Handle loading and error states
+- Use React Query or SWR for server state (if added)
+
+## File Structure
+```
+frontend/src/
+├── components/
+│   ├── ui/           # Reusable: Button, Input, Modal, etc.
+│   ├── forms/        # Form-specific components
+│   └── layouts/      # Header, Footer, Sidebar, etc.
+├── pages/
+│   ├── public/       # Marketing pages (Home, About, Services, Contact)
+│   ├── intake/       # Client intake form
+│   ├── portal/       # Client portal (future)
+│   └── admin/        # Employee dashboard
+├── hooks/            # Custom hooks
+├── lib/              # Utilities, API client
+└── types/            # TypeScript types
+```
