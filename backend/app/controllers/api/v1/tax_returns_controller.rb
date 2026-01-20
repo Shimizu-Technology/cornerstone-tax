@@ -154,12 +154,19 @@ module Api
           income_sources: tr.income_sources.map do |src|
             { id: src.id, source_type: src.source_type, payer_name: src.payer_name }
           end,
-          documents: tr.documents.map do |doc|
+          documents: tr.documents.includes(:uploaded_by).order(created_at: :desc).map do |doc|
             {
               id: doc.id,
               filename: doc.filename,
               document_type: doc.document_type,
-              created_at: doc.created_at
+              content_type: doc.content_type,
+              file_size: doc.file_size,
+              uploaded_by: doc.uploaded_by ? {
+                id: doc.uploaded_by.id,
+                email: doc.uploaded_by.email
+              } : nil,
+              created_at: doc.created_at,
+              tax_return_id: doc.tax_return_id
             }
           end,
           workflow_events: tr.workflow_events.recent.map do |event|

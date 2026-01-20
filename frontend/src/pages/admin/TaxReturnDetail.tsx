@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../../lib/api'
+import type { Document } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
+import DocumentUpload from '../../components/admin/DocumentUpload'
 
 // Define types locally to avoid Vite import caching issues
 interface IncomeSourceLocal {
@@ -41,12 +43,7 @@ interface TaxReturnDetailLocal {
     name: string
   } | null
   income_sources: IncomeSourceLocal[]
-  documents: Array<{
-    id: number
-    filename: string
-    document_type: string
-    created_at: string
-  }>
+  documents: Document[]
   workflow_events: Array<{
     id: number
     event_type: string
@@ -461,30 +458,11 @@ export default function TaxReturnDetailPage() {
           </div>
 
           {/* Documents */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Documents ({taxReturn.documents.length})
-              </h2>
-              {/* Future: Add document upload button */}
-            </div>
-            {taxReturn.documents.length === 0 ? (
-              <p className="text-gray-400 italic">No documents uploaded yet</p>
-            ) : (
-              <div className="space-y-3">
-                {taxReturn.documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">{doc.filename}</p>
-                      <p className="text-sm text-gray-500">
-                        {doc.document_type} • {formatDateTime(doc.created_at)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <DocumentUpload
+            taxReturnId={taxReturn.id}
+            documents={taxReturn.documents}
+            onDocumentsChange={loadTaxReturn}
+          />
 
           {/* Notes */}
           <div className="bg-white rounded-xl shadow-sm p-6">

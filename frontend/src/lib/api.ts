@@ -255,12 +255,7 @@ export interface TaxReturnDetail {
     source_type: string;
     payer_name: string;
   }>;
-  documents: Array<{
-    id: number;
-    filename: string;
-    document_type: string;
-    created_at: string;
-  }>;
+  documents: Document[];
   workflow_events: Array<{
     id: number;
     event_type: string;
@@ -420,6 +415,32 @@ export interface TimeEntriesResponse {
     total_hours: number;
     entry_count: number;
   };
+}
+
+// Document Types
+export interface Document {
+  id: number;
+  filename: string;
+  document_type: string | null;
+  content_type: string | null;
+  file_size: number | null;
+  uploaded_by: {
+    id: number;
+    email: string;
+  } | null;
+  created_at: string;
+  tax_return_id: number;
+}
+
+export interface PresignResponse {
+  upload_url: string;
+  s3_key: string;
+  expires_in: number;
+}
+
+export interface DownloadResponse {
+  download_url: string;
+  expires_in: number;
 }
 
 // API functions
@@ -670,6 +691,36 @@ export const api = {
 
   deleteTimeCategory: (id: number) =>
     fetchApi<void>(`/api/v1/admin/time_categories/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Documents
+  getDocuments: (taxReturnId: number) =>
+    fetchApi<Document[]>(`/api/v1/tax_returns/${taxReturnId}/documents`),
+
+  presignDocumentUpload: (taxReturnId: number, filename: string, contentType: string) =>
+    fetchApi<PresignResponse>(`/api/v1/tax_returns/${taxReturnId}/documents/presign`, {
+      method: 'POST',
+      body: JSON.stringify({ filename, content_type: contentType }),
+    }),
+
+  registerDocument: (taxReturnId: number, data: {
+    filename: string;
+    s3_key: string;
+    content_type: string;
+    file_size: number;
+    document_type?: string;
+  }) =>
+    fetchApi<{ document: Document }>(`/api/v1/tax_returns/${taxReturnId}/documents`, {
+      method: 'POST',
+      body: JSON.stringify({ document: data }),
+    }),
+
+  getDocumentDownloadUrl: (documentId: number) =>
+    fetchApi<DownloadResponse>(`/api/v1/documents/${documentId}/download`),
+
+  deleteDocument: (documentId: number) =>
+    fetchApi<void>(`/api/v1/documents/${documentId}`, {
       method: 'DELETE',
     }),
 };

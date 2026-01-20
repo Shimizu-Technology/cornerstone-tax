@@ -25,3 +25,6 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+cornerstone-s3-api_accessKeys.csv
+cornerstone-s3-api_accessKeys.csv
+*.csv
