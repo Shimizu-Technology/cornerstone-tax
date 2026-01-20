@@ -19,7 +19,7 @@ Reference the PRD.md for detailed specifications.
 | Phase 4: Admin Dashboard | ✅ Complete | Layout, clients, auth, user management (invite-only) |
 | Phase 5: Workflow Tracking | ✅ Complete | Tax returns, status changes, audit trail, activity page |
 | Phase 6: Time Tracking | ✅ Complete | Entries, categories, day/week views, admin reports |
-| Phase 7: Document Upload | ⬜ Not Started | |
+| Phase 7: Document Upload | ✅ Complete | S3 integration, drag-and-drop UI, download/delete |
 | Phase 8: Notifications | 🔄 Partial | Resend email setup complete, SMS pending |
 | Phase 9: Transmittal Maker | ⬜ Not Started | |
 | Phase 10: Polish & Deploy | ✅ Complete | Deployed to Netlify + Render + Neon |
@@ -283,32 +283,33 @@ Reference the PRD.md for detailed specifications.
 
 ---
 
-## Phase 7: Document Upload (Week 4-5)
+## Phase 7: Document Upload (Week 4-5) ✅ COMPLETE
 
-### 7.1 S3 Setup
-- [ ] Create private S3 bucket
-- [ ] Configure CORS for direct upload
-- [ ] Set up IAM credentials
-- [ ] Add AWS SDK to Rails
+### 7.1 S3 Setup ✅
+- [x] Create private S3 bucket (cornerstone-accounting-documents, ap-southeast-2)
+- [x] Configure CORS for direct upload
+- [x] Set up IAM credentials
+- [x] Add AWS SDK to Rails (aws-sdk-s3 gem)
 
-### 7.2 Backend API
-- [ ] `POST /api/v1/documents/presign` - Get upload URL
-- [ ] `POST /api/v1/documents` - Register uploaded document
-- [ ] `GET /api/v1/documents/:id/download` - Get signed download URL
-- [ ] `DELETE /api/v1/documents/:id` - Delete document
+### 7.2 Backend API ✅
+- [x] `POST /api/v1/tax_returns/:id/documents/presign` - Get upload URL
+- [x] `POST /api/v1/tax_returns/:id/documents` - Register uploaded document
+- [x] `GET /api/v1/documents/:id/download` - Get signed download URL
+- [x] `DELETE /api/v1/documents/:id` - Delete document
 
-### 7.3 Upload UI
-- [ ] File picker component
-- [ ] Drag-and-drop zone
-- [ ] Upload progress indicator
-- [ ] Document type selector (W-2, 1099, ID, etc.)
-- [ ] Success/error feedback
+### 7.3 Upload UI ✅
+- [x] File picker component
+- [x] Drag-and-drop zone
+- [x] Upload progress indicator
+- [x] Document type selector (W-2, 1099, ID, etc.)
+- [x] Success/error feedback
+- [x] Smooth inline refresh (no page reload)
 
-### 7.4 Document List
-- [ ] Display documents on client/tax return page
-- [ ] Download links (signed URLs)
-- [ ] Delete option (with confirmation)
-- [ ] Upload date and who uploaded
+### 7.4 Document List ✅
+- [x] Display documents on tax return detail page
+- [x] Download links (signed URLs)
+- [x] Delete option (with confirmation)
+- [x] Upload date, file size, and who uploaded
 
 ---
 
