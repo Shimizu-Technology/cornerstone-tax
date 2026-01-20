@@ -43,12 +43,33 @@ These tables allow admin customization without code changes:
 ## Relationships
 - `clients` → has many `dependents`
 - `clients` → has many `tax_returns`
+- `tax_returns` → belongs to `client`
 - `tax_returns` → belongs to `workflow_stage`
+- `tax_returns` → belongs to `assigned_to` (User)
+- `tax_returns` → belongs to `reviewed_by` (User)
 - `tax_returns` → has many `documents`
-- `tax_returns` → has many `workflow_events` (audit trail)
+- `tax_returns` → has many `workflow_events` (tax return audit trail)
 - `tax_returns` → has many `income_sources`
+- `tax_returns` → has many `time_entries`
 - `users` → has many `time_entries`
 - `time_entries` → belongs to `time_category`
+- `time_entries` → belongs to `client` (optional)
+- `time_entries` → belongs to `tax_return` (optional)
+- `audit_logs` → polymorphic to any model (client, time_entry, etc.)
+
+## Audit Tables
+
+### workflow_events (Tax Return Specific)
+```
+id, tax_return_id, user_id, event_type, old_value, new_value, description, timestamps
+```
+Event types: `status_changed`, `assigned`, `note_added`, `income_source_added/updated/removed`
+
+### audit_logs (General Purpose)
+```
+id, user_id, auditable_type, auditable_id, action, changes_made (jsonb), metadata (jsonb), timestamps
+```
+Actions: `created`, `updated`, `deleted`
 
 ## Security
 - Encrypt sensitive data: bank account numbers, SSN (if stored)

@@ -57,6 +57,27 @@ A unified digital platform for Cornerstone Accounting & Business Services (Guam)
 - **Client**: Person who submits intake form for tax preparation
 - **Tax Return**: The workflow item being tracked through stages
 - **Workflow Stage**: Configurable status (intake_received → complete)
-- **Workflow Event**: Audit log entry (who did what, when)
+- **Workflow Event**: Tax return-specific audit log (status changes, assignments, notes, income sources)
+- **Audit Log**: General-purpose audit log (client edits, time entries, user management)
 - **Time Entry**: Employee hours logged against categories
-- **Transmittal**: Document sent with tax return materials
+- **Income Source**: W-2, 1099, business income, etc. linked to a tax return
+- **Transmittal**: Document sent with tax return materials (future)
+
+## Audit Logging Strategy
+We have TWO audit systems for different purposes:
+1. **workflow_events** - Tax return specific actions (shows on tax return detail page)
+   - Status changes, assignments, notes updates, income source changes
+2. **audit_logs** - General system-wide actions (shows on global Activity page)
+   - Client profile edits, time entries, user management
+
+## Current Build Status
+- ✅ Public website (Home, About, Services, Contact)
+- ✅ Client intake form with iPad kiosk mode
+- ✅ Admin dashboard with client/return management
+- ✅ Workflow tracking with configurable stages
+- ✅ Time tracking with daily/weekly views
+- ✅ User management (invite-only system)
+- ✅ Audit logging for all actions
+- 🔜 Document upload with S3
+- 🔜 Client portal
+- 🔜 AI transmittal generator

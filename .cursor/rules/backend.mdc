@@ -49,10 +49,60 @@ alwaysApply: false
 - Use database-level constraints where appropriate
 - Encrypt sensitive data (bank account numbers, SSN if stored)
 
-## Authentication
-- Clerk handles auth (JWT verification)
-- Sync Clerk users to local `users` table
-- Use `before_action :authenticate_user!` for protected routes
+## Encryption (Active Record Encryption)
+Bank account data is encrypted at rest:
+```ruby
+# In Client model
+encrypts :bank_routing_number
+encrypts :bank_account_number
+```
+
+Required environment variables:
+```
+ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=...
+ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=...
+ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=...
+```
+
+Generate keys: `bin/rails db:encryption:init`
+
+## Email (Resend)
+- Used for user invitation emails
+- Configure `RESEND_API_KEY` and `MAILER_FROM_EMAIL`
+- **Note**: Resend requires domain verification for production; testing emails only work to the account owner's email
+
+## Authentication (Clerk JWT)
+- Clerk handles auth; backend verifies JWT tokens
+- JWT verification via `ClerkAuth` service using JWKS endpoint
+- Include `ClerkAuthenticatable` concern in controllers
+- **Invite-only**: Admins create user records first; only those emails can sign up
+- First user automatically gets `admin` role
+
+### Authentication Methods (from ClerkAuthenticatable)
+```ruby
+before_action :authenticate_user!  # Requires valid token & user in DB
+before_action :require_staff!      # Must be admin or employee
+before_action :require_admin!      # Must be admin
+```
+
+### Environment Variables
+```
+CLERK_JWKS_URL=https://your-app.clerk.accounts.dev/.well-known/jwks.json
+```
+
+## Audit Logging
+Two separate audit systems:
+
+### 1. workflow_events (Tax Return Specific)
+- Linked to `tax_return_id`
+- Auto-logged via model callbacks on TaxReturn
+- Types: `status_changed`, `assigned`, `note_added`, `income_source_added/updated/removed`
+
+### 2. audit_logs (General Purpose)
+- Polymorphic (`auditable_type`, `auditable_id`)
+- Manually logged in controllers
+- Used for: client edits, time entries, user management
+- Use `AuditLog.log(auditable:, action:, user:, changes_made:, metadata:)`
 
 ## File Structure
 ```

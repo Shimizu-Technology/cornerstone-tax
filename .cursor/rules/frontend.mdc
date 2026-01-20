@@ -28,6 +28,17 @@ alwaysApply: false
 - Light pink as subtle accent (not dominant)
 - Professional and approachable feel
 
+### CSS Variables (defined in index.css)
+```css
+--color-primary: #8B7355;      /* Warm brown */
+--color-primary-dark: #6B5344; /* Darker brown */
+--color-secondary: #F5F0E8;    /* Light cream */
+--color-secondary-dark: #E8DFD1; /* Darker cream */
+--color-accent: #F8E8E0;       /* Light pink */
+```
+
+Use with Tailwind: `bg-primary`, `text-primary-dark`, `border-secondary-dark`, etc.
+
 ## Forms
 - Use controlled components
 - Show validation errors inline, below the field
@@ -42,9 +53,21 @@ alwaysApply: false
 - Sufficient color contrast
 
 ## API Calls
-- Use a centralized API client (e.g., `lib/api.ts`)
-- Handle loading and error states
-- Use React Query or SWR for server state (if added)
+- Use the centralized API client at `lib/api.ts`
+- All API functions return `{ data?, error?, errors? }`
+- Handle loading and error states in components
+- Token is automatically added via `AuthContext.getToken()`
+
+## Authentication (Clerk)
+- `AuthContext` wraps the app and provides `getToken()` for API calls
+- `ProtectedRoute` component guards admin routes
+- If `VITE_CLERK_PUBLISHABLE_KEY` is not set, auth is bypassed (dev mode)
+- First user to sign in becomes admin automatically
+
+## Utilities
+- **`lib/dateUtils.ts`**: Use `formatDate()` and `formatDateTime()` for consistent display
+  - `formatDate("2026-01-20")` → "January 20, 2026"
+  - `formatDateTime("2026-01-20T10:15:00Z")` → "10:15am January 20, 2026"
 
 ## File Structure
 ```
