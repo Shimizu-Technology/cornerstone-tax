@@ -4,6 +4,7 @@ import { ClerkProvider } from '@clerk/clerk-react'
 import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './contexts/AuthContext'
+import { PostHogProvider } from './providers/PostHogProvider'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 const isClerkEnabled = Boolean(PUBLISHABLE_KEY && PUBLISHABLE_KEY !== 'YOUR_PUBLISHABLE_KEY')
@@ -17,19 +18,23 @@ function Root() {
   // If Clerk is enabled, wrap with ClerkProvider
   if (isClerkEnabled) {
     return (
-      <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
-        <AuthProvider isClerkEnabled={true}>
-          <App />
-        </AuthProvider>
-      </ClerkProvider>
+      <PostHogProvider>
+        <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
+          <AuthProvider isClerkEnabled={true}>
+            <App />
+          </AuthProvider>
+        </ClerkProvider>
+      </PostHogProvider>
     )
   }
 
   // Otherwise, just render the app without Clerk
   return (
-    <AuthProvider isClerkEnabled={false}>
-      <App />
-    </AuthProvider>
+    <PostHogProvider>
+      <AuthProvider isClerkEnabled={false}>
+        <App />
+      </AuthProvider>
+    </PostHogProvider>
   )
 }
 

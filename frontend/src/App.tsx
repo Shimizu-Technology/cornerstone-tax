@@ -1,5 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 
+// Analytics
+import { PostHogPageView } from './providers/PostHogProvider'
+
 // Layouts
 import PublicLayout from './components/layouts/PublicLayout'
 import AdminLayout from './components/layouts/AdminLayout'
@@ -30,6 +33,7 @@ import TimeTracking from './pages/admin/TimeTracking'
 function App() {
   return (
     <BrowserRouter>
+      <PostHogPageView />
       <Routes>
         {/* Public Marketing Pages */}
         <Route element={<PublicLayout />}>
