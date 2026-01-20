@@ -26,7 +26,7 @@ interface WorkflowEvent {
 interface TaxReturn {
   id: number
   tax_year: number
-  notes: string | null
+  notes?: string | null
   status: string
   status_slug: string
   status_color: string

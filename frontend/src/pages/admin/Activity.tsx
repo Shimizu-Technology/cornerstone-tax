@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
-import { formatRelativeTime, formatDateTime } from '../../lib/dateUtils'
+import { formatRelativeTime } from '../../lib/dateUtils'
 
 // Define types locally to avoid Vite caching issues
 interface ActivityUser {
@@ -128,7 +128,8 @@ export default function Activity() {
   const [users, setUsers] = useState<UserSummary[]>([])
   
   // Filters
-  const [activitySource, setActivitySource] = useState<'all' | 'workflow' | 'audit'>('all')
+  type ActivitySource = 'all' | 'workflow' | 'audit'
+  const [activitySource, setActivitySource] = useState<ActivitySource>('all')
   const [eventTypeFilter, setEventTypeFilter] = useState('')
   const [userFilter, setUserFilter] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -147,7 +148,7 @@ export default function Activity() {
         workflowParams.append('page', currentPage.toString())
         workflowParams.append('per_page', activitySource === 'all' ? '15' : '25')
         
-        if (eventTypeFilter && activitySource !== 'audit') {
+        if (eventTypeFilter && (activitySource as ActivitySource) !== 'audit') {
           workflowParams.append('event_type', eventTypeFilter)
         }
         if (userFilter) workflowParams.append('user_id', userFilter)
