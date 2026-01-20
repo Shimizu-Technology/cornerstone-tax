@@ -117,18 +117,18 @@ Each intake form creates:
 
 ## Notifications & Communication
 
-### ⚠️ Resend Domain Verification (Required for Production)
-**Status:** Pending - needed before deployment
+### ✅ Resend Domain Verification
+**Status:** Complete
 
-Currently using Resend's test mode which only allows sending to the account owner's email. To send emails to clients and invited users:
+Domain `cornerstone-accounting.tax` is verified with Resend. Emails are sent from `noreply@cornerstone-accounting.tax`.
 
-1. Go to [resend.com/domains](https://resend.com/domains)
-2. Add your domain (e.g., `cornerstoneguam.com`)
-3. Add the DNS records Resend provides
-4. Update `MAILER_FROM_EMAIL` to use verified domain (e.g., `noreply@cornerstoneguam.com`)
+**Setup complete:**
+- DKIM record verified
+- SPF/MX records for `send` subdomain verified
+- `MAILER_FROM_EMAIL=noreply@cornerstone-accounting.tax`
 
-**Affected features:**
-- User invitation emails
+**Working features:**
+- User invitation emails ✅
 - Client status notifications (Phase 8)
 - Any automated emails
 

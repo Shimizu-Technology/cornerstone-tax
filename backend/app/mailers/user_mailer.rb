@@ -8,17 +8,12 @@ class UserMailer < ApplicationMailer
 
     from_email = ENV.fetch("MAILER_FROM_EMAIL", "noreply@example.com")
     
-    Rails.logger.info "Sending invitation email to #{@user.email} from #{from_email}"
-    
-    response = Resend::Emails.send({
+    Resend::Emails.send({
       from: from_email,
       to: @user.email,
       subject: "You've been invited to Cornerstone Accounting",
       html: invitation_html
     })
-    
-    Rails.logger.info "Resend response: #{response.inspect}"
-    response
   end
 
   private

@@ -127,26 +127,16 @@ module Api
         end
 
         def send_invitation_email(user)
-          api_key = ENV["RESEND_API_KEY"]
-          
-          unless api_key.present?
+          unless ENV["RESEND_API_KEY"].present?
             Rails.logger.warn "RESEND_API_KEY not configured, skipping invitation email"
             return
           end
 
-          Rails.logger.info "RESEND_API_KEY present: #{api_key.present?}, length: #{api_key&.length}"
-
           begin
-            response = UserMailer.invitation_email(user: user, invited_by: current_user)
-            
-            if response.is_a?(Hash) && response[:error]
-              Rails.logger.error "Resend error: #{response[:error]}"
-            else
-              Rails.logger.info "Invitation email sent to #{user.email}"
-            end
+            UserMailer.invitation_email(user: user, invited_by: current_user)
+            Rails.logger.info "Invitation email sent to #{user.email}"
           rescue => e
             Rails.logger.error "Failed to send invitation email to #{user.email}: #{e.message}"
-            Rails.logger.error e.backtrace.first(5).join("\n")
             # Don't fail the request if email fails - user is still created
           end
         end
