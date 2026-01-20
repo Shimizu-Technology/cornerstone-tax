@@ -7,22 +7,15 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    # Development: allow localhost
-    origins "http://localhost:5173", "http://127.0.0.1:5173"
+    # Allow origins from environment variable or localhost for development
+    # Set CORS_ORIGINS in production (e.g., "https://cornerstone.netlify.app")
+    allowed_origins = ENV.fetch("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    
+    origins(*allowed_origins)
 
     resource "*",
       headers: :any,
       methods: [:get, :post, :put, :patch, :delete, :options, :head],
       credentials: true
   end
-
-  # Production: add your Netlify domain
-  # allow do
-  #   origins "https://cornerstone.netlify.app"
-  #
-  #   resource "*",
-  #     headers: :any,
-  #     methods: [:get, :post, :put, :patch, :delete, :options, :head],
-  #     credentials: true
-  # end
 end
