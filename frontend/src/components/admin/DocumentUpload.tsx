@@ -89,15 +89,13 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
         throw new Error(registerResult.error)
       }
 
-      setUploadProgress('Upload complete!')
-      setTimeout(() => {
-        setUploadProgress(null)
-        onDocumentsChange()
-      }, 1000)
+      // Immediately refresh the documents list
+      setUploadProgress(null)
+      setUploading(false)
+      onDocumentsChange()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
       setUploadProgress(null)
-    } finally {
       setUploading(false)
     }
   }

@@ -130,6 +130,7 @@ export default function TaxReturnDetailPage() {
   const [editingIncomeSource, setEditingIncomeSource] = useState<IncomeSourceLocal | null>(null)
   const [incomeForm, setIncomeForm] = useState({ source_type: 'w2', payer_name: '', notes: '' })
 
+  // Initial load - shows full page spinner
   const loadTaxReturn = async () => {
     if (!id) return
     setLoading(true)
@@ -145,6 +146,20 @@ export default function TaxReturnDetailPage() {
       setError('Failed to load tax return')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Refresh without full page loading spinner (for inline updates)
+  const refreshTaxReturn = async () => {
+    if (!id) return
+    try {
+      const result = await api.getTaxReturn(parseInt(id))
+      if (result.data) {
+        setTaxReturn(result.data.tax_return)
+        setNotes(result.data.tax_return.notes || '')
+      }
+    } catch (err) {
+      console.error('Failed to refresh tax return:', err)
     }
   }
 
@@ -461,7 +476,7 @@ export default function TaxReturnDetailPage() {
           <DocumentUpload
             taxReturnId={taxReturn.id}
             documents={taxReturn.documents}
-            onDocumentsChange={loadTaxReturn}
+            onDocumentsChange={refreshTaxReturn}
           />
 
           {/* Notes */}
