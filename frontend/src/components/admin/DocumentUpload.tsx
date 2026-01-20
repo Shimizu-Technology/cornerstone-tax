@@ -63,16 +63,27 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
 
       // 2. Upload to S3
       setUploadProgress('Uploading to cloud...')
-      const uploadResponse = await fetch(upload_url, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type || 'application/octet-stream',
-        },
-      })
+      console.log('Uploading to S3:', upload_url.substring(0, 100) + '...')
+      
+      try {
+        const uploadResponse = await fetch(upload_url, {
+          method: 'PUT',
+          body: file,
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+          },
+        })
 
-      if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file to cloud storage')
+        console.log('S3 upload response:', uploadResponse.status, uploadResponse.statusText)
+
+        if (!uploadResponse.ok) {
+          const errorText = await uploadResponse.text().catch(() => 'No error details')
+          console.error('S3 upload error:', errorText)
+          throw new Error(`Failed to upload file to cloud storage: ${uploadResponse.status}`)
+        }
+      } catch (fetchError) {
+        console.error('S3 fetch error:', fetchError)
+        throw new Error('Failed to upload to cloud. Check browser console for details.')
       }
 
       // 3. Register document in database
