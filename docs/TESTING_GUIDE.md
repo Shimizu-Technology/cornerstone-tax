@@ -304,30 +304,88 @@ export default defineConfig({
 ### Strategy Overview
 
 1. **Create a test user** in your auth system (Clerk)
-2. **Write a setup test** that logs in and saves session
-3. **Reuse session** in all other tests (no login per test)
+2. **Sign in once** to create their database record
+3. **Assign the correct role** in your database
+4. **Store credentials** in your `.env` file
+5. **Playwright uses saved session** (no login per test)
 
 ### Step 1: Create Test User in Clerk
 
 1. Go to Clerk Dashboard → Users
-2. Create a user:
-   - Email: `test-admin@yourcompany.com`
-   - Password: Strong password (store securely)
-   - First/Last Name: Test Admin
+2. Click **"+ Create user"**
+3. Fill in:
+   - **Email**: `test-admin@yourcompany.com`
+   - **Password**: Strong password (you'll need this later)
+   - **First Name**: `Test`
+   - **Last Name**: `Admin`
+4. Click **Create**
 
-3. In your app's admin, assign the correct role
+### Step 2: Store Credentials in .env
 
-### Step 2: Store Credentials Securely
-
-Create `.env.test` (gitignored):
+Add the test credentials to your existing `frontend/.env` file (already gitignored):
 
 ```bash
-# .env.test (DO NOT COMMIT)
+# frontend/.env
+
+# ... your existing app config ...
+VITE_API_URL=http://localhost:3000
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
+
+# Test credentials (add these)
 TEST_USER_EMAIL=test-admin@yourcompany.com
-TEST_USER_PASSWORD=your-secure-password
+TEST_USER_PASSWORD=your-password-from-step-1
 ```
 
-Or use environment variables in CI.
+**Note:** You can also use a separate `.env.test` file if you prefer (requires adding `dotenv` to Playwright config).
+
+### Step 3: Sign In Once to Create Database Record
+
+1. Start your local servers:
+   ```bash
+   # Terminal 1
+   cd backend && rails server
+   
+   # Terminal 2  
+   cd frontend && npm run dev
+   ```
+
+2. Go to `http://localhost:5173` and sign in with the test user
+3. This creates their record in your database
+
+### Step 4: Assign Admin Role
+
+After signing in, make the test user an admin:
+
+```bash
+cd backend
+rails runner "
+  user = User.find_by(email: 'test-admin@yourcompany.com')
+  if user
+    user.update(role: 'admin')
+    puts '✅ User updated to admin!'
+  else
+    puts '❌ User not found - make sure they signed in first'
+  end
+"
+```
+
+### Step 5: Verify Setup
+
+Your test account is ready when:
+- [ ] User exists in Clerk dashboard
+- [ ] Credentials are in `frontend/.env`
+- [ ] User has signed in at least once
+- [ ] User has admin role in database
+
+### Multiple Test Users (Optional)
+
+Start with one admin user. Add more later if needed:
+
+| User | Role | Purpose |
+|------|------|---------|
+| `test-admin@...` | Admin | Full access testing |
+| `test-employee@...` | Employee | Role restriction testing |
+| `test-client@...` | Client | Client portal testing |
 
 ### Step 3: Auth Setup Test
 
