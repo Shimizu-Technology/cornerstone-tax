@@ -632,6 +632,97 @@ Don't spend weeks planning. Set a limit (e.g., 2 days for a medium project) and 
 
 ---
 
+## 8. Testing in the Planning Process
+
+Testing should be planned, not an afterthought. Include testing requirements in both documents.
+
+### PRD Testing Section
+
+Add this section to your PRD:
+
+```markdown
+## Testing Requirements
+
+### Critical User Flows (E2E Coverage)
+
+| Flow | Priority | Notes |
+|------|----------|-------|
+| User registration/login | P0 | Auth must always work |
+| Main form submission | P0 | Core functionality |
+| Payment processing | P0 | Revenue-critical |
+| Admin CRUD operations | P1 | Business operations |
+
+### Test Accounts
+
+| Email | Role | Purpose |
+|-------|------|---------|
+| test-admin@example.com | Admin | Full access testing |
+| test-user@example.com | User | Standard user testing |
+
+### Test Data Requirements
+
+- Seed data for X test records
+- Sample files for upload tests
+- Edge case scenarios
+```
+
+### BUILD_PLAN Testing Tasks
+
+Add testing tasks to each phase:
+
+```markdown
+## Phase 2: User Authentication
+
+### 2.1 Build
+- [ ] Install auth provider
+- [ ] Create login/signup pages
+- [ ] Implement protected routes
+
+### 2.2 Testing
+- [ ] E2E: Complete signup flow
+- [ ] E2E: Login with valid credentials
+- [ ] E2E: Login with invalid credentials
+- [ ] E2E: Password reset flow
+- [ ] AI: Mobile layout verification
+```
+
+### Pre-Deploy Checklist
+
+Add to the end of your BUILD_PLAN:
+
+```markdown
+## Pre-Deploy Testing Checklist
+
+### Automated Tests
+- [ ] All E2E tests passing (`npm test`)
+- [ ] No console errors in dev tools
+
+### AI Verification
+- [ ] Critical pages load on mobile
+- [ ] Forms submit successfully
+- [ ] Navigation works
+
+### Manual QA
+- [ ] Stakeholder walkthrough
+- [ ] Edge cases tested
+- [ ] Performance acceptable
+```
+
+### What to Test (Priority Guide)
+
+| Priority | What | Why | Test Type |
+|----------|------|-----|-----------|
+| **P0** | Auth flows | Broken = no access | E2E |
+| **P0** | Main user journey | Core value | E2E |
+| **P1** | Form validation | UX critical | E2E |
+| **P1** | Error handling | User confidence | E2E |
+| **P2** | Edge cases | Prevent bugs | Unit/E2E |
+| **P3** | Visual regression | Polish | Snapshot |
+
+See the [Testing Guide](./TESTING_GUIDE.md) for full setup instructions.
+
+---
+
 ## Quick Reference
 
 ### When to Create Each Document
