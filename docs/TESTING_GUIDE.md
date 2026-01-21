@@ -666,26 +666,35 @@ test('mobile navigation works', async ({ page }) => {
 
 ## 7. Running Tests
 
-### Playwright Commands
+### All Test Commands (Quick Reference)
 
 ```bash
-# Run all tests
-npm test
+# === Frontend Unit Tests (Vitest) ===
+npm test                    # Run unit tests once
+npm run test:watch          # Watch mode (re-run on changes)
+npm run test:coverage       # With coverage report
 
-# Run with UI (visual test runner)
-npm run test:ui
+# === Frontend E2E Tests (Playwright) ===
+npm run test:e2e            # Run all E2E tests
+npm run test:e2e:ui         # Visual test runner
+npm run test:e2e:headed     # See browser during tests
+npm run test:e2e:debug      # Step-through debugging
+npm run test:e2e:public     # Public pages only (no auth)
 
-# Run in headed mode (see browser)
-npm run test:headed
+# === Backend Unit Tests (RSpec) ===
+cd backend
+bundle exec rspec           # Run all specs
+bundle exec rspec spec/models/client_spec.rb  # Specific file
+```
 
+### Playwright-Specific Commands
+
+```bash
 # Run specific test file
 npx playwright test intake-form.spec.ts
 
 # Run tests matching name
 npx playwright test -g "intake"
-
-# Debug mode (step through)
-npm run test:debug
 
 # Update snapshots
 npx playwright test --update-snapshots
@@ -1092,9 +1101,9 @@ agent-browser --headed open <url>  # Show browser window
 ### Playwright Commands
 
 ```bash
-npm test                    # Run all tests
-npm run test:ui            # Visual test runner
-npm run test:headed        # See browser
+npm test                    # Vitest (unit tests)
+npm run test:e2e            # Playwright (E2E tests)
+npm run test:e2e:headed     # See browser during E2E
 npx playwright codegen     # Record test
 npx playwright show-report # View results
 ```

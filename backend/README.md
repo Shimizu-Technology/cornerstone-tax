@@ -35,6 +35,19 @@ bin/rails db:encryption:init
 rails server  # Runs on port 3000
 ```
 
+## Testing
+
+```bash
+# Run all specs
+bundle exec rspec
+
+# Run specific spec file
+bundle exec rspec spec/models/client_spec.rb
+
+# Run with verbose output
+bundle exec rspec --format documentation
+```
+
 ## Key Files
 
 - `app/services/clerk_auth.rb` - JWT verification
