@@ -314,13 +314,24 @@ export default defineConfig({
 1. Go to Clerk Dashboard → Users
 2. Click **"+ Create user"**
 3. Fill in:
-   - **Email**: `test-admin@yourcompany.com`
+   - **Email**: `test-admin@yourcompany.com` (can be fake for dev)
    - **Password**: Strong password (you'll need this later)
    - **First Name**: `Test`
    - **Last Name**: `Admin`
 4. Click **Create**
 
-### Step 2: Store Credentials in .env
+### Step 2: Enable "Bypass Client Trust" (Critical!)
+
+By default, Clerk's "Client Trust" feature requires email verification when signing in from a new device. **This will block automated tests.** To disable it for test users:
+
+1. In Clerk Dashboard → Users → Click on your test user
+2. Go to the **Settings** tab (next to Profile)
+3. Find **"Bypass Client Trust"** and toggle it **ON**
+4. This allows the test user to sign in without device verification
+
+> **Why is this needed?** Clerk's Client Trust sends a verification code to the user's email whenever they sign in from a new device/browser. Since test environments are always "new devices," this blocks automated login. Bypassing it for specific test users solves this without reducing security for real users.
+
+### Step 3: Store Credentials in .env
 
 Add the test credentials to your existing `frontend/.env` file (already gitignored):
 
@@ -338,7 +349,7 @@ TEST_USER_PASSWORD=your-password-from-step-1
 
 **Note:** You can also use a separate `.env.test` file if you prefer (requires adding `dotenv` to Playwright config).
 
-### Step 3: Sign In Once to Create Database Record
+### Step 4: Sign In Once to Create Database Record
 
 1. Start your local servers:
    ```bash
@@ -352,7 +363,7 @@ TEST_USER_PASSWORD=your-password-from-step-1
 2. Go to `http://localhost:5173` and sign in with the test user
 3. This creates their record in your database
 
-### Step 4: Assign Admin Role
+### Step 5: Assign Admin Role
 
 After signing in, make the test user an admin:
 
@@ -369,10 +380,11 @@ rails runner "
 "
 ```
 
-### Step 5: Verify Setup
+### Step 6: Verify Setup
 
 Your test account is ready when:
 - [ ] User exists in Clerk dashboard
+- [ ] "Bypass Client Trust" is enabled for the user
 - [ ] Credentials are in `frontend/.env`
 - [ ] User has signed in at least once
 - [ ] User has admin role in database
@@ -387,7 +399,7 @@ Start with one admin user. Add more later if needed:
 | `test-employee@...` | Employee | Role restriction testing |
 | `test-client@...` | Client | Client portal testing |
 
-### Step 3: Auth Setup Test
+### Auth Setup Test (Playwright)
 
 ```typescript
 // frontend/e2e/auth.setup.ts
@@ -425,7 +437,7 @@ setup('authenticate', async ({ page }) => {
 });
 ```
 
-### Step 4: Use in Tests
+### Use Auth in Tests
 
 ```typescript
 // frontend/e2e/dashboard.spec.ts
@@ -1026,7 +1038,8 @@ Setup:
 □ agent-browser installed globally
 □ Playwright installed in frontend
 □ Test account created in Clerk
-□ .env.test with credentials (gitignored)
+□ "Bypass Client Trust" enabled for test user
+□ .env with test credentials (gitignored)
 □ Auth setup test written
 □ playwright.config.ts configured
 
