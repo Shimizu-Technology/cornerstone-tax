@@ -309,8 +309,16 @@ export default defineConfig({
 4. **Store credentials** in your `.env` file
 5. **Playwright uses saved session** (no login per test)
 
-### Step 1: Create Test User in Clerk
+### Step 1: Create Test User
 
+**If using an invite-only system (recommended):**
+1. First, invite the user through **your app's admin dashboard** (e.g., `/admin/users`)
+2. Set their role to **Admin** during invitation
+3. Then go to **Clerk Dashboard → Users → + Create user**
+4. Use the **same email** you invited
+5. Set a password (you'll need this for tests)
+
+**If NOT using invite-only:**
 1. Go to Clerk Dashboard → Users
 2. Click **"+ Create user"**
 3. Fill in:
@@ -365,7 +373,9 @@ TEST_USER_PASSWORD=your-password-from-step-1
 
 ### Step 5: Assign Admin Role
 
-After signing in, make the test user an admin:
+**If using an invite-only system:** Skip this step! When you invited the user through your admin dashboard (Step 1), you already assigned their role. The user record already exists with the correct role, and signing in just links their Clerk ID.
+
+**If NOT using invite-only (auto-create users on sign-in):** Manually assign the role:
 
 ```bash
 cd backend
