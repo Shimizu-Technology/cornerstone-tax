@@ -272,10 +272,65 @@ Current testing setup includes Playwright E2E, Vitest unit tests, and RSpec, but
 - [ ] User invitation → acceptance flow
 - [ ] Mobile-specific interaction tests
 
-**CI/CD:**
-- [ ] GitHub Actions workflow for all tests
-- [ ] Test coverage reporting
-- [ ] Pre-commit hooks for linting/tests
+---
+
+## CI/CD Pipeline
+
+### GitHub Actions Workflow
+**Priority:** Medium | **Effort:** Medium
+
+Automate testing and deployment with GitHub Actions.
+
+**Proposed Workflow:**
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Frontend tests
+  frontend:
+    - npm install
+    - npm run lint
+    - npm test (Vitest)
+    - npm run test:e2e (Playwright)
+    - npm run build
+
+  # Backend tests  
+  backend:
+    - bundle install
+    - bundle exec rspec
+    - bundle exec rubocop
+```
+
+**Features to Include:**
+- [ ] Run on every push/PR to main
+- [ ] Parallel jobs for frontend + backend
+- [ ] Playwright with test artifacts (screenshots/videos)
+- [ ] Test coverage reporting (Codecov or similar)
+- [ ] Caching for npm/bundle dependencies
+- [ ] Status checks required before merge
+
+**Deployment Automation:**
+- [ ] Auto-deploy to Netlify on main push (already works via Netlify integration)
+- [ ] Auto-deploy backend to Render on main push (can configure via Render)
+- [ ] Optional: Staging environment for PRs
+
+**Pre-commit Hooks (Optional):**
+- [ ] Husky for Git hooks
+- [ ] Lint-staged for file-specific linting
+- [ ] Type checking before commit
+
+**Environment Secrets Needed:**
+- `VITE_CLERK_PUBLISHABLE_KEY` (for E2E tests)
+- `TEST_USER_EMAIL` / `TEST_USER_PASSWORD` (for E2E auth)
+- `DATABASE_URL` (for backend tests)
 
 ---
 
