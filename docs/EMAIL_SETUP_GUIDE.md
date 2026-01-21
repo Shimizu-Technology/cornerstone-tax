@@ -146,17 +146,161 @@ MAILER_FROM_EMAIL=noreply@example.com
 
 ---
 
-## 5. Email Service Pattern
+## 5. Mailer Pattern (Recommended)
 
-**Important**: Don't use ActionMailer with Resend directly. ActionMailer's lazy evaluation can cause emails not to send. Use a service class instead.
+The recommended approach is using a Rails Mailer that calls `Resend::Emails.send` directly (not ActionMailer's `mail()` method). This gives you the familiar mailer structure while avoiding ActionMailer's lazy evaluation issues.
 
-### Create Email Service
+### Create the Mailer
+
+```ruby
+# app/mailers/user_mailer.rb
+class UserMailer < ApplicationMailer
+  def invitation_email(user:, invited_by:)
+    @user = user
+    @invited_by = invited_by
+    @sign_up_url = ENV.fetch("FRONTEND_URL", "http://localhost:5173")
+
+    from_email = ENV.fetch("MAILER_FROM_EMAIL", "noreply@example.com")
+    
+    # Call Resend directly (NOT ActionMailer's mail() method)
+    Resend::Emails.send({
+      from: from_email,
+      to: @user.email,
+      subject: "You've been invited to Your App Name",
+      html: invitation_html
+    })
+  end
+
+  private
+
+  def invitation_html
+    <<~HTML
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Welcome</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f5f5;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+          <tr>
+            <td>
+              <!-- Header -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #2d2a26; border-radius: 12px 12px 0 0; padding: 30px;">
+                <tr>
+                  <td align="center">
+                    <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">APP NAME</h1>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Content -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #ffffff; padding: 40px 30px;">
+                <tr>
+                  <td>
+                    <h2 style="color: #2d2a26; margin: 0 0 20px 0; font-size: 22px;">You're Invited! 🎉</h2>
+                    
+                    <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                      #{@invited_by&.email || "An administrator"} has invited you to join the team portal.
+                    </p>
+
+                    <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+                      You've been granted <strong>#{@user.role}</strong> access. Click the button below to create your account.
+                    </p>
+
+                    <!-- CTA Button -->
+                    <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto 30px auto;">
+                      <tr>
+                        <td style="background-color: #8b7355; border-radius: 8px;">
+                          <a href="#{@sign_up_url}" target="_blank" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">
+                            Create Your Account
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <p style="color: #888888; font-size: 14px; line-height: 1.6; margin: 0 0 10px 0;">
+                      Or copy and paste this link into your browser:
+                    </p>
+                    <p style="color: #8b7355; font-size: 14px; word-break: break-all; margin: 0 0 30px 0;">
+                      #{@sign_up_url}
+                    </p>
+
+                    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 30px 0;">
+
+                    <p style="color: #888888; font-size: 14px; line-height: 1.6; margin: 0;">
+                      <strong>Important:</strong> Make sure to sign up using this email address (<strong>#{@user.email}</strong>) to gain access.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Footer -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f5f5f5; border-radius: 0 0 12px 12px; padding: 20px 30px;">
+                <tr>
+                  <td align="center">
+                    <p style="color: #888888; font-size: 12px; margin: 0;">
+                      Company Name<br>
+                      City, State
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    HTML
+  end
+end
+```
+
+### Using the Mailer
+
+```ruby
+# In a controller
+def create
+  @user = User.create!(user_params)
+  
+  # Send invitation email
+  send_invitation_email(@user)
+  
+  render json: { user: @user }, status: :created
+end
+
+private
+
+def send_invitation_email(user)
+  return unless ENV["RESEND_API_KEY"].present?
+
+  begin
+    UserMailer.invitation_email(user: user, invited_by: current_user)
+    Rails.logger.info "Invitation email sent to #{user.email}"
+  rescue => e
+    Rails.logger.error "Failed to send invitation email: #{e.message}"
+  end
+end
+```
+
+### Key Points:
+
+1. **Call `Resend::Emails.send` directly** - Don't use ActionMailer's `mail()` method
+2. **No `.deliver_now` needed** - The email sends immediately when the method is called
+3. **Use instance variables** - `@user`, `@invited_by` are available in the HTML helper
+4. **Heredoc for HTML** - Use `<<~HTML` for clean inline templates
+
+---
+
+## 5.1 Alternative: Service Class Pattern
+
+If you prefer a service class pattern (no inheritance from ApplicationMailer), you can use this approach instead:
 
 ```ruby
 # app/services/email_service.rb
 class EmailService
   class << self
-    # Example: Send invitation email
     def send_invitation_email(user:, invited_by:)
       return false unless resend_configured?
 
@@ -166,54 +310,14 @@ class EmailService
       response = Resend::Emails.send({
         from: from_email,
         to: user.email,
-        subject: "You've been invited to #{app_name}",
+        subject: "You've been invited",
         html: invitation_html(user: user, invited_by: invited_by, sign_up_url: sign_up_url)
       })
 
-      Rails.logger.info "Resend API response for #{user.email}: #{response.inspect}"
+      Rails.logger.info "Resend response: #{response.inspect}"
       true
     rescue StandardError => e
-      Rails.logger.error "Failed to send email to #{user.email}: #{e.class} - #{e.message}"
-      Rails.logger.error e.backtrace.first(5).join("\n") if e.backtrace
-      false
-    end
-
-    # Example: Send password reset email
-    def send_password_reset_email(user:, reset_url:)
-      return false unless resend_configured?
-
-      from_email = ENV.fetch("MAILER_FROM_EMAIL", "noreply@example.com")
-
-      response = Resend::Emails.send({
-        from: from_email,
-        to: user.email,
-        subject: "Reset your password",
-        html: password_reset_html(user: user, reset_url: reset_url)
-      })
-
-      Rails.logger.info "Password reset email sent to #{user.email}"
-      true
-    rescue StandardError => e
-      Rails.logger.error "Failed to send password reset to #{user.email}: #{e.message}"
-      false
-    end
-
-    # Example: Send notification email
-    def send_notification_email(to:, subject:, body_html:)
-      return false unless resend_configured?
-
-      from_email = ENV.fetch("MAILER_FROM_EMAIL", "noreply@example.com")
-
-      Resend::Emails.send({
-        from: from_email,
-        to: to,
-        subject: subject,
-        html: body_html
-      })
-
-      true
-    rescue StandardError => e
-      Rails.logger.error "Failed to send notification to #{to}: #{e.message}"
+      Rails.logger.error "Failed to send email: #{e.message}"
       false
     end
 
@@ -221,128 +325,33 @@ class EmailService
 
     def resend_configured?
       if ENV["RESEND_API_KEY"].blank?
-        Rails.logger.warn "RESEND_API_KEY not configured, skipping email"
+        Rails.logger.warn "RESEND_API_KEY not configured"
         return false
       end
       true
     end
 
-    def app_name
-      "Your App Name"
-    end
-
     def invitation_html(user:, invited_by:, sign_up_url:)
-      # See Email Templates section below
-    end
-
-    def password_reset_html(user:, reset_url:)
-      # See Email Templates section below
+      # HTML template here...
     end
   end
 end
 ```
 
-### Using the Service
+**When to use each pattern:**
 
-```ruby
-# In a controller
-def create
-  @user = User.create!(user_params)
-  
-  # Send email (non-blocking, won't fail the request)
-  if EmailService.send_invitation_email(user: @user, invited_by: current_user)
-    Rails.logger.info "Invitation sent to #{@user.email}"
-  else
-    Rails.logger.warn "Could not send invitation to #{@user.email}"
-  end
-  
-  render json: { user: @user }, status: :created
-end
-```
+| Pattern | Best For |
+|---------|----------|
+| **Mailer** | Familiar Rails conventions, multiple email types, instance variables |
+| **Service Class** | Simpler structure, explicit control, easier testing |
+
+Both work equally well with Resend. The key is calling `Resend::Emails.send` directly instead of ActionMailer's built-in delivery.
 
 ---
 
 ## 6. Email Templates
 
-### Basic Template Structure
-
-```ruby
-def invitation_html(user:, invited_by:, sign_up_url:)
-  <<~HTML
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Welcome</title>
-    </head>
-    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-        <tr>
-          <td>
-            <!-- Header -->
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #333333; border-radius: 12px 12px 0 0; padding: 30px;">
-              <tr>
-                <td align="center">
-                  <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">APP NAME</h1>
-                </td>
-              </tr>
-            </table>
-
-            <!-- Content -->
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #ffffff; padding: 40px 30px;">
-              <tr>
-                <td>
-                  <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 22px;">You're Invited!</h2>
-                  
-                  <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-                    #{invited_by&.email || "An administrator"} has invited you to join.
-                  </p>
-
-                  <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
-                    Click the button below to create your account.
-                  </p>
-
-                  <!-- CTA Button -->
-                  <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto 30px auto;">
-                    <tr>
-                      <td style="background-color: #007bff; border-radius: 8px;">
-                        <a href="#{sign_up_url}" target="_blank" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">
-                          Create Your Account
-                        </a>
-                      </td>
-                    </tr>
-                  </table>
-
-                  <p style="color: #888888; font-size: 14px; line-height: 1.6; margin: 0 0 10px 0;">
-                    Or copy and paste this link:
-                  </p>
-                  <p style="color: #007bff; font-size: 14px; word-break: break-all; margin: 0;">
-                    #{sign_up_url}
-                  </p>
-                </td>
-              </tr>
-            </table>
-
-            <!-- Footer -->
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f5f5f5; border-radius: 0 0 12px 12px; padding: 20px 30px;">
-              <tr>
-                <td align="center">
-                  <p style="color: #888888; font-size: 12px; margin: 0;">
-                    Company Name<br>
-                    City, State
-                  </p>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  HTML
-end
-```
+A full template is shown in Section 5 above. Here are additional best practices and examples.
 
 ### Email Template Best Practices:
 - Use inline styles (no external CSS)
@@ -412,15 +421,28 @@ Rails.logger.info "Resend response: #{response.inspect}"
 
 ### Issue: Emails not sending (no error)
 
-**Cause**: ActionMailer lazy evaluation
-**Fix**: Use service class pattern (don't call `UserMailer.method()` without `.deliver_now`)
+**Cause**: Using ActionMailer's `mail()` method with Resend inside, which has lazy evaluation.
+
+**Fix**: Call `Resend::Emails.send` directly in your mailer method (don't use ActionMailer's `mail()` method).
 
 ```ruby
-# BAD - Won't actually send with Resend inside
-UserMailer.invitation_email(user: user)
+# BAD - Using ActionMailer's mail() method
+def invitation_email(user:)
+  mail(to: user.email, subject: "Welcome") do |format|
+    format.html { Resend::Emails.send(...) }  # Won't work reliably
+  end
+end
 
-# GOOD - Use service class
-EmailService.send_invitation_email(user: user)
+# GOOD - Call Resend directly (what we use)
+def invitation_email(user:)
+  @user = user
+  Resend::Emails.send({
+    from: ENV["MAILER_FROM_EMAIL"],
+    to: @user.email,
+    subject: "Welcome",
+    html: invitation_html
+  })
+end
 ```
 
 ### Issue: "Domain not verified" error
@@ -477,7 +499,7 @@ from: "hello@otherdomain.com"    # ✗ Rejected
 □ resend gem installed
 □ Initializer created
 □ Environment variables set
-□ EmailService class created
+□ UserMailer class created (or EmailService)
 □ Test email sent successfully
 □ Check email landed in inbox (not spam)
 ```
