@@ -247,6 +247,165 @@ Client requested: Add a floating element at the bottom of the page with phone nu
 
 ---
 
+## Testing Enhancements
+
+### Expand Test Coverage
+**Priority:** Medium | **Effort:** Medium
+
+Current testing setup includes Playwright E2E, Vitest unit tests, and RSpec, but coverage is foundational. To reach "thorough" coverage:
+
+**Backend (RSpec) - Missing:**
+- [ ] Model specs for: `TaxReturn`, `User`, `TimeEntry`, `WorkflowEvent`, `Document`
+- [ ] Request/Controller specs for all API endpoints
+- [ ] Service specs for: `CreateIntakeService`, `ClerkAuth`
+- [ ] Factory Bot factories for all models
+
+**Frontend (Vitest) - Missing:**
+- [ ] Component tests for complex UI: `IntakeForm`, `QuickCreateClientModal`, `DocumentUpload`
+- [ ] Hook tests: `useAuth`, API hooks
+- [ ] Utility function tests (more coverage)
+
+**E2E (Playwright) - Missing:**
+- [ ] Complete intake form flow (all steps)
+- [ ] Document upload/download flow
+- [ ] Time entry CRUD
+- [ ] User invitation → acceptance flow
+- [ ] Mobile-specific interaction tests
+
+**CI/CD:**
+- [ ] GitHub Actions workflow for all tests
+- [ ] Test coverage reporting
+- [ ] Pre-commit hooks for linting/tests
+
+---
+
+## Audit & Activity Logging Enhancements
+
+### Comprehensive Action Tracking
+**Priority:** Medium | **Effort:** Medium
+
+Currently tracking workflow events and some audit logs, but could be more comprehensive.
+
+**Actions to Track:**
+| Action | Currently Tracked? | Notes |
+|--------|-------------------|-------|
+| User invited | ✅ Yes | Via audit_logs |
+| User accepts invite (first login) | ❌ No | Track when `pending` → `active` |
+| User login | ❌ No | Track login timestamps/frequency |
+| User logout | ❌ No | Session end tracking |
+| Password reset | ❌ No | Security audit |
+| Client created | ✅ Yes | Via workflow_events |
+| Tax return status change | ✅ Yes | Via workflow_events |
+| Document uploaded | ✅ Yes | Via workflow_events |
+| Settings changed | ❌ No | Track who changed what |
+| Intake form submitted | ✅ Yes | Via workflow_events |
+
+**Implementation Options:**
+1. **Extend audit_logs table** - Add more action types
+2. **Clerk webhooks** - Sync login/logout events from Clerk
+3. **Session table** - Track active sessions per user
+
+**Questions to Consider:**
+- How long to retain logs? (30 days? 1 year? Forever?)
+- Who can view audit logs? (Admin only?)
+- Export/download audit logs for compliance?
+
+---
+
+## Workflow & Task Management
+
+### Kanban Board View
+**Priority:** Medium | **Effort:** High
+
+Add a visual Kanban board to track tax returns through workflow stages.
+
+**Features:**
+- Drag-and-drop cards between columns (stages)
+- Each card shows: Client name, assigned employee, days in stage
+- Filter by: Assigned to, Tax year, Date range
+- Quick actions: Change stage, reassign, add note
+- Real-time updates (WebSocket or polling)
+
+**Technical Approach:**
+- Use existing `workflow_stages` as columns
+- Frontend: React DnD or similar library
+- API: `PATCH /api/v1/tax_returns/:id` for stage updates
+- Could use library like `react-beautiful-dnd` or `@dnd-kit/core`
+
+**Employee Task Assignment:**
+- Show "My Tasks" view filtered to current user
+- Due date/priority flags on tax returns
+- Notification when assigned new work
+- Workload balancing visibility
+
+---
+
+## Configurable Features
+
+### Intake Form Toggle
+**Priority:** Low | **Effort:** Low
+
+Allow admins to enable/disable the public intake form.
+
+**Use Cases:**
+- Disable during off-season
+- Temporarily close for capacity management
+- Redirect to "Call us" during busy periods
+
+**Implementation:**
+- Add `intake_form_enabled` to Settings (admin-configurable)
+- Store in database or environment variable
+- When disabled:
+  - Show "Intake form is currently closed" message
+  - Option to show alternative contact info
+  - Maybe collect email for waitlist?
+
+**Admin UI:**
+- Toggle switch in Settings page
+- Custom "closed" message field
+- Schedule open/close times (future enhancement)
+
+---
+
+## UI/Design Revamp
+
+### Inspiration: The Hell Yeah Group
+**Priority:** TBD | **Effort:** High
+**Reference:** https://thehellyeahgroup.com/
+
+Potential design direction inspired by modern, bold agency websites.
+
+**Key Design Elements to Consider:**
+- **Bold typography** - Large, impactful headlines
+- **Dynamic layouts** - Asymmetric, interesting grid layouts
+- **Micro-interactions** - Hover effects, scroll animations
+- **Strong brand colors** - More contrast, less neutral
+- **Full-width sections** - Edge-to-edge visual impact
+- **Video/motion** - Background videos or animations
+- **Modern photography** - Professional, authentic imagery
+
+**Specific Areas to Revamp:**
+- [ ] Homepage hero section
+- [ ] Services page layout
+- [ ] About page with team photos
+- [ ] Contact page with interactive elements
+- [ ] Footer redesign
+- [ ] Navigation animations
+
+**Technical Considerations:**
+- Framer Motion for animations
+- Lazy loading for performance
+- Accessibility must be maintained
+- Mobile experience equally important
+
+**Questions for Cornerstone:**
+- How bold/modern do you want to go?
+- Any specific elements from Hell Yeah Group you love?
+- Budget for professional photography?
+- Video content available or planned?
+
+---
+
 ## Mobile App (Future Phase)
 
 ### React Native App
