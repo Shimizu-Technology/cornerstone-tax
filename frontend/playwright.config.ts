@@ -64,6 +64,7 @@ export default defineConfig({
     // Desktop Chrome - authenticated tests
     {
       name: 'chromium',
+      testIgnore: /.*\.public\.spec\.ts/, // Don't run public tests with auth
       use: { 
         ...devices['Desktop Chrome'],
         // Use saved auth state
@@ -75,6 +76,7 @@ export default defineConfig({
     // Mobile Chrome - authenticated tests  
     {
       name: 'mobile-chrome',
+      testIgnore: /.*\.public\.spec\.ts/, // Don't run public tests with auth
       use: { 
         ...devices['Pixel 5'],
         storageState: 'playwright/.auth/user.json',
@@ -82,11 +84,18 @@ export default defineConfig({
       dependencies: ['setup'],
     },
     
-    // Public pages - no auth needed
+    // Public pages - no auth needed (desktop)
     {
       name: 'public',
       testMatch: /.*\.public\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
+    },
+    
+    // Public pages - no auth needed (mobile)
+    {
+      name: 'public-mobile',
+      testMatch: /.*\.public\.spec\.ts/,
+      use: { ...devices['Pixel 5'] },
     },
   ],
 

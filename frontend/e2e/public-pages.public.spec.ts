@@ -45,16 +45,32 @@ test.describe('Public Marketing Pages', () => {
   test('navigation links work', async ({ page }) => {
     await page.goto('/');
     
+    // Helper to click a nav link (handles both desktop and mobile)
+    const clickNavLink = async (name: string) => {
+      const mobileMenuButton = page.locator('[aria-label="Toggle menu"]');
+      
+      // If on mobile, open the menu first
+      if (await mobileMenuButton.isVisible()) {
+        await mobileMenuButton.click();
+        await page.waitForTimeout(300);
+        // Click the link in mobile menu
+        await page.locator(`.md\\:hidden a:has-text("${name}")`).click();
+      } else {
+        // Desktop - click the nav link directly
+        await page.locator(`nav a:has-text("${name}")`).first().click();
+      }
+    };
+    
     // Click About link
-    await page.click('a:has-text("About")');
+    await clickNavLink('About');
     await expect(page).toHaveURL(/\/about/);
     
     // Click Services link  
-    await page.click('a:has-text("Services")');
+    await clickNavLink('Services');
     await expect(page).toHaveURL(/\/services/);
     
     // Click Contact link
-    await page.click('a:has-text("Contact")');
+    await clickNavLink('Contact');
     await expect(page).toHaveURL(/\/contact/);
   });
 });
@@ -126,14 +142,14 @@ test.describe('Mobile Responsiveness', () => {
     await page.goto('/');
     
     // Look for hamburger menu (mobile nav toggle)
-    const menuButton = page.locator('[aria-label="Menu"], button:has-text("☰"), .hamburger, [data-testid="mobile-menu"]');
+    const menuButton = page.locator('[aria-label="Toggle menu"]');
     
-    if (await menuButton.isVisible()) {
-      await menuButton.click();
-      
-      // Nav links should appear
-      await expect(page.locator('a:has-text("About")').first()).toBeVisible();
-    }
+    await expect(menuButton).toBeVisible();
+    await menuButton.click();
+    
+    // Wait for the mobile menu container to appear
+    const mobileMenu = page.locator('.md\\:hidden >> text=About');
+    await expect(mobileMenu).toBeVisible({ timeout: 5000 });
   });
 
   test('intake form is usable on mobile', async ({ page }) => {

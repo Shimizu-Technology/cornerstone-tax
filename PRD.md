@@ -17,8 +17,9 @@
 7. [Feature Specifications](#feature-specifications)
 8. [Database Schema](#database-schema)
 9. [Notification System](#notification-system)
-10. [Phase Roadmap](#phase-roadmap)
-11. [Questions for Cornerstone](#questions-for-cornerstone)
+10. [Testing Requirements](#testing-requirements)
+11. [Phase Roadmap](#phase-roadmap)
+12. [Questions for Cornerstone](#questions-for-cornerstone)
 
 ---
 
@@ -914,6 +915,45 @@ CREATE TABLE notifications (
 - Notifications queued as background jobs
 - Retry on failure
 - Status tracked in notifications table
+
+---
+
+## Testing Requirements
+
+### Testing Philosophy
+- **Every feature must be testable** - Build with testing in mind from the start
+- **AI-assisted verification** - Use Agent Browser for visual/interactive testing
+- **Automated E2E coverage** - Playwright tests for critical user flows
+- **Test on real devices** - Mobile testing is not optional
+
+### Critical User Flows (E2E Coverage)
+
+| Flow | Priority | Notes |
+|------|----------|-------|
+| Client intake form submission | P0 | Must work every time |
+| Admin login → dashboard | P0 | Core functionality |
+| Status change → notification | P1 | Business critical |
+| Document upload (S3) | P1 | Client-facing feature |
+| Time entry creation | P2 | Internal tool |
+| User invitation flow | P2 | Admin feature |
+
+### Test Accounts
+
+| Account | Role | Purpose |
+|---------|------|---------|
+| test-admin@cornerstone-test.com | Admin | E2E testing, full access |
+| test-employee@cornerstone-test.com | Employee | Role-based testing (future) |
+
+### Test Data
+- Seed data for at least 2-3 test clients
+- Sample documents for upload tests
+- Pre-configured workflow stages
+
+### Testing Stack
+- **E2E Tests**: Playwright (desktop + mobile viewports)
+- **Frontend Unit Tests**: Vitest + React Testing Library
+- **Backend Unit Tests**: RSpec
+- **AI Verification**: Cursor IDE Browser (Agent Browser)
 
 ---
 

@@ -8,31 +8,51 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Admin Dashboard', () => {
+  // Helper to click sidebar link (handles both desktop and mobile)
+  const clickSidebarLink = async (page: import('@playwright/test').Page, name: string) => {
+    // Check if we're on mobile by seeing if the hamburger button is visible
+    const mobileMenuButton = page.locator('button.lg\\:hidden').first();
+    
+    if (await mobileMenuButton.isVisible()) {
+      // Mobile: open sidebar first
+      await mobileMenuButton.click();
+      await page.waitForTimeout(300);
+      // Click link in mobile sidebar (the one that slides in)
+      await page.locator(`.fixed.inset-y-0 a:has-text("${name}")`).click();
+    } else {
+      // Desktop: click link in the visible desktop sidebar
+      await page.locator(`.lg\\:fixed.lg\\:inset-y-0 a:has-text("${name}")`).click();
+    }
+  };
+
   test('dashboard loads and shows overview', async ({ page }) => {
     await page.goto('/admin');
     
-    // Check we're on dashboard
-    await expect(page.locator('h1').first()).toContainText(/Dashboard/i);
+    // Wait for dashboard to load
+    await page.waitForLoadState('networkidle');
     
-    // Check key metrics or cards are visible
-    // Adjust selectors based on your actual dashboard
-    const cards = page.locator('.bg-white, [data-testid="dashboard-card"]');
-    await expect(cards.first()).toBeVisible();
+    // Check main content area has Dashboard heading
+    await expect(page.locator('main h1').first()).toContainText(/Dashboard/i);
+    
+    // Check stat cards are visible (they have gradient backgrounds)
+    const statCards = page.locator('.bg-white.rounded-2xl');
+    await expect(statCards.first()).toBeVisible();
   });
 
   test('sidebar navigation works', async ({ page }) => {
     await page.goto('/admin');
+    await page.waitForLoadState('networkidle');
     
     // Click Clients link
-    await page.click('a:has-text("Clients")');
+    await clickSidebarLink(page, 'Clients');
     await expect(page).toHaveURL(/\/admin\/clients/);
     
-    // Click Returns/Tax Returns link
-    await page.click('a:has-text("Returns"), a:has-text("Tax Returns")');
+    // Click Tax Returns link
+    await clickSidebarLink(page, 'Tax Returns');
     await expect(page).toHaveURL(/\/admin\/returns/);
     
     // Click back to Dashboard
-    await page.click('a:has-text("Dashboard")');
+    await clickSidebarLink(page, 'Dashboard');
     await expect(page).toHaveURL('/admin');
   });
 });
@@ -40,13 +60,13 @@ test.describe('Admin Dashboard', () => {
 test.describe('Client Management', () => {
   test('client list loads', async ({ page }) => {
     await page.goto('/admin/clients');
+    await page.waitForLoadState('networkidle');
     
     // Check heading
-    await expect(page.locator('h1').first()).toContainText(/Clients/i);
+    await expect(page.locator('main h1').first()).toContainText(/Clients/i);
     
-    // Check table or list exists
-    const list = page.locator('table, [data-testid="client-list"]');
-    await expect(list.first()).toBeVisible();
+    // Check total clients count is visible (shows there's data)
+    await expect(page.locator('text=/\\d+ total clients/i')).toBeVisible({ timeout: 10000 });
   });
 
   test('can search clients', async ({ page }) => {
@@ -84,13 +104,13 @@ test.describe('Client Management', () => {
 test.describe('Tax Returns Management', () => {
   test('tax returns list loads', async ({ page }) => {
     await page.goto('/admin/returns');
+    await page.waitForLoadState('networkidle');
     
     // Check heading
-    await expect(page.locator('h1').first()).toContainText(/Returns|Tax/i);
+    await expect(page.locator('main h1').first()).toContainText(/Returns|Tax/i);
     
-    // Check list exists
-    const list = page.locator('table, [data-testid="returns-list"]');
-    await expect(list.first()).toBeVisible();
+    // Check total returns count is visible (shows there's data)
+    await expect(page.locator('text=/\\d+ total returns/i')).toBeVisible({ timeout: 10000 });
   });
 
   test('can filter by status', async ({ page }) => {
@@ -150,7 +170,7 @@ test.describe('User Management (Admin Only)', () => {
     await page.goto('/admin/users');
     
     // Check heading
-    await expect(page.locator('h1').first()).toContainText(/Users|Team/i);
+    await expect(page.locator('h1').first()).toContainText(/User Management/i);
   });
 
   test('can see invite user button', async ({ page }) => {

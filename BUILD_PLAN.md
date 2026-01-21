@@ -374,20 +374,31 @@ Reference the PRD.md for detailed specifications.
 
 ## Phase 10: Polish & Deploy (Week 7-8)
 
-### 10.1 Testing
-- [ ] Test all flows end-to-end
+### 10.1 Automated Testing ✅
+- [x] Set up Playwright for E2E tests
+- [x] Configure test projects (desktop, mobile, public)
+- [x] Create test account in Clerk (with Bypass Client Trust)
+- [x] Authentication setup test (login flow)
+- [x] Public pages tests (home, about, services, contact, intake)
+- [x] Admin dashboard tests (navigation, client list, tax returns)
+- [ ] Set up Vitest for frontend unit tests
+- [ ] Set up RSpec for backend unit tests
+- [ ] Add tests to CI pipeline (GitHub Actions)
+
+### 10.2 Manual Testing
+- [ ] Test all flows end-to-end manually
 - [ ] Test on real mobile devices
 - [ ] Test iPad kiosk mode
 - [ ] Test with multiple users/roles
 - [ ] Fix any bugs found
 
-### 10.2 Performance
+### 10.3 Performance
 - [ ] Add database indexes where needed
 - [ ] Optimize slow queries
 - [ ] Lazy load images
 - [ ] Compress assets
 
-### 10.3 Deployment ✅
+### 10.4 Deployment ✅
 - [x] Deploy frontend to Netlify (https://cornerstone-accounting.tax)
 - [x] Deploy Rails API to Render
 - [ ] Deploy FastAPI to Render (when Phase 9 ready)
@@ -395,7 +406,7 @@ Reference the PRD.md for detailed specifications.
 - [x] Configure custom domain
 - [x] Set up SSL certificates (Let's Encrypt)
 
-### 10.4 Monitoring
+### 10.5 Monitoring
 - [ ] Set up error tracking (Sentry or similar)
 - [ ] Set up uptime monitoring
 - [ ] Create admin health check endpoint
