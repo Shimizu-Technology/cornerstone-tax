@@ -9,12 +9,15 @@ const authFile = 'playwright/.auth/user.json';
  * All other tests reuse this session (no login per test).
  * 
  * Prerequisites:
- * 1. Create a test user in Clerk dashboard (use non-Gmail email)
+ * 1. Create a test user in Clerk dashboard
  * 2. Enable "Bypass Client Trust" in user Settings (Clerk dashboard)
  * 3. Add credentials to frontend/.env (gitignored):
  *    TEST_USER_EMAIL=test-admin@yourcompany.com
  *    TEST_USER_PASSWORD=your-secure-password
  * 4. Make sure the test user has the correct role in your app
+ * 
+ * Important: Click your app's login button (e.g., "Staff Login") instead of
+ * navigating directly to /admin to avoid Google OAuth redirect issues.
  */
 
 setup('authenticate', async ({ page }) => {

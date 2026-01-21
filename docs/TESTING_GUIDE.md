@@ -311,20 +311,18 @@ export default defineConfig({
 
 ### Step 1: Create Test User
 
-> ⚠️ **Important:** Use a **non-Gmail email** (e.g., `test-admin@yourcompany-test.com`). Gmail addresses cause Clerk to redirect to Google OAuth, which breaks automated testing.
-
 **If using an invite-only system (recommended):**
 1. First, invite the user through **your app's admin dashboard** (e.g., `/admin/users`)
 2. Set their role to **Admin** during invitation
 3. Then go to **Clerk Dashboard → Users → + Create user**
-4. Use the **same non-Gmail email** you invited
+4. Use the **same email** you invited
 5. Set a password (you'll need this for tests)
 
 **If NOT using invite-only:**
 1. Go to Clerk Dashboard → Users
 2. Click **"+ Create user"**
 3. Fill in:
-   - **Email**: `test-admin@yourcompany-test.com` (must be non-Gmail, can be fake for dev)
+   - **Email**: `test-admin@yourcompany.com` (can be fake for dev)
    - **Password**: Strong password (you'll need this later)
    - **First Name**: `Test`
    - **Last Name**: `Admin`
@@ -414,8 +412,7 @@ Start with one admin user. Add more later if needed:
 ### Auth Setup Test (Playwright)
 
 **Important Clerk-specific notes:**
-- Use a **non-Gmail email** for test users (e.g., `test-admin@yourcompany-test.com`) to avoid Google OAuth redirect
-- Click on your app's login button (e.g., "Staff Login") instead of navigating directly to protected routes
+- **Click your app's login button** (e.g., "Staff Login") instead of navigating directly to protected routes like `/admin` - this avoids Google OAuth redirect issues
 - Use specific selectors to avoid clicking "Continue with Google"
 - After login, navigate to admin area manually (don't expect auto-redirect)
 
@@ -1009,12 +1006,11 @@ await page.locator('button:has-text("Submit")').click();
 
 ### Clerk Auth Test Redirects to Google OAuth
 
-**Cause:** Clerk auto-redirects to Google when it detects a Gmail address or when Google OAuth is enabled
+**Cause:** Navigating directly to a protected route (e.g., `/admin`) triggers Clerk's redirect flow, which may auto-redirect to Google OAuth.
 
 **Fix:**
-1. Use a **non-Gmail email** for test users (e.g., `test-admin@yourcompany-test.com`)
-2. Click your app's login button (e.g., "Staff Login") instead of navigating directly to `/admin`
-3. Use specific selectors to avoid clicking "Continue with Google":
+1. **Click your app's login button** (e.g., "Staff Login") instead of navigating directly to `/admin`
+2. Use specific selectors to avoid clicking "Continue with Google":
    ```typescript
    // BAD - might match "Continue with Google"
    await page.click('button:has-text("Continue")');
@@ -1022,6 +1018,7 @@ await page.locator('button:has-text("Submit")').click();
    // GOOD - excludes Google button
    await page.locator('button:has-text("Continue")').filter({ hasNotText: 'Google' }).click();
    ```
+3. After login completes, **manually navigate** to the admin area by clicking "Dashboard"
 
 ### Clerk Password Field is Disabled
 
