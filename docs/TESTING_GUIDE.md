@@ -311,18 +311,20 @@ export default defineConfig({
 
 ### Step 1: Create Test User
 
+> ⚠️ **Important:** Use a **non-Gmail email** (e.g., `test-admin@yourcompany-test.com`). Gmail addresses cause Clerk to redirect to Google OAuth, which breaks automated testing.
+
 **If using an invite-only system (recommended):**
 1. First, invite the user through **your app's admin dashboard** (e.g., `/admin/users`)
 2. Set their role to **Admin** during invitation
 3. Then go to **Clerk Dashboard → Users → + Create user**
-4. Use the **same email** you invited
+4. Use the **same non-Gmail email** you invited
 5. Set a password (you'll need this for tests)
 
 **If NOT using invite-only:**
 1. Go to Clerk Dashboard → Users
 2. Click **"+ Create user"**
 3. Fill in:
-   - **Email**: `test-admin@yourcompany.com` (can be fake for dev)
+   - **Email**: `test-admin@yourcompany-test.com` (must be non-Gmail, can be fake for dev)
    - **Password**: Strong password (you'll need this later)
    - **First Name**: `Test`
    - **Last Name**: `Admin`
@@ -411,6 +413,12 @@ Start with one admin user. Add more later if needed:
 
 ### Auth Setup Test (Playwright)
 
+**Important Clerk-specific notes:**
+- Use a **non-Gmail email** for test users (e.g., `test-admin@yourcompany-test.com`) to avoid Google OAuth redirect
+- Click on your app's login button (e.g., "Staff Login") instead of navigating directly to protected routes
+- Use specific selectors to avoid clicking "Continue with Google"
+- After login, navigate to admin area manually (don't expect auto-redirect)
+
 ```typescript
 // frontend/e2e/auth.setup.ts
 import { test as setup, expect } from '@playwright/test';
@@ -418,29 +426,54 @@ import { test as setup, expect } from '@playwright/test';
 const authFile = 'playwright/.auth/user.json';
 
 setup('authenticate', async ({ page }) => {
-  // Navigate to login
+  const email = process.env.TEST_USER_EMAIL;
+  const password = process.env.TEST_USER_PASSWORD;
+  
+  if (!email || !password) {
+    console.log('⚠️ No test credentials found. Skipping auth setup.');
+    await page.context().storageState({ path: authFile });
+    return;
+  }
+
+  console.log(`🔐 Authenticating as ${email}...`);
+
+  // Navigate to homepage
   await page.goto('/');
   
-  // Click sign in (adjust for your Clerk setup)
-  await page.click('text=Sign In');
+  // Click your app's login button (NOT directly to /admin)
+  await page.click('a:has-text("Staff Login")');
   
-  // Wait for Clerk modal/page
-  await page.waitForSelector('input[name="identifier"]');
+  // Wait for Clerk sign-in form
+  await page.waitForSelector('input[name="identifier"]', { timeout: 10000 });
   
-  // Fill credentials
-  await page.fill('input[name="identifier"]', process.env.TEST_USER_EMAIL!);
-  await page.click('button:has-text("Continue")');
+  // Fill email
+  await page.fill('input[name="identifier"]', email);
+  await page.waitForTimeout(300);
   
-  // Wait for password field
-  await page.waitForSelector('input[type="password"]');
-  await page.fill('input[type="password"]', process.env.TEST_USER_PASSWORD!);
-  await page.click('button:has-text("Continue")');
+  // Click Continue (but NOT "Continue with Google")
+  const continueButton = page.locator('button:has-text("Continue")').filter({ hasNotText: 'Google' });
+  await continueButton.click();
   
-  // Wait for redirect to dashboard (authenticated state)
-  await page.waitForURL('**/admin**');
+  // Wait for password field to be enabled
+  await page.waitForSelector('input[name="password"]:not([disabled])', { timeout: 10000 });
+  await page.fill('input[name="password"]', password);
+  await page.waitForTimeout(300);
   
-  // Verify we're logged in
-  await expect(page.locator('text=Dashboard')).toBeVisible();
+  // Submit
+  const submitButton = page.locator('button:has-text("Continue")').filter({ hasNotText: 'Google' });
+  await submitButton.click();
+  
+  // Wait for login to complete (look for Dashboard link)
+  await page.waitForSelector('a:has-text("Dashboard")', { timeout: 15000 });
+  
+  // Navigate to admin area
+  await page.click('a:has-text("Dashboard")');
+  await page.waitForURL('**/admin**', { timeout: 10000 });
+  
+  // Verify we're on dashboard
+  await expect(page.locator('h1:has-text("Dashboard")').first()).toBeVisible({ timeout: 10000 });
+  
+  console.log('✅ Authentication successful!');
   
   // Save auth state
   await page.context().storageState({ path: authFile });
@@ -973,6 +1006,34 @@ await page.locator('button:has-text("Submit")').click();
 1. Check `playwright/.auth/` exists
 2. Verify setup test runs first (`dependencies: ['setup']`)
 3. Check `.gitignore` isn't blocking auth folder creation
+
+### Clerk Auth Test Redirects to Google OAuth
+
+**Cause:** Clerk auto-redirects to Google when it detects a Gmail address or when Google OAuth is enabled
+
+**Fix:**
+1. Use a **non-Gmail email** for test users (e.g., `test-admin@yourcompany-test.com`)
+2. Click your app's login button (e.g., "Staff Login") instead of navigating directly to `/admin`
+3. Use specific selectors to avoid clicking "Continue with Google":
+   ```typescript
+   // BAD - might match "Continue with Google"
+   await page.click('button:has-text("Continue")');
+   
+   // GOOD - excludes Google button
+   await page.locator('button:has-text("Continue")').filter({ hasNotText: 'Google' }).click();
+   ```
+
+### Clerk Password Field is Disabled
+
+**Cause:** Clerk shows a disabled password field when OAuth options are available
+
+**Fix:**
+1. Wait for the password field to be enabled, not just visible:
+   ```typescript
+   // Wait for enabled password field
+   await page.waitForSelector('input[name="password"]:not([disabled])', { timeout: 10000 });
+   ```
+2. Enable "Bypass Client Trust" for the test user in Clerk Dashboard → Users → Settings
 
 ### Slow Tests
 

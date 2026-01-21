@@ -63,50 +63,59 @@ test.describe('Intake Form (Public Access)', () => {
   test('intake form loads', async ({ page }) => {
     await page.goto('/intake');
     
-    // Check form exists
-    await expect(page.locator('form, [data-testid="intake-form"]')).toBeVisible();
+    // Check step title is visible (the form uses divs, not a <form> element)
+    await expect(page.locator('h2:has-text("Client Information")')).toBeVisible();
     
-    // Check first step is visible
-    await expect(page.locator('text=Client Information, text=First Name').first()).toBeVisible();
+    // Check progress bar exists
+    await expect(page.locator('text=Step 1 of')).toBeVisible();
   });
 
   test('kiosk mode hides navigation', async ({ page }) => {
     await page.goto('/intake?mode=kiosk');
     
-    // Navigation should be hidden or minimal
-    const nav = page.locator('nav');
-    const isNavHidden = await nav.isHidden() || await nav.count() === 0;
+    // In kiosk mode, the header/nav should be hidden
+    // Check that the form content is still visible
+    await expect(page.locator('h2:has-text("Client Information")')).toBeVisible();
     
-    // Form should still be visible
-    await expect(page.locator('form, [data-testid="intake-form"]').first()).toBeVisible();
+    // The IntakeHeader component should not render in kiosk mode
+    // There should be no logo link back to home
+    const logoLink = page.locator('header a[href="/"]');
+    await expect(logoLink).toHaveCount(0);
   });
 
   test('form validation shows errors for empty required fields', async ({ page }) => {
     await page.goto('/intake');
     
-    // Try to proceed without filling anything
-    const nextButton = page.locator('button:has-text("Next")');
-    await nextButton.click();
+    // Wait for form to load
+    await expect(page.locator('h2:has-text("Client Information")')).toBeVisible();
+    
+    // Try to proceed without filling anything (button says "Continue")
+    await page.click('button:has-text("Continue")');
     
     // Should show validation errors
-    const errorMessages = page.locator('.text-red-500, .text-red-600, [role="alert"]');
+    const errorMessages = page.locator('.text-red-500');
     await expect(errorMessages.first()).toBeVisible();
   });
 
   test('can fill first step of intake form', async ({ page }) => {
     await page.goto('/intake');
     
-    // Fill basic info
-    await page.fill('input[name="firstName"], [placeholder*="First"]', 'Test');
-    await page.fill('input[name="lastName"], [placeholder*="Last"]', 'User');
-    await page.fill('input[name="email"], [type="email"]', 'test@example.com');
-    await page.fill('input[name="phone"], [type="tel"]', '671-555-1234');
+    // Wait for form to load
+    await expect(page.locator('h2:has-text("Client Information")')).toBeVisible();
     
-    // Click next
-    await page.click('button:has-text("Next")');
+    // Fill basic info (field names are first_name, last_name, etc.)
+    await page.fill('input[name="first_name"]', 'Test');
+    await page.fill('input[name="last_name"]', 'User');
+    await page.fill('input[name="date_of_birth"]', '1990-01-15');
+    await page.fill('input[name="email"]', 'test@example.com');
+    await page.fill('input[name="phone"]', '671-555-1234');
+    await page.fill('textarea[name="mailing_address"]', '123 Test St, Hagatna, GU 96910');
     
-    // Should advance to next step (Tax Filing Information)
-    await expect(page.locator('text=Tax Filing, text=Filing Status').first()).toBeVisible();
+    // Click continue
+    await page.click('button:has-text("Continue")');
+    
+    // Should advance to next step (Tax Filing Info)
+    await expect(page.locator('h2:has-text("Tax Filing Info")')).toBeVisible();
   });
 });
 
@@ -130,14 +139,17 @@ test.describe('Mobile Responsiveness', () => {
   test('intake form is usable on mobile', async ({ page }) => {
     await page.goto('/intake');
     
-    // Form should be visible
-    await expect(page.locator('form, [data-testid="intake-form"]').first()).toBeVisible();
+    // Check step title is visible
+    await expect(page.locator('h2:has-text("Client Information")')).toBeVisible();
     
     // Inputs should be tappable (visible and not obscured)
-    const firstInput = page.locator('input').first();
+    const firstInput = page.locator('input[name="first_name"]');
     await expect(firstInput).toBeVisible();
     
     // Can type in input
     await firstInput.fill('Mobile Test');
+    
+    // Verify the value was entered
+    await expect(firstInput).toHaveValue('Mobile Test');
   });
 });
