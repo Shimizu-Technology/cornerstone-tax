@@ -1,8 +1,5 @@
 import { test as setup, expect } from '@playwright/test';
 
-// Reference Node.js types for process.env
-/// <reference types="node" />
-
 const authFile = 'playwright/.auth/user.json';
 
 /**
