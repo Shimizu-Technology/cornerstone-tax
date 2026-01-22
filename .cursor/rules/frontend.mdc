@@ -1,6 +1,9 @@
 ---
 description: Frontend development rules for React/Vite/Tailwind
-globs: ["frontend/**/*"]
+globs:
+  - "frontend/**/*.tsx"
+  - "frontend/**/*.ts"
+  - "frontend/**/*.css"
 alwaysApply: false
 ---
 

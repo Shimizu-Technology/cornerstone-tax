@@ -1,6 +1,9 @@
 ---
 description: Database schema and conventions
-globs: ["backend/db/**/*", "ai-service/app/models/**/*"]
+globs:
+  - "backend/db/**/*"
+  - "backend/app/models/**/*.rb"
+  - "ai-service/app/models/**/*.py"
 alwaysApply: false
 ---
 

@@ -8,10 +8,13 @@ A guide for creating `.cursor/rules/` files that give AI context about your proj
 1. [What Are Cursor Rules?](#1-what-are-cursor-rules)
 2. [File Structure](#2-file-structure)
 3. [Rule File Format](#3-rule-file-format)
-4. [Recommended Rules Structure](#4-recommended-rules-structure)
-5. [Templates by Project Type](#5-templates-by-project-type)
-6. [What to Include](#6-what-to-include)
-7. [Tips & Best Practices](#7-tips--best-practices)
+4. [Glob Pattern Format](#4-glob-pattern-format)
+5. [Rule Types & When They Apply](#5-rule-types--when-they-apply)
+6. [Recommended Rules Structure](#6-recommended-rules-structure)
+7. [Templates by Project Type](#7-templates-by-project-type)
+8. [What to Include](#8-what-to-include)
+9. [Troubleshooting](#9-troubleshooting)
+10. [Tips & Best Practices](#10-tips--best-practices)
 
 ---
 
@@ -37,10 +40,10 @@ your-project/
 ├── .cursor/
 │   └── rules/
 │       ├── project.mdc      # Core project context (always applied)
+│       ├── testing.mdc      # AI testing rules (always applied)
 │       ├── frontend.mdc     # Frontend-specific rules
 │       ├── backend.mdc      # Backend-specific rules
-│       ├── database.mdc     # Database conventions
-│       └── ai-service.mdc   # Additional service rules
+│       └── database.mdc     # Database conventions
 ├── frontend/
 ├── backend/
 └── ...
@@ -62,8 +65,10 @@ Each `.mdc` file has a YAML frontmatter header followed by Markdown content.
 ```yaml
 ---
 description: Brief description of what this rule file covers
-alwaysApply: true|false
-globs: ["pattern/**/*"]
+globs:                          # Optional - file patterns to auto-attach
+  - "src/**/*.tsx"
+  - "src/**/*.ts"
+alwaysApply: false              # true = always in context, false = conditional
 ---
 ```
 
@@ -71,38 +76,87 @@ globs: ["pattern/**/*"]
 |-------|---------|-------------|
 | `description` | Explains the rule file | Always include |
 | `alwaysApply` | Load for every conversation | Use for core project rules |
-| `globs` | Load when files match pattern | Use for area-specific rules |
+| `globs` | Load when matching file is @mentioned | Use for area-specific rules |
 
-### When Rules Apply
+---
 
-| Setting | Applies When |
-|---------|-------------|
-| `alwaysApply: true` | Every conversation in this workspace |
-| `globs: ["frontend/**/*"]` | Working on files matching that pattern |
-| Both false/empty | Manually referenced or context-matched |
+## 4. Glob Pattern Format
 
-### Example Header
+**This is important!** Incorrect glob format causes "glob pattern doesn't match" errors.
 
+### ✅ Correct Format - YAML Array
+
+Multi-line (recommended):
 ```yaml
----
-description: Frontend development rules for React/Vite/Tailwind
-globs: ["frontend/**/*"]
-alwaysApply: false
----
+globs: 
+  - "frontend/**/*.tsx"
+  - "frontend/**/*.ts"
+  - "frontend/**/*.css"
 ```
 
+Single-line YAML array:
+```yaml
+globs: ["frontend/**/*.tsx", "frontend/**/*.ts"]
+```
+
+### ❌ Incorrect Format
+
+```yaml
+# DON'T DO THIS - causes errors
+globs: ["frontend/**/*"]    # JSON-style in quotes on same line as globs:
+```
+
+### Pattern Examples
+
+| Pattern | Matches |
+|---------|---------|
+| `"frontend/**/*.tsx"` | All .tsx files in frontend folder |
+| `"backend/**/*.rb"` | All .rb files in backend folder |
+| `"**/db/**/*"` | Any db folder anywhere in project |
+| `"**/*.test.ts"` | All .test.ts files anywhere |
+| `"backend/app/models/**/*.rb"` | All Ruby files in models folder |
+
 ---
 
-## 4. Recommended Rules Structure
+## 5. Rule Types & When They Apply
+
+| Type | Configuration | Behavior |
+|------|--------------|----------|
+| **Always** | `alwaysApply: true` | Always in AI context (globs ignored) |
+| **Auto Attached** | `alwaysApply: false` + `globs` defined | Attached when matching file is @mentioned |
+| **Agent Requested** | Has description, no globs, `alwaysApply: false` | AI can include when relevant |
+| **Manual** | No description or globs | Only via explicit `@ruleName` mention |
+
+### Cursor 2.0+ Behavior (Important!)
+
+In Cursor 2.0+, rules with `alwaysApply: false` and globs:
+- **DO NOT** auto-load just by opening a matching file
+- **DO** load when the file is referenced via `@mention` in chat
+- For rules you want ALWAYS active, use `alwaysApply: true`
+
+### Recommended Approach
+
+| Rule File | Setting | Why |
+|-----------|---------|-----|
+| `project.mdc` | `alwaysApply: true` | Core context always needed |
+| `testing.mdc` | `alwaysApply: true` | AI should always verify its work |
+| `frontend.mdc` | `globs` + `alwaysApply: false` | Only when working on frontend |
+| `backend.mdc` | `globs` + `alwaysApply: false` | Only when working on backend |
+| `database.mdc` | `globs` + `alwaysApply: false` | Only when working on DB |
+
+---
+
+## 6. Recommended Rules Structure
 
 ### For Full-Stack Projects (React + Rails/Node)
 
 ```
 .cursor/rules/
 ├── project.mdc      # alwaysApply: true
-├── frontend.mdc     # globs: ["frontend/**/*"]
-├── backend.mdc      # globs: ["backend/**/*"]
-└── database.mdc     # globs: ["**/db/**/*", "**/models/**/*"]
+├── testing.mdc      # alwaysApply: true
+├── frontend.mdc     # globs: ["frontend/**/*.tsx", "frontend/**/*.ts"]
+├── backend.mdc      # globs: ["backend/**/*.rb"]
+└── database.mdc     # globs: ["backend/db/**/*", "backend/app/models/**/*"]
 ```
 
 ### For Frontend-Only Projects
@@ -110,6 +164,7 @@ alwaysApply: false
 ```
 .cursor/rules/
 ├── project.mdc      # alwaysApply: true
+├── testing.mdc      # alwaysApply: true
 └── components.mdc   # Optional: specific component patterns
 ```
 
@@ -118,30 +173,20 @@ alwaysApply: false
 ```
 .cursor/rules/
 ├── project.mdc      # alwaysApply: true
+├── testing.mdc      # alwaysApply: true
 ├── api.mdc          # API design patterns
 └── database.mdc     # Database conventions
 ```
 
-### For Monorepo with Multiple Services
-
-```
-.cursor/rules/
-├── project.mdc         # alwaysApply: true
-├── web-app.mdc         # globs: ["apps/web/**/*"]
-├── mobile-app.mdc      # globs: ["apps/mobile/**/*"]
-├── api-service.mdc     # globs: ["services/api/**/*"]
-└── shared.mdc          # globs: ["packages/**/*"]
-```
-
 ---
 
-## 5. Templates by Project Type
+## 7. Templates by Project Type
 
-### 5.1 Core Project Rules (Always Include)
+### 7.1 Core Project Rules (Always Include)
 
 This is your `project.mdc` - the foundation. Always set `alwaysApply: true`.
 
-```markdown
+```yaml
 ---
 description: Core project context and guiding principles
 alwaysApply: true
@@ -153,106 +198,103 @@ alwaysApply: true
 Brief description of what you're building and for whom.
 
 ## Tech Stack
-- **Frontend**: [React/Vue/etc] + [Build tool] + [CSS solution]
-- **Backend**: [Rails/Node/etc]
-- **Database**: [PostgreSQL/MySQL/etc]
-- **Auth**: [Clerk/Auth0/etc]
-- **Hosting**: [Netlify/Vercel/etc] + [Render/Railway/etc]
+- **Frontend**: React, TypeScript, Vite, Tailwind CSS
+- **Backend**: Rails API / FastAPI
+- **Database**: PostgreSQL
+- **Auth**: Clerk / Auth0
+- **Hosting**: Netlify + Render
 
 ## Guiding Principles
 
-### 1. [First Principle]
-Explanation of the principle.
+### 1. Mobile-First
+Every feature must work on mobile AND desktop.
 
-### 2. [Second Principle]
-Explanation of the principle.
+### 2. Ease of Use
+If users need instructions, we've failed.
 
-### 3. [Third Principle]
-Explanation of the principle.
+### 3. Do It Right
+Prefer proper solutions over bandaid fixes.
 
 ## User Roles
-- **Admin**: What they can do
-- **User**: What they can do
-
-## Key Domain Concepts
-- **Term 1**: Definition
-- **Term 2**: Definition
+- **Admin**: Full access
+- **User**: Standard access
 
 ## Current Status
 - ✅ Completed feature
 - 🔜 Upcoming feature
-- ❌ Not planned
 ```
 
-### 5.2 React Frontend Rules
+### 7.2 Testing Rules (Always Applied)
 
-```markdown
+```yaml
 ---
-description: Frontend development rules for React
-globs: ["frontend/**/*", "src/**/*"]
+description: AI self-testing and verification rules
+alwaysApply: true
+---
+
+# AI Testing Rules
+
+## Core Principle
+Always verify changes before declaring done.
+
+## Backend Testing
+- Test API endpoints with curl
+- Verify database state with console/runner
+
+## Frontend Testing
+- Use browser tools to navigate and verify
+- Take screenshots for visual changes
+
+## Reporting
+- Show evidence (curl output, screenshots)
+- Report pass/fail status
+```
+
+### 7.3 Frontend Rules (Auto-Attached)
+
+```yaml
+---
+description: Frontend development rules for React/TypeScript
+globs: 
+  - "frontend/**/*.tsx"
+  - "frontend/**/*.ts"
+  - "frontend/**/*.css"
 alwaysApply: false
 ---
 
 # Frontend Rules
 
 ## Tech
-- React with [Vite/Next.js/CRA]
-- [Tailwind CSS/CSS Modules/styled-components]
-- TypeScript [preferred/required/not used]
+- React with Vite
+- Tailwind CSS
+- TypeScript required
 
 ## Component Patterns
-- Functional components with hooks only
+- Functional components only
 - Keep components small and focused
 - Extract reusable components to `components/ui/`
 
-## File Structure
-\`\`\`
-src/
-├── components/
-│   ├── ui/           # Reusable components
-│   └── forms/        # Form components
-├── pages/            # Page components
-├── hooks/            # Custom hooks
-├── lib/              # Utilities, API client
-└── types/            # TypeScript types
-\`\`\`
-
 ## Styling
-- Use [Tailwind utilities / CSS Modules / etc]
 - Mobile-first approach
 - Minimum touch targets: 44x44px
-
-## API Calls
-- Use centralized API client at `lib/api.ts`
-- Handle loading and error states
-- [Token handling pattern]
-
-## Forms
-- Use [controlled components / React Hook Form / etc]
-- Validation [inline / on submit]
-- Required fields marked with asterisk
 ```
 
-### 5.3 Rails Backend Rules
+### 7.4 Backend Rules (Auto-Attached)
 
-```markdown
+```yaml
 ---
 description: Backend development rules for Rails API
-globs: ["backend/**/*"]
+globs: 
+  - "backend/**/*.rb"
+  - "backend/**/*.yml"
 alwaysApply: false
 ---
 
-# Rails Backend Rules
+# Backend Rules
 
 ## General
 - Rails 7+ in API mode
-- Ruby 3.2+
-- PostgreSQL
-
-## Naming Conventions
-- Models: singular, CamelCase (`User`, `TaxReturn`)
-- Tables: plural, snake_case (`users`, `tax_returns`)
-- Controllers: plural (`UsersController`)
+- PostgreSQL database
 
 ## API Structure
 - Namespace under `Api::V1`
@@ -262,116 +304,39 @@ alwaysApply: false
 ## Controllers
 - Keep controllers thin
 - Complex logic in service objects
-- Use strong parameters
-
-## Services
-- Put business logic in `app/services/`
-- Name: `{Action}{Resource}Service`
-- Single responsibility
-
-## Authentication
-[Describe your auth pattern]
-
-## File Structure
-\`\`\`
-backend/
-├── app/
-│   ├── controllers/api/v1/
-│   ├── models/
-│   ├── services/
-│   └── jobs/
-├── config/
-└── db/migrate/
-\`\`\`
 ```
 
-### 5.4 Node.js/Express Backend Rules
+### 7.5 Database Rules (Auto-Attached)
 
-```markdown
----
-description: Backend development rules for Node.js/Express
-globs: ["backend/**/*", "api/**/*"]
-alwaysApply: false
----
-
-# Node.js Backend Rules
-
-## General
-- Node.js 18+
-- Express.js
-- TypeScript
-
-## File Structure
-\`\`\`
-src/
-├── routes/           # Route definitions
-├── controllers/      # Request handlers
-├── services/         # Business logic
-├── models/           # Database models
-├── middleware/       # Custom middleware
-└── utils/            # Helpers
-\`\`\`
-
-## API Design
-- RESTful endpoints
-- Consistent response format: `{ data?, error?, message? }`
-- Use proper HTTP status codes
-
-## Error Handling
-- Centralized error handler
-- Custom error classes
-- Don't expose internal errors to clients
-
-## Database
-- [Prisma/Sequelize/Mongoose]
-- Migrations for schema changes
-- Use transactions for multi-step operations
-```
-
-### 5.5 Database Rules
-
-```markdown
+```yaml
 ---
 description: Database schema and conventions
-globs: ["**/db/**/*", "**/migrations/**/*", "**/models/**/*"]
+globs: 
+  - "backend/db/**/*"
+  - "backend/app/models/**/*.rb"
 alwaysApply: false
 ---
 
 # Database Rules
 
-## General
-- PostgreSQL
-- [Rails migrations / Prisma / etc]
-
-## Naming Conventions
+## Naming
 - Tables: plural, snake_case
 - Columns: snake_case
 - Foreign keys: `{table_singular}_id`
 
 ## Required Columns
-Every table should have:
 - `id` (primary key)
 - `created_at`
 - `updated_at`
 
-## Relationships
-- `users` → has many `posts`
-- `posts` → belongs to `user`
-[Document your specific relationships]
-
 ## Indexes
-Always add indexes for:
-- Foreign keys
-- Columns used in WHERE clauses
-- Unique constraints
-
-## Soft Delete
-Use `deleted_at` timestamp instead of actually deleting.
+- Always index foreign keys
+- Index columns used in WHERE clauses
 ```
 
 ---
 
-## 6. What to Include
+## 8. What to Include
 
 ### Always Include ✅
 
@@ -403,7 +368,39 @@ Use `deleted_at` timestamp instead of actually deleting.
 
 ---
 
-## 7. Tips & Best Practices
+## 9. Troubleshooting
+
+### "Glob pattern doesn't match any files"
+
+1. **Check format** - Use YAML array format, not JSON string
+   ```yaml
+   # ✅ Correct
+   globs: 
+     - "frontend/**/*.tsx"
+   
+   # ❌ Wrong
+   globs: ["frontend/**/*"]
+   ```
+2. **Check paths** - Globs are relative to workspace root
+3. **Check file exists** - Make sure matching files actually exist
+4. **Restart Cursor** - Sometimes UI needs refresh
+
+### Rules not loading
+
+1. **Check `alwaysApply`** - Set to `true` for critical rules
+2. **@mention files** - For auto-attached rules, reference matching files in chat
+3. **Check description** - Rules without description become manual-only
+
+### Diff view showing in Cursor
+
+When Cursor shows old vs new content with strikethrough:
+- This is a **diff view** showing changes
+- Click "Keep File" to accept changes
+- Or close the diff - files are already saved
+
+---
+
+## 10. Tips & Best Practices
 
 ### Keep It Concise
 - Aim for 50-150 lines per file
@@ -421,33 +418,17 @@ Only include code examples for:
 - Things that are frequently done wrong
 - Complex configurations
 
-```markdown
-## Authentication Pattern
-\`\`\`ruby
-before_action :authenticate_user!
-before_action :require_admin!, only: [:destroy]
-\`\`\`
-```
-
-### Reference, Don't Duplicate
-If something is well-documented elsewhere, reference it:
-
-```markdown
-## Environment Variables
-See `.env.example` for all required variables.
-```
-
 ### Be Specific About Preferences
-Vague:
+
+❌ Vague:
 > Use good naming conventions.
 
-Specific:
+✅ Specific:
 > - Components: PascalCase (`UserProfile.tsx`)
 > - Hooks: camelCase with `use` prefix (`useAuth`)
 > - Utils: camelCase (`formatDate`)
 
 ### Include "Don't Do" Rules
-Sometimes it's helpful to specify what NOT to do:
 
 ```markdown
 ## Don'ts
@@ -458,67 +439,37 @@ Sometimes it's helpful to specify what NOT to do:
 
 ---
 
-## Quick Start
+## Quick Reference
 
-### 1. Create the folder structure
-
-```bash
-mkdir -p .cursor/rules
-```
-
-### 2. Create project.mdc (required)
-
-```bash
-touch .cursor/rules/project.mdc
-```
-
-Add your project context with `alwaysApply: true`.
-
-### 3. Create area-specific rules (as needed)
-
-```bash
-touch .cursor/rules/frontend.mdc
-touch .cursor/rules/backend.mdc
-```
-
-Add rules with appropriate `globs`.
-
-### 4. Test it
-
-Start a new Cursor conversation and ask the AI about your project. It should know your tech stack, conventions, and structure.
-
+```yaml
+# Always active - use for core project context
 ---
-
-## Minimal Starter Template
-
-For a quick start, copy this to `.cursor/rules/project.mdc`:
-
-```markdown
----
-description: Core project context
+description: Core rules
 alwaysApply: true
 ---
 
-# [Project Name]
+# Auto-attach to specific files (loads on @mention)
+---
+description: Frontend rules
+globs: 
+  - "src/**/*.tsx"
+  - "src/**/*.ts"
+alwaysApply: false
+---
 
-## Tech Stack
-- **Frontend**: 
-- **Backend**: 
-- **Database**: 
-- **Hosting**: 
-
-## Key Conventions
-- 
-
-## File Structure
-\`\`\`
-[your structure]
-\`\`\`
-
-## Current Status
-- ✅ 
-- 🔜 
+# Available to AI when relevant (no globs)
+---
+description: Deployment guidelines
+alwaysApply: false
+---
 ```
+
+---
+
+## Resources
+
+- [Cursor Rules Documentation](https://docs.cursor.com/context/rules)
+- [Glob Pattern Syntax](https://github.com/isaacs/minimatch)
 
 ---
 

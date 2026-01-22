@@ -1,6 +1,9 @@
 ---
 description: Backend development rules for Rails API
-globs: ["backend/**/*"]
+globs:
+  - "backend/**/*.rb"
+  - "backend/**/*.yml"
+  - "backend/**/*.rake"
 alwaysApply: false
 ---
 
