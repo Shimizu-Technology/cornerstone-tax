@@ -1,0 +1,235 @@
+---
+description: AI self-testing and verification rules - verify all changes before reporting done
+alwaysApply: true
+---
+
+# AI Testing & Verification Rules
+
+## Core Principle
+
+**ALWAYS verify your work before declaring it "done."**
+
+After implementing any change, test it yourself using the appropriate tools. Don't just assume it works - prove it works. The user will do final manual verification, but you should catch issues first.
+
+---
+
+## Backend Testing
+
+### API Endpoints (Any Framework)
+
+After creating or modifying an API endpoint, test it with `curl`:
+
+```bash
+# GET request
+curl -X GET http://localhost:3000/api/v1/resource
+
+# POST request with JSON body
+curl -X POST http://localhost:3000/api/v1/resource \
+  -H "Content-Type: application/json" \
+  -d '{"field": "value"}'
+
+# With authentication header
+curl -X GET http://localhost:3000/api/v1/protected \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Rails-Specific
+
+```bash
+# Test model/service logic
+rails runner "puts Client.first.inspect"
+
+# Test a service
+rails runner "result = CreateIntakeService.new(params).call; puts result.inspect"
+
+# Verify database state
+rails runner "puts TaxReturn.where(status: 'pending').count"
+
+# Check table columns after migration
+rails runner "puts ActiveRecord::Base.connection.columns('clients').map(&:name)"
+```
+
+### FastAPI/Python-Specific
+
+```bash
+# Test with curl (same as above)
+curl -X GET http://localhost:8000/api/v1/resource
+
+# Test Python logic directly
+python -c "from app.services import MyService; print(MyService().process())"
+
+# Run a quick verification script
+python -c "
+from app.models import User
+from app.database import get_db
+# ... verification logic
+"
+```
+
+### What to Verify (Backend)
+- ✅ Endpoint returns expected status code (200, 201, 404, etc.)
+- ✅ Response body has correct structure
+- ✅ Database records are created/updated correctly
+- ✅ Validations reject bad input
+- ✅ Authentication/authorization works as expected
+
+---
+
+## Frontend Testing
+
+### Primary Tool: Agent Browser
+
+Use Agent Browser (`npx agent-browser`) for browser-based testing. It provides more control and works across any environment.
+
+```bash
+# Start Agent Browser
+npx agent-browser
+
+# Then use commands like:
+# navigate <url>
+# snapshot
+# click <selector>
+# type <selector> <text>
+# screenshot [filename]
+```
+
+### Fallback: Cursor MCP Browser
+
+If Agent Browser is not available, use the Cursor MCP browser tools:
+- `mcp_cursor-ide-browser_browser_navigate`
+- `mcp_cursor-ide-browser_browser_snapshot`
+- `mcp_cursor-ide-browser_browser_click`
+- `mcp_cursor-ide-browser_browser_type`
+- `mcp_cursor-ide-browser_browser_take_screenshot`
+
+### Testing Workflow
+
+1. **Navigate** to the page/component you modified
+2. **Snapshot** to verify elements exist and are accessible
+3. **Interact** with elements (click, type) if testing functionality
+4. **Screenshot** to capture visual state (when applicable)
+5. **Report** findings with evidence
+
+### When to Take Screenshots
+
+| Change Type | Screenshot? |
+|-------------|-------------|
+| Visual/UI changes (styling, layout, components) | ✅ Always |
+| Bug fixes with visual impact | ✅ Show "after" state |
+| New pages or major features | ✅ Capture key views |
+| API-only changes | ❌ Not needed |
+| Backend logic changes | ❌ Not needed |
+| Full-stack features | ✅ Screenshot frontend part |
+
+### Responsive Testing
+
+For visual changes, test both viewports when relevant:
+- **Desktop**: Default browser width (~1280px)
+- **Mobile**: Resize to 375px width or use mobile device emulation
+
+---
+
+## Automated Test Suites
+
+### When to Run Tests
+
+| Scenario | Action |
+|----------|--------|
+| Modified code with existing tests | Run relevant test file(s) |
+| Broad changes across multiple files | Run full test suite |
+| New feature implementation | Run related tests + smoke test |
+| Bug fix | Run test that covers the bug |
+| No tests exist for modified code | Manual verification only |
+
+### Commands
+
+**Frontend (Vitest - Unit Tests)**
+```bash
+cd frontend
+npm test                    # Run all unit tests
+npm test -- path/to/file    # Run specific test file
+```
+
+**Frontend (Playwright - E2E Tests)**
+```bash
+cd frontend
+npm run test:e2e           # Run all E2E tests
+npx playwright test path/to/spec.ts  # Run specific test
+```
+
+**Backend (RSpec - Ruby)**
+```bash
+cd backend
+bundle exec rspec                    # Run all specs
+bundle exec rspec spec/models/       # Run model specs
+bundle exec rspec spec/requests/     # Run API specs
+```
+
+**Backend (pytest - Python)**
+```bash
+cd backend
+pytest                      # Run all tests
+pytest tests/test_api.py   # Run specific test file
+```
+
+### Reporting Test Results
+
+After running tests, report:
+- ✅ Number of tests passed
+- ❌ Any failures (with error messages)
+- ⏭️ Tests skipped (if any)
+
+---
+
+## Verification Checklist
+
+Before telling the user a feature is "done", confirm:
+
+### Backend Changes
+- [ ] API endpoint responds correctly (tested with curl)
+- [ ] Database state is correct (verified with runner/console)
+- [ ] Error cases handled properly
+- [ ] Existing tests still pass (if applicable)
+
+### Frontend Changes
+- [ ] Page/component renders without errors
+- [ ] Interactive elements work (buttons, forms, etc.)
+- [ ] Looks correct on desktop AND mobile (if visual change)
+- [ ] No console errors in browser
+- [ ] Existing tests still pass (if applicable)
+
+### Full-Stack Changes
+- [ ] Backend API works (test first)
+- [ ] Frontend integrates correctly (test second)
+- [ ] End-to-end flow works
+- [ ] Screenshot captured showing working state
+
+---
+
+## Reporting to User
+
+After verification, provide:
+
+1. **Summary** of what was tested
+2. **Evidence** (curl output, screenshots, test results)
+3. **Status** (all passing, or issues found)
+4. **Next steps** (ready for manual testing, or fixes needed)
+
+Example:
+```
+✅ Verified Changes:
+- API endpoint returns correct data (curl output attached)
+- Frontend displays updated content (screenshot attached)
+- All existing tests pass (15/15)
+
+Ready for your manual testing!
+```
+
+---
+
+## Remember
+
+- **Test early, test often** - Don't wait until the end
+- **Be thorough** - Check edge cases, not just happy path
+- **Show your work** - Screenshots and output prove it works
+- **Fail fast** - If something's broken, fix it before moving on

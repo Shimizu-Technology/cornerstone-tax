@@ -18,8 +18,8 @@ const values = [
     description: 'We understand time is valuable. Expect prompt, attentive service whenever you need us.',
   },
   {
-    name: 'Education',
-    description: 'We empower our clients with knowledge, helping you understand your finances better.',
+    name: 'Competence',
+    description: 'Decades of experience and continuous learning ensure expert guidance you can trust.',
   },
 ]
 
@@ -32,7 +32,7 @@ export default function About() {
           <div className="max-w-3xl">
             <h1 className="text-4xl md:text-5xl font-bold text-gray-900">About Us</h1>
             <p className="mt-6 text-lg text-gray-600 leading-relaxed">
-              Cornerstone Accounting is a full-service accounting and advisory firm dedicated to helping individuals, entrepreneurs, and businesses build strong financial foundations.
+              Cornerstone Accounting and Business Management is a firm based in Guam with the mission of helping individuals, entrepreneurs, and businesses with their tax and accounting needs.
             </p>
           </div>
         </div>
@@ -43,13 +43,13 @@ export default function About() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-6">Our Story</h2>
+              <h2 className="text-3xl font-bold text-gray-900 mb-6">What We Do</h2>
               <div className="space-y-4 text-gray-600 leading-relaxed">
                 <p>
-                  Just as a cornerstone supports and stabilizes a structure, we provide the clarity, accuracy, and guidance our clients need to make confident financial decisions and plan for long-term success.
+                  At Cornerstone we take pride in providing reliable accounting, income tax preparation and assistance, and payroll processing services designed to meet our clients where they are—whether they are starting a business, growing operations, or navigating complex financial and tax matters.
                 </p>
                 <p>
-                  Cornerstone Accounting goes beyond compliance. We provide reliable accounting, tax, and advisory services designed to meet our clients where they are—whether they are starting a business, growing operations, or navigating complex financial and tax matters.
+                  Our services include accounting and bookkeeping, income tax preparation, payroll processing, financial statement preparation, QuickBooks and accounting training, and other consulting services.
                 </p>
                 <p>
                   Based in Hagatna, Guam, we serve individuals and businesses throughout the island with personalized, professional service.
@@ -63,9 +63,17 @@ export default function About() {
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900">Dafne Mansapit Shimizu</h3>
                 <p className="text-primary font-medium">CPA, MPA</p>
-                <p className="text-gray-600 mt-4 text-sm leading-relaxed">
-                  Owner and lead accountant with decades of experience in accounting, taxation, and financial leadership across both the public and private sectors.
-                </p>
+                <div className="text-gray-600 mt-4 text-sm leading-relaxed space-y-3 text-left">
+                  <p>
+                    Dafne Shimizu is a US licensed CPA born on Guam and raised in the village of Merizo. A proud Triton, she earned her bachelor's degree in Accounting and her master's degree in Public Administration from the University of Guam.
+                  </p>
+                  <p>
+                    With over three decades of accounting experience, as well as managerial and executive experience, Dafne brings a wealth of knowledge to every client relationship.
+                  </p>
+                  <p>
+                    Her parents, Felix and Dot Mansapit, taught her the values of hard work and the importance of education—values she carries into her practice every day. Above all, Dafne cares for her clients.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -84,7 +92,7 @@ export default function About() {
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Our Mission</h3>
               <p className="text-gray-600 leading-relaxed">
-                To provide dependable, high-quality accounting and advisory services that bring clarity, confidence, and peace of mind to our clients' financial lives.
+                Our mission is to provide dependable, high-quality accounting services that bring clarity, confidence, and peace of mind to our clients' lives.
               </p>
             </div>
             <div className="bg-white rounded-xl p-8 shadow-sm">

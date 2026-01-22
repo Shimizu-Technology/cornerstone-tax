@@ -44,6 +44,7 @@ const values = [
   { name: 'Accuracy', description: 'Precision in every calculation' },
   { name: 'Client Partnership', description: 'Your success is our success' },
   { name: 'Responsiveness', description: 'Always here when you need us' },
+  { name: 'Competence', description: 'Decades of expertise you can trust' },
 ]
 
 export default function Home() {
