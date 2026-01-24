@@ -31,7 +31,7 @@ module Api
             phone: phone,
             subject: subject,
             message: message
-          )
+          ).deliver_now
 
           render json: { success: true, message: "Your message has been sent successfully!" }, status: :ok
         rescue => e
