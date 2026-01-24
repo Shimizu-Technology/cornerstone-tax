@@ -424,7 +424,7 @@ export default function TimeTracking() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-primary-dark">Time Tracking</h1>
-          <p className="text-secondary mt-1">Track your hours by category and client</p>
+          <p className="text-text-muted mt-1">Track your hours by category and client</p>
         </div>
         {activeTab === 'entries' && (
           <button
@@ -445,7 +445,7 @@ export default function TimeTracking() {
             className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === 'entries'
                 ? 'border-primary text-primary'
-                : 'border-transparent text-secondary hover:text-primary-dark'
+                : 'border-transparent text-text-muted hover:text-primary-dark'
             }`}
           >
             <ClockIcon />
@@ -457,7 +457,7 @@ export default function TimeTracking() {
               className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
                 activeTab === 'reports'
                   ? 'border-primary text-primary'
-                  : 'border-transparent text-secondary hover:text-primary-dark'
+                  : 'border-transparent text-text-muted hover:text-primary-dark'
               }`}
             >
               <ChartIcon />
@@ -616,7 +616,7 @@ export default function TimeTracking() {
         <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-8">
           <div className="flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <span className="ml-3 text-secondary">Loading time entries...</span>
+            <span className="ml-3 text-text-muted">Loading time entries...</span>
           </div>
         </div>
       ) : viewMode === 'week' ? (
@@ -900,7 +900,7 @@ export default function TimeTracking() {
             <h3 className="text-sm font-medium text-primary-dark mb-4">Filter Report</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm text-secondary mb-1">Start Date</label>
+                <label className="block text-sm text-text-muted mb-1">Start Date</label>
                 <input
                   type="date"
                   value={reportFilters.start_date}
@@ -909,7 +909,7 @@ export default function TimeTracking() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-secondary mb-1">End Date</label>
+                <label className="block text-sm text-text-muted mb-1">End Date</label>
                 <input
                   type="date"
                   value={reportFilters.end_date}
@@ -919,7 +919,7 @@ export default function TimeTracking() {
               </div>
               {isAdmin && (
                 <div>
-                  <label className="block text-sm text-secondary mb-1">Employee</label>
+                  <label className="block text-sm text-text-muted mb-1">Employee</label>
                   <select
                     value={reportFilters.user_id}
                     onChange={(e) => setReportFilters({ ...reportFilters, user_id: e.target.value })}
@@ -933,7 +933,7 @@ export default function TimeTracking() {
                 </div>
               )}
               <div>
-                <label className="block text-sm text-secondary mb-1">Category</label>
+                <label className="block text-sm text-text-muted mb-1">Category</label>
                 <select
                   value={reportFilters.time_category_id}
                   onChange={(e) => setReportFilters({ ...reportFilters, time_category_id: e.target.value })}
@@ -951,20 +951,20 @@ export default function TimeTracking() {
           {/* Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
-              <div className="text-sm text-secondary">Total Hours</div>
+              <div className="text-sm text-text-muted">Total Hours</div>
               <div className="text-3xl font-bold text-primary mt-1">
                 {reportLoading ? '...' : reportSummary.total_hours.toFixed(1)}
               </div>
             </div>
             <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
-              <div className="text-sm text-secondary">Total Entries</div>
+              <div className="text-sm text-text-muted">Total Entries</div>
               <div className="text-3xl font-bold text-primary-dark mt-1">
                 {reportLoading ? '...' : reportSummary.entry_count}
               </div>
             </div>
             <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
-              <div className="text-sm text-secondary">Avg Hours/Entry</div>
-              <div className="text-3xl font-bold text-secondary mt-1">
+              <div className="text-sm text-text-muted">Avg Hours/Entry</div>
+              <div className="text-3xl font-bold text-text-muted mt-1">
                 {reportLoading ? '...' : (reportSummary.entry_count > 0 ? (reportSummary.total_hours / reportSummary.entry_count).toFixed(1) : '0')}
               </div>
             </div>
@@ -979,9 +979,9 @@ export default function TimeTracking() {
               </div>
               <div className="divide-y divide-neutral-warm">
                 {reportLoading ? (
-                  <div className="p-4 text-center text-secondary">Loading...</div>
+                  <div className="p-4 text-center text-text-muted">Loading...</div>
                 ) : Object.entries(reportByCategory).length === 0 ? (
-                  <div className="p-4 text-center text-secondary">No data</div>
+                  <div className="p-4 text-center text-text-muted">No data</div>
                 ) : (
                   Object.entries(reportByCategory)
                     .sort((a, b) => b[1] - a[1])
@@ -1002,9 +1002,9 @@ export default function TimeTracking() {
               </div>
               <div className="divide-y divide-neutral-warm">
                 {reportLoading ? (
-                  <div className="p-4 text-center text-secondary">Loading...</div>
+                  <div className="p-4 text-center text-text-muted">Loading...</div>
                 ) : Object.entries(reportByUser).length === 0 ? (
-                  <div className="p-4 text-center text-secondary">No data</div>
+                  <div className="p-4 text-center text-text-muted">No data</div>
                 ) : (
                   Object.entries(reportByUser)
                     .sort((a, b) => b[1] - a[1])
@@ -1025,9 +1025,9 @@ export default function TimeTracking() {
               </div>
               <div className="divide-y divide-neutral-warm max-h-[300px] overflow-y-auto">
                 {reportLoading ? (
-                  <div className="p-4 text-center text-secondary">Loading...</div>
+                  <div className="p-4 text-center text-text-muted">Loading...</div>
                 ) : Object.entries(reportByClient).length === 0 ? (
-                  <div className="p-4 text-center text-secondary">No data</div>
+                  <div className="p-4 text-center text-text-muted">No data</div>
                 ) : (
                   Object.entries(reportByClient)
                     .sort((a, b) => b[1] - a[1])
@@ -1051,39 +1051,39 @@ export default function TimeTracking() {
               <table className="w-full">
                 <thead className="bg-neutral-warm/50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-secondary uppercase">Date</th>
-                    {isAdmin && <th className="px-4 py-3 text-left text-xs font-medium text-secondary uppercase">Employee</th>}
-                    <th className="px-4 py-3 text-left text-xs font-medium text-secondary uppercase">Category</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-secondary uppercase">Client</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-secondary uppercase">Hours</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-secondary uppercase">Description</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Date</th>
+                    {isAdmin && <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Employee</th>}
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Category</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Client</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-text-muted uppercase">Hours</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Description</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-warm">
                   {reportLoading ? (
                     <tr>
-                      <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-secondary">Loading...</td>
+                      <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-text-muted">Loading...</td>
                     </tr>
                   ) : reportData.length === 0 ? (
                     <tr>
-                      <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-secondary">No entries found</td>
+                      <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-text-muted">No entries found</td>
                     </tr>
                   ) : (
                     reportData.slice(0, 100).map(entry => (
                       <tr key={entry.id} className="hover:bg-neutral-warm/20">
                         <td className="px-4 py-3 text-sm text-primary-dark whitespace-nowrap">{formatDate(entry.work_date)}</td>
-                        {isAdmin && <td className="px-4 py-3 text-sm text-secondary truncate max-w-[150px]">{entry.user.email}</td>}
-                        <td className="px-4 py-3 text-sm text-secondary">{entry.time_category?.name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-secondary truncate max-w-[150px]">{entry.client?.name || '-'}</td>
+                        {isAdmin && <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{entry.user.email}</td>}
+                        <td className="px-4 py-3 text-sm text-text-muted">{entry.time_category?.name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{entry.client?.name || '-'}</td>
                         <td className="px-4 py-3 text-sm text-primary font-semibold text-right">{entry.hours.toFixed(1)}</td>
-                        <td className="px-4 py-3 text-sm text-secondary truncate max-w-[200px]">{entry.description || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[200px]">{entry.description || '-'}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
               {reportData.length > 100 && (
-                <div className="px-4 py-3 text-center text-sm text-secondary border-t border-neutral-warm">
+                <div className="px-4 py-3 text-center text-sm text-text-muted border-t border-neutral-warm">
                   Showing first 100 entries of {reportData.length} total
                 </div>
               )}

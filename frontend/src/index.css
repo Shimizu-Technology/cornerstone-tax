@@ -9,9 +9,13 @@
   --color-primary-dark: #6B5344;
   --color-primary-light: #A89078;
   
-  /* Secondary - Cream/Beige */
+  /* Secondary - Cream/Beige (for backgrounds) */
   --color-secondary: #F5F0E8;
   --color-secondary-dark: #E8DFD0;
+  
+  /* Neutral - Warm grays (for text and borders) */
+  --color-neutral-warm: #E5DDD1;
+  --color-text-muted: #6B6B6B;
   
   /* Accent - Light Pink */
   --color-accent: #E8B4B8;

@@ -265,7 +265,7 @@ export default function Settings() {
       {/* Header */}
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark">Settings</h1>
-        <p className="text-secondary mt-1">Manage workflow stages, time categories, and system settings</p>
+        <p className="text-text-muted mt-1">Manage workflow stages, time categories, and system settings</p>
       </div>
       
       {/* Tabs */}
@@ -276,7 +276,7 @@ export default function Settings() {
             className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'workflow'
                 ? 'border-primary text-primary'
-                : 'border-transparent text-secondary hover:text-primary-dark'
+                : 'border-transparent text-text-muted hover:text-primary-dark'
             }`}
           >
             Workflow Stages
@@ -286,7 +286,7 @@ export default function Settings() {
             className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'time'
                 ? 'border-primary text-primary'
-                : 'border-transparent text-secondary hover:text-primary-dark'
+                : 'border-transparent text-text-muted hover:text-primary-dark'
             }`}
           >
             Time Categories
@@ -300,7 +300,7 @@ export default function Settings() {
         <div className="px-6 py-5 border-b border-neutral-warm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-primary-dark">Workflow Stages</h2>
-            <p className="text-sm text-secondary mt-0.5">Configure the stages tax returns move through</p>
+            <p className="text-sm text-text-muted mt-0.5">Configure the stages tax returns move through</p>
           </div>
           {!isAddingNewStage && !editingStage && (
             <button
@@ -356,7 +356,7 @@ export default function Settings() {
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="w-8 h-8 rounded-lg bg-neutral-warm flex items-center justify-center flex-shrink-0">
-                        <span className="text-secondary font-semibold text-sm">{index + 1}</span>
+                        <span className="text-text-muted font-semibold text-sm">{index + 1}</span>
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -373,7 +373,7 @@ export default function Settings() {
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-secondary mt-1">
+                        <p className="text-sm text-text-muted mt-1">
                           {stage.tax_returns_count} return{stage.tax_returns_count !== 1 ? 's' : ''} • <code className="text-xs bg-neutral-warm px-1.5 py-0.5 rounded">{stage.slug}</code>
                         </p>
                       </div>
@@ -381,7 +381,7 @@ export default function Settings() {
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => startEditStage(stage)}
-                        className="text-sm text-secondary hover:text-primary px-3 py-2 rounded-lg hover:bg-neutral-warm transition-colors font-medium"
+                        className="text-sm text-text-muted hover:text-primary px-3 py-2 rounded-lg hover:bg-neutral-warm transition-colors font-medium"
                       >
                         Edit
                       </button>
@@ -401,18 +401,18 @@ export default function Settings() {
             {inactiveStages.length > 0 && (
               <>
                 <div className="px-6 py-3 bg-neutral-warm/50">
-                  <h3 className="text-sm font-semibold text-secondary uppercase tracking-wide">Inactive Stages</h3>
+                  <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wide">Inactive Stages</h3>
                 </div>
                 {inactiveStages.map((stage) => (
                   <div key={stage.id} className="p-5 sm:p-6 bg-neutral-warm/20">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-4 min-w-0 opacity-60">
                         <div className="w-8 h-8 rounded-lg bg-neutral-warm flex items-center justify-center flex-shrink-0">
-                          <span className="text-secondary/50 text-sm">—</span>
+                          <span className="text-text-muted/50 text-sm">—</span>
                         </div>
                         <div className="min-w-0">
                           <span className="font-medium text-primary-dark">{stage.name}</span>
-                          <p className="text-sm text-secondary mt-0.5">
+                          <p className="text-sm text-text-muted mt-0.5">
                             {stage.tax_returns_count} return{stage.tax_returns_count !== 1 ? 's' : ''}
                           </p>
                         </div>
@@ -432,11 +432,11 @@ export default function Settings() {
             {activeStages.length === 0 && !isAddingNewStage && (
               <div className="p-12 text-center">
                 <div className="w-16 h-16 bg-neutral-warm rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-8 h-8 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                   </svg>
                 </div>
-                <p className="text-secondary mb-4">No workflow stages configured</p>
+                <p className="text-text-muted mb-4">No workflow stages configured</p>
                 <button
                   onClick={() => setIsAddingNewStage(true)}
                   className="text-primary hover:text-primary-dark font-medium"
@@ -456,7 +456,7 @@ export default function Settings() {
         <div className="px-6 py-5 border-b border-neutral-warm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-primary-dark">Time Categories</h2>
-            <p className="text-sm text-secondary mt-0.5">Configure categories for time tracking</p>
+            <p className="text-sm text-text-muted mt-0.5">Configure categories for time tracking</p>
           </div>
           {!isAddingNewCategory && !editingCategory && (
             <button
@@ -514,13 +514,13 @@ export default function Settings() {
                         </span>
                       </div>
                       {category.description && (
-                        <p className="text-sm text-secondary mt-1">{category.description}</p>
+                        <p className="text-sm text-text-muted mt-1">{category.description}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => startEditCategory(category)}
-                        className="text-sm text-secondary hover:text-primary px-3 py-2 rounded-lg hover:bg-neutral-warm transition-colors font-medium"
+                        className="text-sm text-text-muted hover:text-primary px-3 py-2 rounded-lg hover:bg-neutral-warm transition-colors font-medium"
                       >
                         Edit
                       </button>
@@ -540,14 +540,14 @@ export default function Settings() {
             {inactiveCategories.length > 0 && (
               <>
                 <div className="px-6 py-3 bg-neutral-warm/50">
-                  <h3 className="text-sm font-semibold text-secondary uppercase tracking-wide">Inactive Categories</h3>
+                  <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wide">Inactive Categories</h3>
                 </div>
                 {inactiveCategories.map((category) => (
                   <div key={category.id} className="p-5 sm:p-6 bg-neutral-warm/20">
                     <div className="flex items-center justify-between gap-4">
                       <div className="min-w-0 opacity-60">
                         <span className="font-medium text-primary-dark">{category.name}</span>
-                        <p className="text-sm text-secondary mt-0.5">
+                        <p className="text-sm text-text-muted mt-0.5">
                           {category.time_entries_count} entries
                         </p>
                       </div>
@@ -566,11 +566,11 @@ export default function Settings() {
             {activeCategories.length === 0 && !isAddingNewCategory && (
               <div className="p-12 text-center">
                 <div className="w-16 h-16 bg-neutral-warm rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-8 h-8 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <p className="text-secondary mb-4">No time categories configured</p>
+                <p className="text-text-muted mb-4">No time categories configured</p>
                 <button
                   onClick={() => setIsAddingNewCategory(true)}
                   className="text-primary hover:text-primary-dark font-medium"
@@ -662,7 +662,7 @@ function StageForm({ formData, colorOptions, onNameChange, onFormChange, onSave,
               onChange={(e) => onFormChange('notify_client', e.target.checked)}
               className="w-5 h-5 text-primary border-neutral-warm rounded focus:ring-primary"
             />
-            <span className="text-sm text-secondary">Notify client when status changes to this stage</span>
+            <span className="text-sm text-text-muted">Notify client when status changes to this stage</span>
           </label>
         </div>
       </div>
@@ -671,7 +671,7 @@ function StageForm({ formData, colorOptions, onNameChange, onFormChange, onSave,
         <button
           type="button"
           onClick={onCancel}
-          className="px-5 py-2.5 text-secondary hover:bg-neutral-warm rounded-xl text-sm font-medium transition-colors"
+          className="px-5 py-2.5 text-text-muted hover:bg-neutral-warm rounded-xl text-sm font-medium transition-colors"
         >
           Cancel
         </button>
@@ -737,7 +737,7 @@ function CategoryForm({ formData, onFormChange, onSave, onCancel, saving, error 
         <button
           type="button"
           onClick={onCancel}
-          className="px-5 py-2.5 text-secondary hover:bg-neutral-warm rounded-xl text-sm font-medium transition-colors"
+          className="px-5 py-2.5 text-text-muted hover:bg-neutral-warm rounded-xl text-sm font-medium transition-colors"
         >
           Cancel
         </button>

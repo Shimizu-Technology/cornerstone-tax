@@ -13,6 +13,22 @@ After implementing any change, test it yourself using the appropriate tools. Don
 
 ---
 
+## Test Credentials
+
+**IMPORTANT**: Test credentials are stored in `frontend/.env` as:
+- `TEST_USER_EMAIL` - Email for the test admin account
+- `TEST_USER_PASSWORD` - Password for the test admin account
+
+When testing authenticated features:
+1. Navigate to the homepage first (not directly to /admin)
+2. Click "Staff Login" button to open Clerk modal
+3. Enter the test email and password from the env variables
+4. Complete login flow before testing admin features
+
+The test account should have admin privileges to test all features. If you cannot read the .env file directly (due to gitignore filtering), ask the user for the credentials.
+
+---
+
 ## Backend Testing
 
 ### API Endpoints (Any Framework)
