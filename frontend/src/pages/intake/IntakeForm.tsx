@@ -317,7 +317,7 @@ function IntakeHeader() {
       <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
         <Link to="/" className="flex items-center">
           <img 
-            src="/logo.png" 
+            src="/logo.jpeg" 
             alt="Cornerstone Accounting & Business Management" 
             className="h-14 sm:h-16 w-auto object-contain"
           />

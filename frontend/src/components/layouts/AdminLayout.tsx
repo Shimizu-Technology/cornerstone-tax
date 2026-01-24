@@ -120,7 +120,7 @@ export default function AdminLayout() {
         <div className="flex items-center justify-between h-16 px-4 border-b border-secondary-dark">
           <Link to="/" className="flex items-center">
             <img 
-              src="/logo.png" 
+              src="/logo.jpeg" 
               alt="Cornerstone" 
               className="h-16 w-auto object-contain"
             />
@@ -168,7 +168,7 @@ export default function AdminLayout() {
           <div className="flex items-center justify-center flex-shrink-0 px-4 pb-4 border-b border-secondary-dark mb-2">
             <Link to="/" className="flex items-center justify-center">
               <img 
-                src="/logo.png" 
+                src="/logo.jpeg" 
                 alt="Cornerstone" 
                 className="h-16 w-auto object-contain"
               />

@@ -30,7 +30,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState<'workflow' | 'time' | 'system'>('workflow')
   
   // System Settings state
-  const [systemSettings, setSystemSettings] = useState<Record<string, string>>({})
+  const [_systemSettings, setSystemSettings] = useState<Record<string, string>>({})
   const [loadingSystemSettings, setLoadingSystemSettings] = useState(true)
   const [contactEmail, setContactEmail] = useState('')
   const [savingSystemSettings, setSavingSystemSettings] = useState(false)

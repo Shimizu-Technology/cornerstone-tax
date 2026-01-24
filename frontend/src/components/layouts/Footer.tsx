@@ -11,7 +11,7 @@ export default function Footer() {
           <div>
             <div className="mb-4 bg-white rounded px-3 py-2 w-fit">
               <img 
-                src="/logo.png" 
+                src="/logo.jpeg" 
                 alt="Cornerstone Accounting & Business Management" 
                 className="h-14 w-auto object-contain"
               />

@@ -124,13 +124,15 @@ export default function Header() {
   return (
     <header ref={headerRef} className="bg-white shadow-sm sticky top-0 z-50">
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Logo */}
+        {/* Logo - Using overflow hidden to crop white space from image */}
         <Link to="/" className="flex items-center flex-shrink-0">
-          <img 
-            src="/logo.png" 
-            alt="Cornerstone Accounting & Business Management" 
-            className="h-14 sm:h-16 w-auto object-contain"
-          />
+          <div className="h-14 sm:h-16 overflow-hidden flex items-center">
+            <img 
+              src="/logo.jpeg" 
+              alt="Cornerstone Accounting & Business Management" 
+              className="h-28 sm:h-32 w-auto max-w-none object-contain"
+            />
+          </div>
         </Link>
 
         {/* Desktop Navigation */}
