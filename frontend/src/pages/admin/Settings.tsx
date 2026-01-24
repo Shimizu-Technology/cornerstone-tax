@@ -27,7 +27,15 @@ interface AdminTimeCategoryLocal {
 
 export default function Settings() {
   // Active tab
-  const [activeTab, setActiveTab] = useState<'workflow' | 'time'>('workflow')
+  const [activeTab, setActiveTab] = useState<'workflow' | 'time' | 'system'>('workflow')
+  
+  // System Settings state
+  const [systemSettings, setSystemSettings] = useState<Record<string, string>>({})
+  const [loadingSystemSettings, setLoadingSystemSettings] = useState(true)
+  const [contactEmail, setContactEmail] = useState('')
+  const [savingSystemSettings, setSavingSystemSettings] = useState(false)
+  const [systemSettingsSuccess, setSystemSettingsSuccess] = useState('')
+  const [systemSettingsError, setSystemSettingsError] = useState('')
   
   // Workflow Stages state
   const [stages, setStages] = useState<AdminWorkflowStageLocal[]>([])
@@ -69,7 +77,38 @@ export default function Settings() {
   useEffect(() => {
     fetchStages()
     fetchCategories()
+    fetchSystemSettings()
   }, [])
+
+  const fetchSystemSettings = async () => {
+    setLoadingSystemSettings(true)
+    const response = await api.getSystemSettings()
+    if (response.data) {
+      setSystemSettings(response.data)
+      setContactEmail(response.data.contact_email || 'dmshimizucpa@gmail.com')
+    }
+    setLoadingSystemSettings(false)
+  }
+
+  const handleSaveSystemSettings = async () => {
+    setSavingSystemSettings(true)
+    setSystemSettingsSuccess('')
+    setSystemSettingsError('')
+    
+    const response = await api.updateSystemSettings({
+      contact_email: contactEmail,
+    })
+    
+    if (response.error) {
+      setSystemSettingsError(response.error)
+    } else if (response.data) {
+      setSystemSettings(response.data)
+      setSystemSettingsSuccess('Settings saved successfully!')
+      setTimeout(() => setSystemSettingsSuccess(''), 3000)
+    }
+    
+    setSavingSystemSettings(false)
+  }
 
   const fetchStages = async () => {
     setLoadingStages(true)
@@ -290,6 +329,16 @@ export default function Settings() {
             }`}
           >
             Time Categories
+          </button>
+          <button
+            onClick={() => setActiveTab('system')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'system'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-muted hover:text-primary-dark'
+            }`}
+          >
+            System
           </button>
         </nav>
       </div>
@@ -581,6 +630,68 @@ export default function Settings() {
             )}
           </div>
         )}
+      </div>
+      )}
+
+      {/* System Settings Tab */}
+      {activeTab === 'system' && (
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden">
+        <div className="px-6 py-5 border-b border-neutral-warm">
+          <h2 className="text-lg font-semibold text-primary-dark">System Settings</h2>
+          <p className="text-sm text-text-muted mt-0.5">Configure general system settings</p>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {loadingSystemSettings ? (
+            <div className="flex items-center justify-center py-12">
+              <svg className="animate-spin h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            </div>
+          ) : (
+            <>
+              {systemSettingsSuccess && (
+                <div className="bg-green-50 text-green-600 p-4 rounded-xl text-sm border border-green-100">
+                  {systemSettingsSuccess}
+                </div>
+              )}
+              
+              {systemSettingsError && (
+                <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm border border-red-100">
+                  {systemSettingsError}
+                </div>
+              )}
+
+              <div className="space-y-6">
+                {/* Contact Email Setting */}
+                <div className="bg-secondary/30 rounded-xl p-6">
+                  <h3 className="font-semibold text-primary-dark mb-2">Contact Form Email</h3>
+                  <p className="text-sm text-text-muted mb-4">
+                    Email address where contact form submissions will be sent.
+                  </p>
+                  <input
+                    type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    placeholder="dmshimizucpa@gmail.com"
+                    className="w-full max-w-md px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-neutral-warm">
+                <button
+                  onClick={handleSaveSystemSettings}
+                  disabled={savingSystemSettings}
+                  className="px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-dark disabled:opacity-50 transition-all shadow-md"
+                >
+                  {savingSystemSettings ? 'Saving...' : 'Save Settings'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
       )}
     </div>

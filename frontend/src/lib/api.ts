@@ -459,6 +459,13 @@ export const api = {
       body: JSON.stringify({ intake: data }),
     }),
 
+  // Contact form (public - no auth required)
+  submitContact: (data: { name: string; email: string; phone?: string; subject: string; message: string }) =>
+    fetchApiPublic<{ success: boolean; message: string }>('/api/v1/contact', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   // Workflow stages (public - no auth required)
   getWorkflowStages: () =>
     fetchApiPublic<{ workflow_stages: WorkflowStage[] }>('/api/v1/workflow_stages'),
@@ -692,6 +699,16 @@ export const api = {
   deleteTimeCategory: (id: number) =>
     fetchApi<void>(`/api/v1/admin/time_categories/${id}`, {
       method: 'DELETE',
+    }),
+
+  // Admin: System Settings
+  getSystemSettings: () =>
+    fetchApi<Record<string, string>>('/api/v1/admin/settings'),
+
+  updateSystemSettings: (settings: Record<string, string>) =>
+    fetchApi<Record<string, string>>('/api/v1/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
     }),
 
   // Documents

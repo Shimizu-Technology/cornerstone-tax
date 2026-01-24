@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_01_20_051147) do
+ActiveRecord::Schema[8.1].define(version: 2026_01_24_002234) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -108,6 +108,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_20_051147) do
     t.index ["client_id"], name: "index_notifications_on_client_id"
     t.index ["status"], name: "index_notifications_on_status"
     t.index ["tax_return_id"], name: "index_notifications_on_tax_return_id"
+  end
+
+  create_table "settings", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "description"
+    t.string "key"
+    t.datetime "updated_at", null: false
+    t.text "value"
+    t.index ["key"], name: "index_settings_on_key"
   end
 
   create_table "tax_returns", force: :cascade do |t|

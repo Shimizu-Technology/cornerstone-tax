@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { api } from '../../lib/api'
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -11,6 +12,7 @@ export default function Contact() {
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -20,12 +22,23 @@ export default function Contact() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setError(null)
     
-    // TODO: Implement actual form submission
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    const result = await api.submitContact({
+      name: formData.name,
+      email: formData.email,
+      phone: formData.phone || undefined,
+      subject: formData.subject,
+      message: formData.message,
+    })
     
     setIsSubmitting(false)
-    setSubmitted(true)
+    
+    if (result.error) {
+      setError(result.error)
+    } else {
+      setSubmitted(true)
+    }
   }
 
   if (submitted) {
@@ -73,6 +86,13 @@ export default function Contact() {
             {/* Contact Form */}
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Send Us a Message</h2>
+              
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-600 text-sm">{error}</p>
+                </div>
+              )}
+              
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">

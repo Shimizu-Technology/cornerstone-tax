@@ -93,30 +93,50 @@ from app.database import get_db
 
 ## Frontend Testing
 
-### Primary Tool: Agent Browser
+### Primary Tool: Vercel Agent Browser (STRONGLY PREFERRED)
 
-Use Agent Browser (`npx agent-browser`) for browser-based testing. It provides more control and works across any environment.
+**ALWAYS use Agent Browser for browser-based testing.** It is significantly more consistent, handles authentication better, and provides cleaner interaction with Clerk auth flows.
 
 ```bash
-# Start Agent Browser
-npx agent-browser
+# Install globally (one-time)
+npm install -g agent-browser
 
-# Then use commands like:
-# navigate <url>
-# snapshot
-# click <selector>
-# type <selector> <text>
-# screenshot [filename]
+# Start Agent Browser
+agent-browser open http://localhost:5173
+
+# Get interactive snapshot (shows element refs)
+agent-browser snapshot -i
+
+# Click using ref from snapshot
+agent-browser click @e1
+
+# Fill text field
+agent-browser fill @e1 "text value"
+
+# Take screenshot
+agent-browser screenshot
 ```
 
-### Fallback: Cursor MCP Browser
+**Why Agent Browser over Cursor MCP:**
+- More consistent with Clerk authentication flows
+- Better handling of form inputs (doesn't reset)
+- Uses refs (`@e1`) for reliable element targeting
+- More control over timing and interactions
+- Works in headed mode for visual debugging
 
-If Agent Browser is not available, use the Cursor MCP browser tools:
+### Fallback: Cursor MCP Browser (NOT RECOMMENDED)
+
+Only use Cursor MCP browser tools if Agent Browser is absolutely unavailable. These tools have known issues with Clerk auth flows and form inputs:
 - `mcp_cursor-ide-browser_browser_navigate`
 - `mcp_cursor-ide-browser_browser_snapshot`
 - `mcp_cursor-ide-browser_browser_click`
 - `mcp_cursor-ide-browser_browser_type`
 - `mcp_cursor-ide-browser_browser_take_screenshot`
+
+**Known Issues with Cursor MCP:**
+- Form inputs may reset after typing
+- Authentication flows often fail
+- Less consistent element targeting
 
 ### Testing Workflow
 

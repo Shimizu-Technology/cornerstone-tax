@@ -11,6 +11,9 @@ Rails.application.routes.draw do
       # Intake form submission (public, no auth required)
       post "intake", to: "intake#create"
 
+      # Contact form submission (public, no auth required)
+      post "contact", to: "contact#create"
+
       # Workflow stages (public, for form dropdowns)
       resources :workflow_stages, only: [:index]
 
@@ -66,6 +69,9 @@ Rails.application.routes.draw do
 
         # Time category management
         resources :time_categories, only: [:index, :show, :create, :update, :destroy]
+
+        # System settings
+        resource :settings, only: [:show, :update]
       end
     end
   end
