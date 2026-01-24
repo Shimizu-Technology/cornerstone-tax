@@ -44,7 +44,7 @@ const values = [
   { name: 'Accuracy', description: 'Precision in every calculation' },
   { name: 'Client Partnership', description: 'Your success is our success' },
   { name: 'Responsiveness', description: 'Always here when you need us' },
-  { name: 'Competence', description: 'Decades of expertise you can trust' },
+  { name: 'Education', description: 'Empowering you with financial knowledge' },
 ]
 
 export default function Home() {
@@ -59,7 +59,10 @@ export default function Home() {
               <span className="text-primary">Financial Success</span>
             </h1>
             <p className="mt-6 text-lg md:text-xl text-gray-600 leading-relaxed">
-              We believe accounting is more than numbers—it's about people, goals, and informed decision-making. Let us help you build a strong financial foundation.
+              We believe accounting is more than numbers—it's about people, goals, and informed decisions. Let us help you build a strong financial foundation.
+            </p>
+            <p className="mt-4 text-base text-primary font-medium">
+              Based in Guam. Built on integrity, accuracy, and trust.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-4">
               <Link
@@ -125,10 +128,13 @@ export default function Home() {
                 Why Choose Cornerstone?
               </h2>
               <p className="text-gray-600 text-lg mb-6 leading-relaxed">
-                We believe accounting should empower, not overwhelm. Our approach is hands-on, collaborative, and tailored to each client's unique needs.
+                We believe accounting should empower, not overwhelm.
               </p>
-              <p className="text-gray-600 leading-relaxed">
-                We translate financial data into clear insights so you can stay compliant, improve cash flow, and plan strategically for the future.
+              <p className="text-gray-600 leading-relaxed mb-4">
+                Our approach is hands-on, collaborative, and tailored to each client's unique needs. We translate financial data into clear, practical insights so our clients can stay compliant, improve cash flow, and plan strategically with confidence.
+              </p>
+              <p className="text-primary font-medium italic">
+                Your numbers, explained clearly, every step of the way.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4">

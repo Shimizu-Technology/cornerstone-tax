@@ -108,7 +108,10 @@ export default function Services() {
           <div className="max-w-3xl">
             <h1 className="text-4xl md:text-5xl font-bold text-gray-900">Our Services</h1>
             <p className="mt-6 text-lg text-gray-600 leading-relaxed">
-              From tax preparation to business advisory, we provide comprehensive services designed to meet you where you are—whether you're starting a business, growing operations, or navigating complex financial matters.
+              We go beyond compliance to meet our clients where they are, whether they're starting a business, growing operations, or navigating complex financial and tax matters.
+            </p>
+            <p className="mt-4 text-base text-primary font-medium italic">
+              Reliable support. Clear insights. Thoughtful guidance.
             </p>
           </div>
         </div>

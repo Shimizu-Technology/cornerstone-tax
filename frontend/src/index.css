@@ -1,25 +1,25 @@
 @import "tailwindcss";
 
 /* Cornerstone Accounting - Custom Theme */
-/* Warm/neutral palette: beige, cream, browns with light pink accent */
+/* Brand colors extracted from logo: rose gold, cream-pink, warm neutrals */
 
 @theme {
-  /* Primary - Warm Brown */
-  --color-primary: #8B7355;
-  --color-primary-dark: #6B5344;
-  --color-primary-light: #A89078;
+  /* Primary - Darker Dusty Rose (for buttons/links - good contrast) */
+  --color-primary: #9E8A80;
+  --color-primary-dark: #8A7870;
+  --color-primary-light: #B09A90;
   
-  /* Secondary - Cream/Beige (for backgrounds) */
-  --color-secondary: #F5F0E8;
-  --color-secondary-dark: #E8DFD0;
+  /* Secondary - Cream with blush undertone (backgrounds) */
+  --color-secondary: #F5F0EC;
+  --color-secondary-dark: #EBE4DE;
   
-  /* Neutral - Warm grays (for text and borders) */
-  --color-neutral-warm: #E5DDD1;
-  --color-text-muted: #6B6B6B;
+  /* Neutral - Warm off-white (from folder borders) */
+  --color-neutral-warm: #E5DDD6;
+  --color-text-muted: #5E6F70;
   
-  /* Accent - Light Pink */
-  --color-accent: #E8B4B8;
-  --color-accent-light: #F5D5D8;
+  /* Accent - Brand dusty rose (from folder: #B9A399) */
+  --color-accent: #B9A399;
+  --color-accent-light: #D4C8C0;
 }
 
 body {

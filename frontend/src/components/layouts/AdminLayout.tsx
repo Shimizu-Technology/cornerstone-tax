@@ -119,13 +119,11 @@ export default function AdminLayout() {
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-secondary-dark">
           <Link to="/" className="flex items-center">
-            <div className="h-12 overflow-hidden flex items-center">
-              <img 
-                src="/logo.jpeg" 
-                alt="Cornerstone" 
-                className="h-24 w-auto max-w-none object-contain"
-              />
-            </div>
+            <img 
+              src="/logo.png" 
+              alt="Cornerstone" 
+              className="h-16 w-auto object-contain"
+            />
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -169,13 +167,11 @@ export default function AdminLayout() {
         <div className="flex flex-col flex-grow bg-white border-r border-secondary-dark pt-4 pb-4 overflow-y-auto">
           <div className="flex items-center justify-center flex-shrink-0 px-4 pb-4 border-b border-secondary-dark mb-2">
             <Link to="/" className="flex items-center justify-center">
-              <div className="h-16 overflow-hidden flex items-center">
-                <img 
-                  src="/logo.jpeg" 
-                  alt="Cornerstone" 
-                  className="h-32 w-auto max-w-none object-contain"
-                />
-              </div>
+              <img 
+                src="/logo.png" 
+                alt="Cornerstone" 
+                className="h-16 w-auto object-contain"
+              />
             </Link>
           </div>
           <nav className="mt-8 flex-1 px-3 space-y-1">

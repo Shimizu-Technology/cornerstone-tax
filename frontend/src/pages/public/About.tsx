@@ -18,8 +18,8 @@ const values = [
     description: 'We understand time is valuable. Expect prompt, attentive service whenever you need us.',
   },
   {
-    name: 'Competence',
-    description: 'Decades of experience and continuous learning ensure expert guidance you can trust.',
+    name: 'Education',
+    description: 'We empower our clients with knowledge, helping them understand their finances and make informed decisions.',
   },
 ]
 
@@ -32,7 +32,10 @@ export default function About() {
           <div className="max-w-3xl">
             <h1 className="text-4xl md:text-5xl font-bold text-gray-900">About Us</h1>
             <p className="mt-6 text-lg text-gray-600 leading-relaxed">
-              Cornerstone Accounting and Business Management is a firm based in Guam with the mission of helping individuals, entrepreneurs, and businesses with their tax and accounting needs.
+              Cornerstone Accounting is an accounting firm dedicated to helping individuals and businesses build strong financial foundations.
+            </p>
+            <p className="mt-4 text-base text-primary font-medium">
+              Based in Guam. Built on integrity, accuracy, and trust.
             </p>
           </div>
         </div>
@@ -46,13 +49,13 @@ export default function About() {
               <h2 className="text-3xl font-bold text-gray-900 mb-6">What We Do</h2>
               <div className="space-y-4 text-gray-600 leading-relaxed">
                 <p>
-                  At Cornerstone we take pride in providing reliable accounting, income tax preparation and assistance, and payroll processing services designed to meet our clients where they are—whether they are starting a business, growing operations, or navigating complex financial and tax matters.
+                  We provide income tax preparation, accounting, consulting, and payroll services, with a focus on clarity, accuracy, and dependable guidance. Our goal is to support confident decision-making and long-term financial success.
                 </p>
                 <p>
-                  Our services include accounting and bookkeeping, income tax preparation, payroll processing, financial statement preparation, QuickBooks and accounting training, and other consulting services.
+                  We go beyond compliance to meet our clients where they are, whether they're starting a business, growing operations, or navigating complex financial and tax matters.
                 </p>
                 <p>
-                  Based in Hagatna, Guam, we serve individuals and businesses throughout the island with personalized, professional service.
+                  At Cornerstone, we believe accounting is more than numbers—it's about people, goals, and informed decisions.
                 </p>
               </div>
             </div>
@@ -61,17 +64,20 @@ export default function About() {
                 <div className="w-24 h-24 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
                   <span className="text-white font-bold text-3xl">DS</span>
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900">Dafne Mansapit Shimizu</h3>
-                <p className="text-primary font-medium">CPA, MPA</p>
+                <h3 className="text-xl font-semibold text-gray-900">Dafne Shimizu, CPA</h3>
+                <p className="text-primary font-medium">Founder & Owner</p>
                 <div className="text-gray-600 mt-4 text-sm leading-relaxed space-y-3 text-left">
                   <p>
-                    Dafne Shimizu is a US licensed CPA born on Guam and raised in the village of Merizo. A proud Triton, she earned her bachelor's degree in Accounting and her master's degree in Public Administration from the University of Guam.
+                    Dafne Shimizu is a U.S.-licensed CPA born and raised on Guam. A proud Triton, she earned her bachelor's degree in Accounting and her master's degree in Public Administration.
                   </p>
                   <p>
-                    With over three decades of accounting experience, as well as managerial and executive experience, Dafne brings a wealth of knowledge to every client relationship.
+                    With over 30 years of accounting experience, including managerial and executive leadership, Dafne brings thoughtful, dependable guidance to every client relationship.
                   </p>
                   <p>
-                    Her parents, Felix and Dot Mansapit, taught her the values of hard work and the importance of education—values she carries into her practice every day. Above all, Dafne cares for her clients.
+                    Raised in the village of Merizo, her values were shaped by her parents, Felix and Dot Mansapit, who instilled the importance of hard work, education, and integrity.
+                  </p>
+                  <p className="italic">
+                    At the core of her work is a simple belief: accounting should support people, not overwhelm them.
                   </p>
                 </div>
               </div>
@@ -92,7 +98,7 @@ export default function About() {
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Our Mission</h3>
               <p className="text-gray-600 leading-relaxed">
-                Our mission is to provide dependable, high-quality accounting services that bring clarity, confidence, and peace of mind to our clients' lives.
+                We are a family-operated firm based in Guam, established by Dafne Shimizu, U.S.-licensed CPA, with a mission to provide dependable, high-quality accounting services that bring clarity, confidence, and peace of mind to our clients.
               </p>
             </div>
             <div className="bg-white rounded-xl p-8 shadow-sm">
@@ -117,7 +123,7 @@ export default function About() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900">Our Core Values</h2>
             <p className="mt-4 text-gray-600 max-w-2xl mx-auto">
-              These principles guide everything we do and define who we are as a firm.
+              These values shape how we work and how we serve our community.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

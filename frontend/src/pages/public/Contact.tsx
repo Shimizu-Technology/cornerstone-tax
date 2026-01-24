@@ -231,8 +231,11 @@ export default function Contact() {
                   <div>
                     <h3 className="font-semibold text-gray-900">Phone</h3>
                     <p className="text-gray-600 mt-1">
-                      <a href="tel:+16714828671" className="hover:text-primary">(671) 482-8671</a><br />
-                      <a href="tel:+16718288591" className="hover:text-primary">(671) 828-8591</a>
+                      Office: <a href="tel:+16718288591" className="hover:text-primary">(671) 828-8591</a><br />
+                      Cell: <a href="tel:+16714828671" className="hover:text-primary">(671) 482-8671</a>
+                    </p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Also available via WhatsApp
                     </p>
                   </div>
                 </div>
@@ -264,8 +267,12 @@ export default function Contact() {
                   <div>
                     <h3 className="font-semibold text-gray-900">Business Hours</h3>
                     <p className="text-gray-600 mt-1">
-                      Monday - Friday: 9:00 AM - 5:00 PM<br />
-                      <span className="text-sm text-gray-500">(Extended hours during tax season)</span>
+                      Monday - Friday: 8:00 AM - 5:00 PM<br />
+                      Saturday: 9:00 AM - 1:00 PM<br />
+                      Sunday: Closed
+                    </p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Holiday hours may vary. Please contact us to confirm availability.
                     </p>
                   </div>
                 </div>
