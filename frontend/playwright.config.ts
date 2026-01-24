@@ -42,7 +42,7 @@ export default defineConfig({
   // Shared settings for all projects
   use: {
     // Base URL for all tests
-    baseURL: 'http://localhost:5173',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173',
     
     // Collect trace on first retry
     trace: 'on-first-retry',
@@ -102,8 +102,8 @@ export default defineConfig({
   // Start local dev server before tests
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    url: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173',
+    reuseExistingServer: true,
     timeout: 120 * 1000,
   },
 });

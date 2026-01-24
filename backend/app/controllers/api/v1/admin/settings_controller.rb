@@ -3,7 +3,7 @@
 module Api
   module V1
     module Admin
-      class SettingsController < ApplicationController
+      class SettingsController < BaseController
         before_action :authenticate_user!
         before_action :require_admin!
 
