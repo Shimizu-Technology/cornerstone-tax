@@ -491,26 +491,27 @@ export default function Schedule() {
                               isToday ? 'bg-primary/5' : isWeekend ? 'bg-neutral-warm/30' : ''
                             }`}
                           >
-                            {cellSchedules.length > 0 ? (
-                              <div className="space-y-1">
-                                {cellSchedules.map(schedule => (
-                                  <button
-                                    key={schedule.id}
-                                    onClick={() => openEditModal(schedule)}
-                                    className="w-full px-2 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary text-xs font-medium rounded transition-colors"
-                                  >
-                                    {schedule.formatted_time_range.replace(' AM', 'a').replace(' PM', 'p').replace(' - ', '-')}
-                                  </button>
-                                ))}
-                              </div>
-                            ) : (
+                            <div className="space-y-1">
+                              {/* Existing shifts */}
+                              {cellSchedules.map(schedule => (
+                                <button
+                                  key={schedule.id}
+                                  onClick={() => openEditModal(schedule)}
+                                  className="w-full px-2 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary text-xs font-medium rounded transition-colors"
+                                >
+                                  {schedule.formatted_time_range.replace(' AM', 'a').replace(' PM', 'p').replace(' - ', '-')}
+                                </button>
+                              ))}
+                              {/* Always show Add button */}
                               <button
                                 onClick={() => openAddModal(user.id, dateStr)}
-                                className="w-full px-2 py-1.5 border-2 border-dashed border-neutral-warm hover:border-primary hover:bg-primary/5 text-text-muted hover:text-primary text-xs rounded transition-colors"
+                                className={`w-full px-2 py-1.5 border-2 border-dashed border-neutral-warm hover:border-primary hover:bg-primary/5 text-text-muted hover:text-primary text-xs rounded transition-colors ${
+                                  cellSchedules.length > 0 ? 'opacity-60 hover:opacity-100' : ''
+                                }`}
                               >
                                 + Add
                               </button>
-                            )}
+                            </div>
                           </td>
                         )
                       })}
