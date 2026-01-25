@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_01_25_065644) do
+ActiveRecord::Schema[8.1].define(version: 2026_01_25_074154) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -108,6 +108,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_25_065644) do
     t.index ["client_id"], name: "index_notifications_on_client_id"
     t.index ["status"], name: "index_notifications_on_status"
     t.index ["tax_return_id"], name: "index_notifications_on_tax_return_id"
+  end
+
+  create_table "schedule_time_presets", force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.time "end_time", null: false
+    t.string "label", null: false
+    t.integer "position", default: 0, null: false
+    t.time "start_time", null: false
+    t.datetime "updated_at", null: false
+    t.index ["active"], name: "index_schedule_time_presets_on_active"
+    t.index ["position"], name: "index_schedule_time_presets_on_position"
   end
 
   create_table "schedules", force: :cascade do |t|

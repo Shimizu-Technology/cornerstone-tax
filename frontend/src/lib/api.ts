@@ -449,6 +449,24 @@ export interface SchedulesResponse {
   }>;
 }
 
+// Schedule Time Preset Types
+export interface ScheduleTimePreset {
+  id: number;
+  label: string;
+  start_time: string;
+  end_time: string;
+  formatted_start_time: string;
+  formatted_end_time: string;
+  position: number;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ScheduleTimePresetsResponse {
+  presets: ScheduleTimePreset[];
+}
+
 // Document Types
 export interface Document {
   id: number;
@@ -841,4 +859,35 @@ export const api = {
       method: 'DELETE',
     });
   },
+
+  // Schedule Time Presets (for schedule form)
+  getScheduleTimePresets: () =>
+    fetchApi<ScheduleTimePresetsResponse>('/api/v1/schedule_time_presets'),
+
+  // Schedule Time Presets Admin (CRUD)
+  getAdminScheduleTimePresets: () =>
+    fetchApi<ScheduleTimePresetsResponse>('/api/v1/admin/schedule_time_presets'),
+
+  createScheduleTimePreset: (data: { label: string; start_time: string; end_time: string }) =>
+    fetchApi<{ preset: ScheduleTimePreset }>('/api/v1/admin/schedule_time_presets', {
+      method: 'POST',
+      body: JSON.stringify({ preset: data }),
+    }),
+
+  updateScheduleTimePreset: (id: number, data: Partial<{ label: string; start_time: string; end_time: string; position: number; active: boolean }>) =>
+    fetchApi<{ preset: ScheduleTimePreset }>(`/api/v1/admin/schedule_time_presets/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ preset: data }),
+    }),
+
+  deleteScheduleTimePreset: (id: number) =>
+    fetchApi<void>(`/api/v1/admin/schedule_time_presets/${id}`, {
+      method: 'DELETE',
+    }),
+
+  reorderScheduleTimePresets: (positions: Array<{ id: number; position: number }>) =>
+    fetchApi<{ success: boolean }>('/api/v1/admin/schedule_time_presets/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ positions }),
+    }),
 };

@@ -25,9 +25,20 @@ interface AdminTimeCategoryLocal {
   updated_at: string
 }
 
+interface ScheduleTimePresetLocal {
+  id: number
+  label: string
+  start_time: string
+  end_time: string
+  formatted_start_time: string
+  formatted_end_time: string
+  position: number
+  active: boolean
+}
+
 export default function Settings() {
   // Active tab
-  const [activeTab, setActiveTab] = useState<'workflow' | 'time' | 'system'>('workflow')
+  const [activeTab, setActiveTab] = useState<'workflow' | 'time' | 'schedule' | 'system'>('workflow')
   
   // System Settings state
   const [_systemSettings, setSystemSettings] = useState<Record<string, string>>({})
@@ -63,6 +74,19 @@ export default function Settings() {
   const [savingCategory, setSavingCategory] = useState(false)
   const [categoryError, setCategoryError] = useState('')
 
+  // Schedule Time Presets state
+  const [presets, setPresets] = useState<ScheduleTimePresetLocal[]>([])
+  const [loadingPresets, setLoadingPresets] = useState(true)
+  const [editingPreset, setEditingPreset] = useState<ScheduleTimePresetLocal | null>(null)
+  const [isAddingNewPreset, setIsAddingNewPreset] = useState(false)
+  const [presetFormData, setPresetFormData] = useState({
+    label: '',
+    start_time: '08:00',
+    end_time: '17:00',
+  })
+  const [savingPreset, setSavingPreset] = useState(false)
+  const [presetError, setPresetError] = useState('')
+
   const colorOptions = [
     { value: 'blue', label: 'Blue', hex: '#3B82F6' },
     { value: 'yellow', label: 'Yellow', hex: '#F59E0B' },
@@ -77,6 +101,7 @@ export default function Settings() {
   useEffect(() => {
     fetchStages()
     fetchCategories()
+    fetchPresets()
     fetchSystemSettings()
   }, [])
 
@@ -126,6 +151,15 @@ export default function Settings() {
       setCategories(response.data.time_categories as unknown as AdminTimeCategoryLocal[])
     }
     setLoadingCategories(false)
+  }
+
+  const fetchPresets = async () => {
+    setLoadingPresets(true)
+    const response = await api.getAdminScheduleTimePresets()
+    if (response.data) {
+      setPresets(response.data.presets as unknown as ScheduleTimePresetLocal[])
+    }
+    setLoadingPresets(false)
   }
 
   const generateSlug = (name: string) => {
@@ -289,6 +323,68 @@ export default function Settings() {
     setCategoryError('')
   }
 
+  // Schedule Time Preset handlers
+  const handleSavePreset = async () => {
+    if (!presetFormData.label.trim()) {
+      setPresetError('Label is required')
+      return
+    }
+
+    setSavingPreset(true)
+    setPresetError('')
+
+    try {
+      if (editingPreset) {
+        const response = await api.updateScheduleTimePreset(editingPreset.id, presetFormData)
+        if (response.data) {
+          setPresets(prev => prev.map(p => p.id === editingPreset.id ? response.data!.preset as unknown as ScheduleTimePresetLocal : p))
+          setEditingPreset(null)
+        } else if (response.error) {
+          setPresetError(response.error)
+        }
+      } else {
+        const response = await api.createScheduleTimePreset(presetFormData)
+        if (response.data) {
+          setPresets(prev => [...prev, response.data!.preset as unknown as ScheduleTimePresetLocal])
+          setIsAddingNewPreset(false)
+          setPresetFormData({ label: '', start_time: '08:00', end_time: '17:00' })
+        } else if (response.error) {
+          setPresetError(response.error)
+        }
+      }
+    } finally {
+      setSavingPreset(false)
+    }
+  }
+
+  const handleDeletePreset = async (preset: ScheduleTimePresetLocal) => {
+    if (!confirm(`Are you sure you want to delete "${preset.label}"?`)) {
+      return
+    }
+
+    const response = await api.deleteScheduleTimePreset(preset.id)
+    if (!response.error) {
+      setPresets(prev => prev.filter(p => p.id !== preset.id))
+    }
+  }
+
+  const startEditPreset = (preset: ScheduleTimePresetLocal) => {
+    setEditingPreset(preset)
+    setPresetFormData({
+      label: preset.label,
+      start_time: preset.start_time,
+      end_time: preset.end_time,
+    })
+    setIsAddingNewPreset(false)
+  }
+
+  const cancelEditPreset = () => {
+    setEditingPreset(null)
+    setIsAddingNewPreset(false)
+    setPresetFormData({ label: '', start_time: '08:00', end_time: '17:00' })
+    setPresetError('')
+  }
+
   const getColorHex = (color: string | null) => {
     const colorOption = colorOptions.find(c => c.value === color) || colorOptions[0]
     return colorOption.hex
@@ -329,6 +425,16 @@ export default function Settings() {
             }`}
           >
             Time Categories
+          </button>
+          <button
+            onClick={() => setActiveTab('schedule')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'schedule'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-muted hover:text-primary-dark'
+            }`}
+          >
+            Schedule Presets
           </button>
           <button
             onClick={() => setActiveTab('system')}
@@ -633,6 +739,113 @@ export default function Settings() {
       </div>
       )}
 
+      {/* Schedule Time Presets Tab */}
+      {activeTab === 'schedule' && (
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden">
+        <div className="px-6 py-5 border-b border-neutral-warm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-primary-dark">Schedule Time Presets</h2>
+            <p className="text-sm text-text-muted mt-0.5">Quick time options for the employee schedule form</p>
+          </div>
+          {!isAddingNewPreset && !editingPreset && (
+            <button
+              onClick={() => setIsAddingNewPreset(true)}
+              className="inline-flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-dark transition-all shadow-md hover:shadow-lg"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Preset
+            </button>
+          )}
+        </div>
+
+        {loadingPresets ? (
+          <div className="p-12 text-center">
+            <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto" />
+          </div>
+        ) : (
+          <div className="divide-y divide-neutral-warm">
+            {/* Add New Form */}
+            {isAddingNewPreset && (
+              <div className="p-6 bg-neutral-warm/30">
+                <h3 className="font-semibold text-primary-dark mb-4">Add New Preset</h3>
+                <PresetForm
+                  formData={presetFormData}
+                  onChange={setPresetFormData}
+                  onSave={handleSavePreset}
+                  onCancel={cancelEditPreset}
+                  saving={savingPreset}
+                  error={presetError}
+                />
+              </div>
+            )}
+
+            {/* Existing Presets */}
+            {presets.length === 0 && !isAddingNewPreset ? (
+              <div className="p-12 text-center">
+                <p className="text-text-muted">No presets configured. Add your first preset above.</p>
+              </div>
+            ) : (
+              presets.map(preset => (
+                <div key={preset.id} className="p-6">
+                  {editingPreset?.id === preset.id ? (
+                    <div>
+                      <h3 className="font-semibold text-primary-dark mb-4">Edit Preset</h3>
+                      <PresetForm
+                        formData={presetFormData}
+                        onChange={setPresetFormData}
+                        onSave={handleSavePreset}
+                        onCancel={cancelEditPreset}
+                        saving={savingPreset}
+                        error={presetError}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                          <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-primary-dark">{preset.label}</p>
+                          <p className="text-sm text-text-muted">
+                            {preset.formatted_start_time} → {preset.formatted_end_time}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => startEditPreset(preset)}
+                          className="p-2 text-text-muted hover:text-primary hover:bg-neutral-warm rounded-lg transition-colors"
+                          title="Edit"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDeletePreset(preset)}
+                          className="p-2 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+      )}
+
       {/* System Settings Tab */}
       {activeTab === 'system' && (
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden">
@@ -859,6 +1072,85 @@ function CategoryForm({ formData, onFormChange, onSave, onCancel, saving, error 
           className="px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-dark disabled:opacity-50 transition-all shadow-md"
         >
           {saving ? 'Saving...' : 'Save Category'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Preset Form Component
+interface PresetFormProps {
+  formData: { label: string; start_time: string; end_time: string }
+  onChange: (data: { label: string; start_time: string; end_time: string }) => void
+  onSave: () => void
+  onCancel: () => void
+  saving: boolean
+  error: string
+}
+
+function PresetForm({ formData, onChange, onSave, onCancel, saving, error }: PresetFormProps) {
+  return (
+    <div className="space-y-5">
+      {error && (
+        <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm border border-red-100">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-primary-dark mb-2">
+            Label <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={formData.label}
+            onChange={(e) => onChange({ ...formData, label: e.target.value })}
+            placeholder="e.g., 8-5"
+            className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-primary-dark mb-2">
+            Start Time <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="time"
+            value={formData.start_time}
+            onChange={(e) => onChange({ ...formData, start_time: e.target.value })}
+            className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-primary-dark mb-2">
+            End Time <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="time"
+            value={formData.end_time}
+            onChange={(e) => onChange({ ...formData, end_time: e.target.value })}
+            className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 pt-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-5 py-2.5 text-text-muted hover:bg-neutral-warm rounded-xl text-sm font-medium transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          className="px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-dark disabled:opacity-50 transition-all shadow-md"
+        >
+          {saving ? 'Saving...' : 'Save Preset'}
         </button>
       </div>
     </div>

@@ -1,21 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
-import type { Schedule as ScheduleType } from '../../lib/api'
+import type { Schedule as ScheduleType, ScheduleTimePreset } from '../../lib/api'
 
 interface UserOption {
   id: number
   email: string
 }
 
-// Quick time presets based on common shifts
-const TIME_PRESETS = [
-  { label: '8-1', start: '08:00', end: '13:00' },
-  { label: '8-5', start: '08:00', end: '17:00' },
-  { label: '8:30-5', start: '08:30', end: '17:00' },
-  { label: '9-5', start: '09:00', end: '17:00' },
-  { label: '12:30-5', start: '12:30', end: '17:00' },
-  { label: '1-5', start: '13:00', end: '17:00' },
+// Fallback presets in case API fails
+const DEFAULT_PRESETS = [
+  { label: '8-1', start_time: '08:00', end_time: '13:00' },
+  { label: '8-5', start_time: '08:00', end_time: '17:00' },
+  { label: '8:30-5', start_time: '08:30', end_time: '17:00' },
+  { label: '9-5', start_time: '09:00', end_time: '17:00' },
+  { label: '12:30-5', start_time: '12:30', end_time: '17:00' },
+  { label: '1-5', start_time: '13:00', end_time: '17:00' },
 ]
 
 type ViewMode = 'grid' | 'list'
@@ -54,6 +54,7 @@ export default function Schedule() {
   const navigate = useNavigate()
   const [schedules, setSchedules] = useState<ScheduleType[]>([])
   const [users, setUsers] = useState<UserOption[]>([])
+  const [timePresets, setTimePresets] = useState<Array<{ label: string; start_time: string; end_time: string }>>(DEFAULT_PRESETS)
   const [loading, setLoading] = useState(true)
   const [currentWeekStart, setCurrentWeekStart] = useState(() => getWeekStart(new Date()))
   const [viewMode, setViewMode] = useState<ViewMode>('list')
@@ -91,9 +92,28 @@ export default function Schedule() {
     }
   }, [currentWeekStart])
 
+  const loadPresets = useCallback(async () => {
+    try {
+      const response = await api.getScheduleTimePresets()
+      if (response.data && response.data.presets.length > 0) {
+        setTimePresets(response.data.presets.map((p: ScheduleTimePreset) => ({
+          label: p.label,
+          start_time: p.start_time,
+          end_time: p.end_time,
+        })))
+      }
+    } catch (err) {
+      console.error('Failed to load presets, using defaults:', err)
+    }
+  }, [])
+
   useEffect(() => {
     loadSchedules()
   }, [loadSchedules])
+
+  useEffect(() => {
+    loadPresets()
+  }, [loadPresets])
 
   // Navigation
   const goToPrevWeek = () => {
@@ -162,11 +182,11 @@ export default function Schedule() {
   }
 
   // Apply time preset
-  const applyPreset = (preset: typeof TIME_PRESETS[0]) => {
+  const applyPreset = (preset: { label: string; start_time: string; end_time: string }) => {
     setFormData(prev => ({
       ...prev,
-      start_time: preset.start,
-      end_time: preset.end,
+      start_time: preset.start_time,
+      end_time: preset.end_time,
     }))
   }
 
@@ -588,13 +608,13 @@ export default function Schedule() {
                     Quick Times
                   </label>
                   <div className="flex flex-wrap gap-2">
-                    {TIME_PRESETS.map(preset => (
+                    {timePresets.map(preset => (
                       <button
                         key={preset.label}
                         type="button"
                         onClick={() => applyPreset(preset)}
                         className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                          formData.start_time === preset.start && formData.end_time === preset.end
+                          formData.start_time === preset.start_time && formData.end_time === preset.end_time
                             ? 'bg-primary text-white'
                             : 'bg-neutral-warm text-primary-dark hover:bg-primary/20'
                         }`}

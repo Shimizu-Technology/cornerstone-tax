@@ -62,6 +62,9 @@ Rails.application.routes.draw do
         end
       end
 
+      # Schedule time presets (active only, for schedule form)
+      resources :schedule_time_presets, only: [:index]
+
       # Admin-only routes
       namespace :admin do
         resources :workflow_stages do
@@ -78,6 +81,13 @@ Rails.application.routes.draw do
 
         # Time category management
         resources :time_categories, only: [:index, :show, :create, :update, :destroy]
+
+        # Schedule time presets management
+        resources :schedule_time_presets, only: [:index, :show, :create, :update, :destroy] do
+          collection do
+            post :reorder
+          end
+        end
 
         # System settings
         resource :settings, only: [:show, :update]

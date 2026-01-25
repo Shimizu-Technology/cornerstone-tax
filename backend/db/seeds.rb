@@ -49,7 +49,29 @@ time_categories.each do |attrs|
   puts "  ✓ #{category.name}"
 end
 
+# ============================================
+# Schedule Time Presets (Configurable)
+# ============================================
+puts "Creating schedule time presets..."
+
+schedule_presets = [
+  { label: "8-1", start_time: "08:00", end_time: "13:00", position: 0 },
+  { label: "8-5", start_time: "08:00", end_time: "17:00", position: 1 },
+  { label: "8:30-5", start_time: "08:30", end_time: "17:00", position: 2 },
+  { label: "9-5", start_time: "09:00", end_time: "17:00", position: 3 },
+  { label: "12:30-5", start_time: "12:30", end_time: "17:00", position: 4 },
+  { label: "1-5", start_time: "13:00", end_time: "17:00", position: 5 }
+]
+
+schedule_presets.each do |attrs|
+  preset = ScheduleTimePreset.find_or_initialize_by(label: attrs[:label])
+  preset.assign_attributes(attrs)
+  preset.save!
+  puts "  ✓ #{preset.label}"
+end
+
 puts ""
 puts "✅ Seeding complete!"
 puts "   - #{WorkflowStage.count} workflow stages"
 puts "   - #{TimeCategory.count} time categories"
+puts "   - #{ScheduleTimePreset.count} schedule time presets"
