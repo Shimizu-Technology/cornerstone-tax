@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 
 // Local types to avoid Vite caching issues
@@ -122,6 +123,7 @@ function isSameDay(date1: Date, date2: Date): boolean {
 }
 
 export default function TimeTracking() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [entries, setEntries] = useState<TimeEntryItem[]>([])
   const [categories, setCategories] = useState<TimeCategory[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
@@ -276,6 +278,30 @@ export default function TimeTracking() {
       loadReport()
     }
   }, [activeTab, loadReport])
+
+  // Handle prefill from schedule
+  useEffect(() => {
+    const prefill = searchParams.get('prefill')
+    if (prefill === 'true') {
+      const date = searchParams.get('date') || formatDateISO(new Date())
+      const hours = searchParams.get('hours') || ''
+      const notes = searchParams.get('notes') || ''
+      
+      // Open modal with pre-filled data
+      setEditingEntry(null)
+      setFormData({
+        work_date: date,
+        hours: hours,
+        description: notes,
+        time_category_id: '',
+        client_id: ''
+      })
+      setShowModal(true)
+      
+      // Clear the URL params
+      setSearchParams({})
+    }
+  }, [searchParams, setSearchParams])
 
   // Navigation
   const goToToday = () => setCurrentDate(new Date())

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
+import type { Schedule } from '../../lib/api'
 import QuickCreateClientModal from '../../components/admin/QuickCreateClientModal'
 
 interface DashboardStats {
@@ -30,21 +31,30 @@ export default function Dashboard() {
     readyForPickup: 0,
   })
   const [recentClients, setRecentClients] = useState<RecentClient[]>([])
+  const [mySchedule, setMySchedule] = useState<Schedule[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
 
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const result = await api.getClients({ per_page: 5 })
-        if (result.data) {
-          setRecentClients(result.data.clients)
+        const [clientsResult, scheduleResult] = await Promise.all([
+          api.getClients({ per_page: 5 }),
+          api.getMySchedule(),
+        ])
+        
+        if (clientsResult.data) {
+          setRecentClients(clientsResult.data.clients)
           setStats({
-            totalClients: result.data.meta.total_count,
-            activeReturns: result.data.meta.total_count,
+            totalClients: clientsResult.data.meta.total_count,
+            activeReturns: clientsResult.data.meta.total_count,
             pendingReview: 0,
             readyForPickup: 0,
           })
+        }
+        
+        if (scheduleResult.data) {
+          setMySchedule(scheduleResult.data.schedules)
         }
       } catch (error) {
         console.error('Failed to load dashboard data:', error)
@@ -134,6 +144,63 @@ export default function Dashboard() {
           }
           gradient="from-teal-500 to-teal-600"
         />
+      </div>
+
+      {/* My Schedule */}
+      <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden">
+        <div className="px-6 py-5 border-b border-secondary-dark flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">My Upcoming Shifts</h2>
+          <Link
+            to="/admin/schedule"
+            className="text-primary hover:text-primary-dark text-sm font-medium inline-flex items-center gap-1 transition-colors"
+          >
+            View Full Schedule
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        </div>
+        <div className="divide-y divide-secondary-dark">
+          {mySchedule.length === 0 ? (
+            <div className="px-6 py-8 text-center">
+              <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <p className="text-gray-500">No upcoming shifts scheduled</p>
+            </div>
+          ) : (
+            mySchedule.slice(0, 5).map((schedule) => (
+              <div key={schedule.id} className="px-6 py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {new Date(schedule.work_date + 'T00:00:00').toLocaleDateString('en-US', { 
+                          weekday: 'short', 
+                          month: 'short', 
+                          day: 'numeric' 
+                        })}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {schedule.formatted_time_range}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-sm font-semibold text-primary">
+                    {schedule.hours.toFixed(1)}h
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* Recent Clients */}

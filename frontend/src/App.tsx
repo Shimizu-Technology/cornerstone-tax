@@ -29,6 +29,7 @@ import Activity from './pages/admin/Activity'
 import Users from './pages/admin/Users'
 import Settings from './pages/admin/Settings'
 import TimeTracking from './pages/admin/TimeTracking'
+import Schedule from './pages/admin/Schedule'
 
 function App() {
   return (
@@ -64,6 +65,7 @@ function App() {
           <Route path="users" element={<Users />} />
           <Route path="settings" element={<Settings />} />
           <Route path="time" element={<TimeTracking />} />
+          <Route path="schedule" element={<Schedule />} />
         </Route>
       </Routes>
     </BrowserRouter>

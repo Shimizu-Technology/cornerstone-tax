@@ -417,6 +417,38 @@ export interface TimeEntriesResponse {
   };
 }
 
+// Schedule Types
+export interface Schedule {
+  id: number;
+  user_id: number;
+  user: {
+    id: number;
+    email: string;
+  };
+  work_date: string;
+  start_time: string;
+  end_time: string;
+  formatted_start_time: string;
+  formatted_end_time: string;
+  formatted_time_range: string;
+  hours: number;
+  notes: string | null;
+  created_by: {
+    id: number;
+    email: string;
+  } | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SchedulesResponse {
+  schedules: Schedule[];
+  users: Array<{
+    id: number;
+    email: string;
+  }>;
+}
+
 // Document Types
 export interface Document {
   id: number;
@@ -740,4 +772,73 @@ export const api = {
     fetchApi<void>(`/api/v1/documents/${documentId}`, {
       method: 'DELETE',
     }),
+
+  // Employee Scheduling
+  getSchedules: (params?: {
+    week?: string;
+    start_date?: string;
+    end_date?: string;
+    user_id?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.week) searchParams.set('week', params.week);
+    if (params?.start_date) searchParams.set('start_date', params.start_date);
+    if (params?.end_date) searchParams.set('end_date', params.end_date);
+    if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
+    const query = searchParams.toString();
+    return fetchApi<SchedulesResponse>(`/api/v1/schedules${query ? `?${query}` : ''}`);
+  },
+
+  getMySchedule: () =>
+    fetchApi<{ schedules: Schedule[] }>('/api/v1/schedules/my_schedule'),
+
+  createSchedule: (data: {
+    user_id: number;
+    work_date: string;
+    start_time: string;
+    end_time: string;
+    notes?: string;
+  }) =>
+    fetchApi<{ schedule: Schedule }>('/api/v1/schedules', {
+      method: 'POST',
+      body: JSON.stringify({ schedule: data }),
+    }),
+
+  bulkCreateSchedules: (schedules: Array<{
+    user_id: number;
+    work_date: string;
+    start_time: string;
+    end_time: string;
+    notes?: string;
+  }>) =>
+    fetchApi<{ schedules: Schedule[] }>('/api/v1/schedules/bulk_create', {
+      method: 'POST',
+      body: JSON.stringify({ schedules }),
+    }),
+
+  updateSchedule: (id: number, data: Partial<{
+    user_id: number;
+    work_date: string;
+    start_time: string;
+    end_time: string;
+    notes: string;
+  }>) =>
+    fetchApi<{ schedule: Schedule }>(`/api/v1/schedules/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ schedule: data }),
+    }),
+
+  deleteSchedule: (id: number) =>
+    fetchApi<void>(`/api/v1/schedules/${id}`, {
+      method: 'DELETE',
+    }),
+
+  clearWeekSchedules: (week: string, userId?: number) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('week', week);
+    if (userId) searchParams.set('user_id', userId.toString());
+    return fetchApi<{ message: string }>(`/api/v1/schedules/clear_week?${searchParams.toString()}`, {
+      method: 'DELETE',
+    });
+  },
 };

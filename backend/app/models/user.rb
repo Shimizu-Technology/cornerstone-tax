@@ -7,6 +7,8 @@ class User < ApplicationRecord
   has_many :reviewed_tax_returns, class_name: "TaxReturn", foreign_key: "reviewed_by_id", dependent: :nullify
   has_many :workflow_events, dependent: :nullify
   has_many :time_entries, dependent: :destroy
+  has_many :schedules, dependent: :destroy
+  has_many :created_schedules, class_name: "Schedule", foreign_key: "created_by_id", dependent: :nullify
   has_many :uploaded_documents, class_name: "Document", foreign_key: "uploaded_by_id", dependent: :nullify
   has_many :created_transmittals, class_name: "Transmittal", foreign_key: "created_by_id", dependent: :nullify
 

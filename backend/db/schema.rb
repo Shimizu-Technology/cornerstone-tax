@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_01_24_002234) do
+ActiveRecord::Schema[8.1].define(version: 2026_01_25_065644) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -108,6 +108,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_24_002234) do
     t.index ["client_id"], name: "index_notifications_on_client_id"
     t.index ["status"], name: "index_notifications_on_status"
     t.index ["tax_return_id"], name: "index_notifications_on_tax_return_id"
+  end
+
+  create_table "schedules", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.time "end_time", null: false
+    t.text "notes"
+    t.time "start_time", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.date "work_date", null: false
+    t.index ["created_by_id"], name: "index_schedules_on_created_by_id"
+    t.index ["user_id", "work_date"], name: "index_schedules_on_user_id_and_work_date"
+    t.index ["user_id"], name: "index_schedules_on_user_id"
+    t.index ["work_date"], name: "index_schedules_on_work_date"
   end
 
   create_table "settings", force: :cascade do |t|
@@ -227,6 +242,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_24_002234) do
   add_foreign_key "income_sources", "tax_returns"
   add_foreign_key "notifications", "clients"
   add_foreign_key "notifications", "tax_returns"
+  add_foreign_key "schedules", "users"
+  add_foreign_key "schedules", "users", column: "created_by_id"
   add_foreign_key "tax_returns", "clients"
   add_foreign_key "tax_returns", "users", column: "assigned_to_id"
   add_foreign_key "tax_returns", "users", column: "reviewed_by_id"

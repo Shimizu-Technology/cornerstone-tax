@@ -53,6 +53,15 @@ Rails.application.routes.draw do
       resources :time_entries, only: [:index, :show, :create, :update, :destroy]
       resources :time_categories, only: [:index]
 
+      # Employee scheduling
+      resources :schedules, only: [:index, :show, :create, :update, :destroy] do
+        collection do
+          get :my_schedule
+          post :bulk_create
+          delete :clear_week
+        end
+      end
+
       # Admin-only routes
       namespace :admin do
         resources :workflow_stages do
