@@ -37,7 +37,7 @@ module Api
 
         render json: {
           schedules: @schedules.map { |schedule| serialize_schedule(schedule) },
-          users: User.staff.map { |u| { id: u.id, email: u.email } }
+          users: User.staff.map { |u| { id: u.id, email: u.email, display_name: u.display_name, full_name: u.full_name } }
         }
       end
 
@@ -164,7 +164,9 @@ module Api
           user_id: schedule.user_id,
           user: {
             id: schedule.user.id,
-            email: schedule.user.email
+            email: schedule.user.email,
+            display_name: schedule.user.display_name,
+            full_name: schedule.user.full_name
           },
           work_date: schedule.work_date.iso8601,
           start_time: schedule.start_time.strftime("%H:%M"),

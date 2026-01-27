@@ -22,7 +22,20 @@ class User < ApplicationRecord
   scope :staff, -> { where(role: %w[admin employee]) }
 
   def full_name
-    email
+    if first_name.present? || last_name.present?
+      "#{first_name} #{last_name}".strip
+    else
+      email
+    end
+  end
+
+  # Short display name for UI (first name or email prefix)
+  def display_name
+    if first_name.present?
+      first_name
+    else
+      email.split("@").first
+    end
   end
 
   def admin?

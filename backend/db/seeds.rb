@@ -70,8 +70,45 @@ schedule_presets.each do |attrs|
   puts "  ✓ #{preset.label}"
 end
 
+# ============================================
+# Staff Users (Development only)
+# ============================================
+if Rails.env.development? || Rails.env.test?
+  puts "Creating staff users for development..."
+
+  staff_users = [
+    { email: "shimizutechnology@gmail.com", first_name: "Leon", role: "admin" },
+    { email: "lmshimizu@gmail.com", first_name: "Leon", role: "admin" },
+    { email: "dmshimizucpa@gmail.com", first_name: "Dafne", role: "admin" },
+    { email: "audreana.lett@gmail.com", first_name: "Audreana", role: "employee" },
+    { email: "kamisirenacruz99@gmail.com", first_name: "Kami", role: "employee" },
+    { email: "kyleiahmoana@gmail.com", first_name: "Ky", role: "employee" },
+    { email: "lannikcru@gmail.com", first_name: "Alanna", role: "employee" }
+  ]
+
+  staff_users.each do |attrs|
+    user = User.find_or_initialize_by(email: attrs[:email])
+    # Only update if new record or if first_name is blank
+    if user.new_record?
+      user.assign_attributes(
+        first_name: attrs[:first_name],
+        role: attrs[:role],
+        clerk_id: "dev_#{SecureRandom.hex(8)}" # Placeholder for dev
+      )
+      user.save!
+      puts "  ✓ Created #{attrs[:first_name]} (#{attrs[:email]})"
+    elsif user.first_name.blank?
+      user.update!(first_name: attrs[:first_name])
+      puts "  ✓ Updated #{attrs[:first_name]} (#{attrs[:email]})"
+    else
+      puts "  - Skipped #{attrs[:email]} (already exists)"
+    end
+  end
+end
+
 puts ""
 puts "✅ Seeding complete!"
 puts "   - #{WorkflowStage.count} workflow stages"
 puts "   - #{TimeCategory.count} time categories"
 puts "   - #{ScheduleTimePreset.count} schedule time presets"
+puts "   - #{User.count} users" if Rails.env.development? || Rails.env.test?

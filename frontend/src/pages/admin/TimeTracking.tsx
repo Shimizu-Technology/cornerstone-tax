@@ -12,11 +12,18 @@ interface TimeCategory {
 interface TimeEntryItem {
   id: number
   work_date: string
+  start_time: string | null
+  end_time: string | null
+  formatted_start_time: string | null
+  formatted_end_time: string | null
   hours: number
+  break_minutes: number | null
   description: string | null
   user: {
     id: number
     email: string
+    display_name?: string
+    full_name?: string
   }
   time_category: {
     id: number
@@ -34,6 +41,16 @@ interface TimeEntryItem {
   updated_at: string
 }
 
+// Break duration presets
+const BREAK_PRESETS = [
+  { label: 'None', minutes: null },
+  { label: '15m', minutes: 15 },
+  { label: '30m', minutes: 30 },
+  { label: '45m', minutes: 45 },
+  { label: '1h', minutes: 60 },
+  { label: 'Custom', minutes: -1 }, // -1 indicates custom
+]
+
 interface ClientOption {
   id: number
   first_name: string
@@ -43,6 +60,8 @@ interface ClientOption {
 interface UserOption {
   id: number
   email: string
+  display_name?: string
+  full_name?: string
   role: string
 }
 
@@ -139,6 +158,13 @@ export default function TimeTracking() {
   const [viewMode, setViewMode] = useState<'day' | 'week'>('week')
   const [currentDate, setCurrentDate] = useState(new Date())
   
+  // Entries filters (for Time Entries tab)
+  const [entryFilters, setEntryFilters] = useState({
+    user_id: '',
+    time_category_id: '',
+    client_id: '',
+  })
+  
   // Report filters
   const [reportFilters, setReportFilters] = useState({
     start_date: formatDateISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), // First of month
@@ -148,7 +174,7 @@ export default function TimeTracking() {
   })
   const [reportData, setReportData] = useState<TimeEntryItem[]>([])
   const [reportLoading, setReportLoading] = useState(false)
-  const [reportSummary, setReportSummary] = useState({ total_hours: 0, entry_count: 0 })
+  const [reportSummary, setReportSummary] = useState({ total_hours: 0, total_break_hours: 0, entry_count: 0 })
   
   // Summary
   const [totalHours, setTotalHours] = useState(0)
@@ -158,12 +184,29 @@ export default function TimeTracking() {
   const [editingEntry, setEditingEntry] = useState<TimeEntryItem | null>(null)
   const [formData, setFormData] = useState({
     work_date: formatDateISO(new Date()),
-    hours: '',
+    start_time: '08:00',
+    end_time: '17:00',
     description: '',
     time_category_id: '',
-    client_id: ''
+    client_id: '',
+    break_minutes: null as number | null
   })
   const [saving, setSaving] = useState(false)
+
+  // Calculate hours from start/end times and break
+  const calculateHours = (start: string, end: string, breakMins: number | null): number => {
+    if (!start || !end) return 0
+    const [startH, startM] = start.split(':').map(Number)
+    const [endH, endM] = end.split(':').map(Number)
+    const startMinutes = startH * 60 + startM
+    const endMinutes = endH * 60 + endM
+    let durationMinutes = endMinutes - startMinutes
+    if (durationMinutes < 0) durationMinutes += 24 * 60 // Handle overnight
+    if (breakMins) durationMinutes -= breakMins
+    return Math.max(0, durationMinutes / 60)
+  }
+
+  const calculatedHours = calculateHours(formData.start_time, formData.end_time, formData.break_minutes)
 
   // Load time entries
   const loadEntries = useCallback(async () => {
@@ -171,7 +214,7 @@ export default function TimeTracking() {
     setError(null)
 
     try {
-      const params: Record<string, string> = {}
+      const params: Record<string, string | number> = {}
       
       if (viewMode === 'day') {
         params.date = formatDateISO(currentDate)
@@ -180,6 +223,17 @@ export default function TimeTracking() {
         const weekStart = new Date(currentDate)
         weekStart.setDate(currentDate.getDate() - currentDate.getDay())
         params.week = formatDateISO(weekStart)
+      }
+
+      // Apply filters
+      if (entryFilters.user_id) {
+        params.user_id = parseInt(entryFilters.user_id)
+      }
+      if (entryFilters.time_category_id) {
+        params.time_category_id = parseInt(entryFilters.time_category_id)
+      }
+      if (entryFilters.client_id) {
+        params.client_id = parseInt(entryFilters.client_id)
       }
 
       const response = await api.getTimeEntries(params as unknown as Parameters<typeof api.getTimeEntries>[0])
@@ -195,7 +249,7 @@ export default function TimeTracking() {
     } finally {
       setLoading(false)
     }
-  }, [currentDate, viewMode])
+  }, [currentDate, viewMode, entryFilters])
 
   // Load categories, clients, and users
   const loadOptions = useCallback(async () => {
@@ -223,6 +277,8 @@ export default function TimeTracking() {
         setUsers(userResponse.data.users.map(u => ({
           id: u.id,
           email: u.email,
+          display_name: u.display_name,
+          full_name: u.full_name,
           role: u.role
         })))
       }
@@ -256,7 +312,11 @@ export default function TimeTracking() {
       
       if (response.data) {
         setReportData(response.data.time_entries as unknown as TimeEntryItem[])
-        setReportSummary(response.data.summary)
+        setReportSummary({
+          total_hours: response.data.summary.total_hours,
+          total_break_hours: response.data.summary.total_break_hours || 0,
+          entry_count: response.data.summary.entry_count
+        })
       }
     } catch {
       console.error('Failed to load report')
@@ -284,17 +344,20 @@ export default function TimeTracking() {
     const prefill = searchParams.get('prefill')
     if (prefill === 'true') {
       const date = searchParams.get('date') || formatDateISO(new Date())
-      const hours = searchParams.get('hours') || ''
+      const startTime = searchParams.get('start_time') || '08:00'
+      const endTime = searchParams.get('end_time') || '17:00'
       const notes = searchParams.get('notes') || ''
       
       // Open modal with pre-filled data
       setEditingEntry(null)
       setFormData({
         work_date: date,
-        hours: hours,
+        start_time: startTime,
+        end_time: endTime,
         description: notes,
         time_category_id: '',
-        client_id: ''
+        client_id: '',
+        break_minutes: null
       })
       setShowModal(true)
       
@@ -327,14 +390,16 @@ export default function TimeTracking() {
   }
 
   // Modal handlers
-  const openNewEntry = (date?: Date) => {
+  const openNewEntry = (date?: Date, prefillStart?: string, prefillEnd?: string, prefillNotes?: string) => {
     setEditingEntry(null)
     setFormData({
       work_date: formatDateISO(date || currentDate),
-      hours: '',
-      description: '',
+      start_time: prefillStart || '08:00',
+      end_time: prefillEnd || '17:00',
+      description: prefillNotes || '',
       time_category_id: '',
-      client_id: ''
+      client_id: '',
+      break_minutes: null
     })
     setShowModal(true)
   }
@@ -343,10 +408,12 @@ export default function TimeTracking() {
     setEditingEntry(entry)
     setFormData({
       work_date: entry.work_date,
-      hours: entry.hours.toString(),
+      start_time: entry.start_time || '08:00',
+      end_time: entry.end_time || '17:00',
       description: entry.description || '',
       time_category_id: entry.time_category?.id.toString() || '',
-      client_id: entry.client?.id.toString() || ''
+      client_id: entry.client?.id.toString() || '',
+      break_minutes: entry.break_minutes
     })
     setShowModal(true)
   }
@@ -359,10 +426,12 @@ export default function TimeTracking() {
     try {
       const data = {
         work_date: formData.work_date,
-        hours: parseFloat(formData.hours),
+        start_time: formData.start_time,
+        end_time: formData.end_time,
         description: formData.description || undefined,
         time_category_id: formData.time_category_id ? parseInt(formData.time_category_id) : undefined,
-        client_id: formData.client_id ? parseInt(formData.client_id) : undefined
+        client_id: formData.client_id ? parseInt(formData.client_id) : undefined,
+        break_minutes: formData.break_minutes
       }
 
       if (editingEntry) {
@@ -431,9 +500,9 @@ export default function TimeTracking() {
   }, {} as Record<string, number>)
 
   const reportByUser = reportData.reduce((acc, entry) => {
-    const email = entry.user.email
-    if (!acc[email]) acc[email] = 0
-    acc[email] += entry.hours
+    const name = entry.user.display_name || entry.user.email.split('@')[0]
+    if (!acc[name]) acc[name] = 0
+    acc[name] += entry.hours
     return acc
   }, {} as Record<string, number>)
 
@@ -496,6 +565,62 @@ export default function TimeTracking() {
       {/* Entries Tab */}
       {activeTab === 'entries' && (
       <>
+      {/* Filters (Admin only) */}
+      {isAdmin && (
+        <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm text-text-muted mb-1">Employee</label>
+              <select
+                value={entryFilters.user_id}
+                onChange={(e) => setEntryFilters({ ...entryFilters, user_id: e.target.value })}
+                className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+              >
+                <option value="">All Employees</option>
+                {users.map(user => (
+                  <option key={user.id} value={user.id}>{user.display_name || user.email.split('@')[0]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-text-muted mb-1">Category</label>
+              <select
+                value={entryFilters.time_category_id}
+                onChange={(e) => setEntryFilters({ ...entryFilters, time_category_id: e.target.value })}
+                className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+              >
+                <option value="">All Categories</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-text-muted mb-1">Client</label>
+              <select
+                value={entryFilters.client_id}
+                onChange={(e) => setEntryFilters({ ...entryFilters, client_id: e.target.value })}
+                className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+              >
+                <option value="">All Clients</option>
+                {clients.map(client => (
+                  <option key={client.id} value={client.id}>{client.first_name} {client.last_name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {/* Clear filters button */}
+          {(entryFilters.user_id || entryFilters.time_category_id || entryFilters.client_id) && (
+            <button
+              onClick={() => setEntryFilters({ user_id: '', time_category_id: '', client_id: '' })}
+              className="mt-3 text-sm text-primary hover:text-primary-dark font-medium"
+            >
+              Clear all filters
+            </button>
+          )}
+        </div>
+      )}
+
       {/* View Controls */}
       <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
         {/* Mobile Layout */}
@@ -701,11 +826,16 @@ export default function TimeTracking() {
                           <ClockIcon />
                           {entry.hours}h
                         </div>
+                        {entry.formatted_start_time && entry.formatted_end_time && (
+                          <div className="text-primary-dark/70 text-[10px]">
+                            {entry.formatted_start_time} - {entry.formatted_end_time}
+                          </div>
+                        )}
                         {entry.time_category && (
                           <div className="text-primary font-medium truncate text-[10px] sm:text-xs">{entry.time_category.name}</div>
                         )}
                         {isAdmin && (
-                          <div className="text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1 hidden sm:block">{entry.user.email}</div>
+                          <div className="text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1 hidden sm:block">{entry.user.display_name || entry.user.email.split('@')[0]}</div>
                         )}
                       </div>
                     ))}
@@ -743,12 +873,17 @@ export default function TimeTracking() {
                 <div key={entry.id} className="p-3 sm:p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      {/* Hours + Category Row */}
+                      {/* Hours + Time + Category Row */}
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 bg-primary/20 text-primary font-bold rounded-full text-sm">
                           <ClockIcon />
                           {entry.hours}h
                         </span>
+                        {entry.formatted_start_time && entry.formatted_end_time && (
+                          <span className="text-xs sm:text-sm text-primary-dark/70">
+                            {entry.formatted_start_time} - {entry.formatted_end_time}
+                          </span>
+                        )}
                         {entry.time_category && (
                           <span className="px-2 py-1 bg-primary/10 text-primary font-medium text-xs sm:text-sm rounded">
                             {entry.time_category.name}
@@ -758,7 +893,7 @@ export default function TimeTracking() {
                       {/* User (only show for admin) */}
                       {isAdmin && (
                         <p className="mt-1 text-xs sm:text-sm text-primary-dark/80 truncate">
-                          by {entry.user.email}
+                          by {entry.user.display_name || entry.user.email.split('@')[0]}
                         </p>
                       )}
                       {/* Description */}
@@ -825,22 +960,83 @@ export default function TimeTracking() {
                   />
                 </div>
 
-                {/* Hours */}
+                {/* Time Range */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-primary-dark mb-1">
+                      Start Time *
+                    </label>
+                    <input
+                      type="time"
+                      value={formData.start_time}
+                      onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                      className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-primary-dark mb-1">
+                      End Time *
+                    </label>
+                    <input
+                      type="time"
+                      value={formData.end_time}
+                      onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
+                      className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      required
+                    />
+                  </div>
+                </div>
+                
+                {/* Calculated Hours Display */}
+                <div className="bg-neutral-warm/30 rounded-lg p-3 flex items-center justify-between">
+                  <span className="text-sm text-primary-dark">Calculated Hours:</span>
+                  <span className="text-lg font-bold text-primary">{calculatedHours.toFixed(2)}h</span>
+                </div>
+
+                {/* Break Duration */}
                 <div>
                   <label className="block text-sm font-medium text-primary-dark mb-1">
-                    Hours *
+                    Break Duration
                   </label>
-                  <input
-                    type="number"
-                    step="0.25"
-                    min="0.25"
-                    max="24"
-                    value={formData.hours}
-                    onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
-                    placeholder="2.5"
-                    className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                    required
-                  />
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {BREAK_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          if (preset.minutes === -1) {
+                            // Custom - keep current value or set to empty for custom input
+                            setFormData({ ...formData, break_minutes: formData.break_minutes || 0 })
+                          } else {
+                            setFormData({ ...formData, break_minutes: preset.minutes })
+                          }
+                        }}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                          (preset.minutes === null && formData.break_minutes === null) ||
+                          (preset.minutes === formData.break_minutes) ||
+                          (preset.minutes === -1 && formData.break_minutes !== null && !BREAK_PRESETS.slice(0, -1).some(p => p.minutes === formData.break_minutes))
+                            ? 'bg-primary text-white'
+                            : 'bg-neutral-warm text-primary-dark hover:bg-primary/20'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Custom input - show when a value is set that's not a preset, or when Custom is selected */}
+                  {formData.break_minutes !== null && !BREAK_PRESETS.slice(0, -1).some(p => p.minutes === formData.break_minutes) && (
+                    <input
+                      type="number"
+                      min="0"
+                      max="480"
+                      value={formData.break_minutes || ''}
+                      onChange={(e) => setFormData({ ...formData, break_minutes: e.target.value ? parseInt(e.target.value) : null })}
+                      placeholder="Minutes"
+                      className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  )}
+                  <p className="text-xs text-text-muted mt-1">Break time is not counted toward work hours</p>
                 </div>
 
                 {/* Category */}
@@ -953,7 +1149,7 @@ export default function TimeTracking() {
                   >
                     <option value="">All Employees</option>
                     {users.map(user => (
-                      <option key={user.id} value={user.id}>{user.email}</option>
+                      <option key={user.id} value={user.id}>{user.display_name || user.email.split('@')[0]}</option>
                     ))}
                   </select>
                 </div>
@@ -975,11 +1171,17 @@ export default function TimeTracking() {
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
-              <div className="text-sm text-text-muted">Total Hours</div>
+              <div className="text-sm text-text-muted">Work Hours</div>
               <div className="text-3xl font-bold text-primary mt-1">
                 {reportLoading ? '...' : reportSummary.total_hours.toFixed(1)}
+              </div>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
+              <div className="text-sm text-text-muted">Break Hours</div>
+              <div className="text-3xl font-bold text-text-muted mt-1">
+                {reportLoading ? '...' : reportSummary.total_break_hours.toFixed(1)}
               </div>
             </div>
             <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
@@ -1079,6 +1281,7 @@ export default function TimeTracking() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Date</th>
                     {isAdmin && <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Employee</th>}
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Time</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Category</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Client</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-text-muted uppercase">Hours</th>
@@ -1088,17 +1291,22 @@ export default function TimeTracking() {
                 <tbody className="divide-y divide-neutral-warm">
                   {reportLoading ? (
                     <tr>
-                      <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-text-muted">Loading...</td>
+                      <td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-text-muted">Loading...</td>
                     </tr>
                   ) : reportData.length === 0 ? (
                     <tr>
-                      <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-text-muted">No entries found</td>
+                      <td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-text-muted">No entries found</td>
                     </tr>
                   ) : (
                     reportData.slice(0, 100).map(entry => (
                       <tr key={entry.id} className="hover:bg-neutral-warm/20">
                         <td className="px-4 py-3 text-sm text-primary-dark whitespace-nowrap">{formatDate(entry.work_date)}</td>
-                        {isAdmin && <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{entry.user.email}</td>}
+                        {isAdmin && <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{entry.user.display_name || entry.user.email.split('@')[0]}</td>}
+                        <td className="px-4 py-3 text-sm text-primary-dark whitespace-nowrap">
+                          {entry.formatted_start_time && entry.formatted_end_time 
+                            ? `${entry.formatted_start_time} - ${entry.formatted_end_time}`
+                            : '-'}
+                        </td>
                         <td className="px-4 py-3 text-sm text-text-muted">{entry.time_category?.name || '-'}</td>
                         <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{entry.client?.name || '-'}</td>
                         <td className="px-4 py-3 text-sm text-primary font-semibold text-right">{entry.hours.toFixed(1)}</td>

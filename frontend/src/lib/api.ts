@@ -284,6 +284,7 @@ export interface UserSummary {
   email: string;
   first_name: string | null;
   last_name: string | null;
+  display_name: string;
   full_name: string;
   role: string;
 }
@@ -298,6 +299,10 @@ export interface AdminWorkflowStage extends WorkflowStage {
 export interface AdminUser {
   id: number;
   email: string;
+  first_name: string | null;
+  last_name: string | null;
+  display_name: string;
+  full_name: string;
   role: 'admin' | 'employee';
   is_active: boolean;
   is_pending: boolean;
@@ -381,11 +386,18 @@ export interface AdminTimeCategory extends TimeCategory {
 export interface TimeEntry {
   id: number;
   work_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  formatted_start_time: string | null;
+  formatted_end_time: string | null;
   hours: number;
+  break_minutes: number | null;
   description: string | null;
   user: {
     id: number;
     email: string;
+    display_name: string;
+    full_name: string;
   };
   time_category: {
     id: number;
@@ -413,6 +425,7 @@ export interface TimeEntriesResponse {
   };
   summary: {
     total_hours: number;
+    total_break_hours: number;
     entry_count: number;
   };
 }
@@ -424,6 +437,8 @@ export interface Schedule {
   user: {
     id: number;
     email: string;
+    display_name: string;
+    full_name: string;
   };
   work_date: string;
   start_time: string;
@@ -446,6 +461,8 @@ export interface SchedulesResponse {
   users: Array<{
     id: number;
     email: string;
+    display_name: string;
+    full_name: string;
   }>;
 }
 
@@ -655,10 +672,10 @@ export const api = {
   getAdminUsers: () =>
     fetchApi<{ users: AdminUser[] }>('/api/v1/admin/users'),
 
-  inviteUser: (email: string, role: 'admin' | 'employee') =>
+  inviteUser: (data: { email: string; first_name: string; last_name?: string; role: 'admin' | 'employee' }) =>
     fetchApi<{ user: AdminUser }>('/api/v1/admin/users', {
       method: 'POST',
-      body: JSON.stringify({ email, role }),
+      body: JSON.stringify(data),
     }),
 
   updateUserRole: (id: number, role: 'admin' | 'employee') =>
@@ -698,11 +715,13 @@ export const api = {
 
   createTimeEntry: (data: {
     work_date: string;
-    hours: number;
+    start_time: string;
+    end_time: string;
     description?: string;
     time_category_id?: number;
     client_id?: number;
     tax_return_id?: number;
+    break_minutes?: number | null;
   }) =>
     fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries', {
       method: 'POST',
@@ -711,11 +730,13 @@ export const api = {
 
   updateTimeEntry: (id: number, data: Partial<{
     work_date: string;
-    hours: number;
+    start_time: string;
+    end_time: string;
     description: string;
     time_category_id: number;
     client_id: number;
     tax_return_id: number;
+    break_minutes: number | null;
   }>) =>
     fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}`, {
       method: 'PATCH',

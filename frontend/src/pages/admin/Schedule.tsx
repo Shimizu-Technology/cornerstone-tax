@@ -6,6 +6,8 @@ import type { Schedule as ScheduleType, ScheduleTimePreset } from '../../lib/api
 interface UserOption {
   id: number
   email: string
+  display_name?: string
+  full_name?: string
 }
 
 // Fallback presets in case API fails
@@ -234,19 +236,15 @@ export default function Schedule() {
 
   // Log shift as time entry - navigate to time tracking with pre-filled data
   const handleLogShift = (schedule: ScheduleType) => {
-    // Store the schedule data to pre-fill in time tracking
-    const timeEntryData = {
-      date: schedule.work_date,
-      hours: schedule.hours,
-      notes: `Scheduled shift: ${schedule.formatted_time_range}`,
-    }
-    // Navigate to time tracking with query params
-    navigate(`/admin/time?prefill=true&date=${timeEntryData.date}&hours=${timeEntryData.hours}&notes=${encodeURIComponent(timeEntryData.notes)}`)
+    // Navigate to time tracking with start/end times from schedule
+    const notes = `Scheduled shift: ${schedule.formatted_time_range}`
+    navigate(`/admin/time?prefill=true&date=${schedule.work_date}&start_time=${schedule.start_time}&end_time=${schedule.end_time}&notes=${encodeURIComponent(notes)}`)
   }
 
-  // Get user display name (email prefix)
-  const getUserDisplayName = (email: string) => {
-    return email.split('@')[0]
+  // Get user display name (first name or email prefix)
+  const getUserDisplayName = (user: UserOption | undefined) => {
+    if (!user) return 'Unknown'
+    return user.display_name || user.email.split('@')[0]
   }
 
   // Get user by ID
@@ -406,12 +404,12 @@ export default function Schedule() {
                             <div className="flex items-center gap-3 sm:gap-4">
                               <div className="w-10 h-10 sm:w-10 sm:h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
                                 <span className="font-semibold text-primary text-sm sm:text-base">
-                                  {user ? getUserDisplayName(user.email).charAt(0).toUpperCase() : '?'}
+                                  {getUserDisplayName(user).charAt(0).toUpperCase()}
                                 </span>
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium text-primary-dark truncate">
-                                  {user ? getUserDisplayName(user.email) : 'Unknown'}
+                                  {getUserDisplayName(user)}
                                 </p>
                                 <p className="text-sm text-text-muted">
                                   {schedule.formatted_time_range}
@@ -495,7 +493,7 @@ export default function Schedule() {
                     <tr key={user.id} className="hover:bg-secondary/20 transition-colors">
                       <td className="px-4 py-3">
                         <div className="font-medium text-primary-dark text-sm">
-                          {getUserDisplayName(user.email)}
+                          {getUserDisplayName(user)}
                         </div>
                       </td>
                       {weekDates.map((date, idx) => {
@@ -583,7 +581,7 @@ export default function Schedule() {
                   >
                     {users.map(user => (
                       <option key={user.id} value={user.id}>
-                        {getUserDisplayName(user.email)}
+                        {getUserDisplayName(user)}
                       </option>
                     ))}
                   </select>

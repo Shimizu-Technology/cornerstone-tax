@@ -6,6 +6,10 @@ import { formatDateTime } from '../../lib/dateUtils'
 interface AdminUser {
   id: number
   email: string
+  first_name: string | null
+  last_name: string | null
+  display_name: string
+  full_name: string
   role: 'admin' | 'employee'
   is_active: boolean
   is_pending: boolean
@@ -17,6 +21,8 @@ export default function Users() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteFirstName, setInviteFirstName] = useState('')
+  const [inviteLastName, setInviteLastName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'admin' | 'employee'>('employee')
   const [inviting, setInviting] = useState(false)
@@ -40,19 +46,31 @@ export default function Users() {
     fetchUsers()
   }, [fetchUsers])
 
+  const resetInviteForm = () => {
+    setInviteFirstName('')
+    setInviteLastName('')
+    setInviteEmail('')
+    setInviteRole('employee')
+    setError('')
+  }
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setInviting(true)
 
     try {
-      const response = await api.inviteUser(inviteEmail, inviteRole)
+      const response = await api.inviteUser({
+        email: inviteEmail,
+        first_name: inviteFirstName,
+        last_name: inviteLastName || undefined,
+        role: inviteRole
+      })
       if (response.error) {
         setError(response.error)
       } else {
         setShowInviteModal(false)
-        setInviteEmail('')
-        setInviteRole('employee')
+        resetInviteForm()
         fetchUsers()
       }
     } catch (err) {
@@ -135,7 +153,7 @@ export default function Users() {
               <thead className="bg-secondary/50 border-b border-secondary-dark">
                 <tr>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Email
+                    Name
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Role
@@ -158,10 +176,13 @@ export default function Users() {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                           <span className="text-primary font-medium">
-                            {user.email.charAt(0).toUpperCase()}
+                            {(user.first_name || user.email).charAt(0).toUpperCase()}
                           </span>
                         </div>
-                        <span className="font-medium text-gray-900">{user.email}</span>
+                        <div>
+                          <p className="font-medium text-gray-900">{user.display_name || user.email.split('@')[0]}</p>
+                          <p className="text-sm text-gray-500">{user.email}</p>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -212,12 +233,13 @@ export default function Users() {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                   <span className="text-primary font-medium">
-                    {user.email.charAt(0).toUpperCase()}
+                    {(user.first_name || user.email).charAt(0).toUpperCase()}
                   </span>
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900 break-all">{user.email}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="font-medium text-gray-900">{user.display_name || user.email.split('@')[0]}</p>
+                  <p className="text-sm text-gray-500 break-all">{user.email}</p>
+                  <p className="text-xs text-gray-400">
                     Joined {formatDateTime(user.created_at)}
                   </p>
                 </div>
@@ -261,9 +283,7 @@ export default function Users() {
               <button
                 onClick={() => {
                   setShowInviteModal(false)
-                  setError('')
-                  setInviteEmail('')
-                  setInviteRole('employee')
+                  resetInviteForm()
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -280,9 +300,37 @@ export default function Users() {
                 </div>
               )}
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    First Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={inviteFirstName}
+                    onChange={(e) => setInviteFirstName(e.target.value)}
+                    placeholder="John"
+                    required
+                    className="w-full px-4 py-3 bg-secondary border border-secondary-dark rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    value={inviteLastName}
+                    onChange={(e) => setInviteLastName(e.target.value)}
+                    placeholder="Doe"
+                    className="w-full px-4 py-3 bg-secondary border border-secondary-dark rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address
+                  Email Address *
                 </label>
                 <input
                   type="email"
@@ -319,9 +367,7 @@ export default function Users() {
                   type="button"
                   onClick={() => {
                     setShowInviteModal(false)
-                    setError('')
-                    setInviteEmail('')
-                    setInviteRole('employee')
+                    resetInviteForm()
                   }}
                   className="flex-1 px-4 py-3 border border-secondary-dark rounded-xl text-gray-700 hover:bg-secondary transition-colors font-medium"
                 >

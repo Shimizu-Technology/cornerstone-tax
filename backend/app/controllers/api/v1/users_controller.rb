@@ -18,6 +18,7 @@ module Api
               email: user.email,
               first_name: user.first_name,
               last_name: user.last_name,
+              display_name: user.display_name,
               full_name: user.full_name,
               role: user.role
             }

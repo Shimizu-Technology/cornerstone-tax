@@ -219,6 +219,17 @@ AWS_S3_BUCKET=cornerstone-documents
 
 ## UI/Design Improvements (Client Feedback)
 
+### Client Name Display Simplification
+**Priority:** TBD | **Effort:** Low
+
+Leon requested: Show only first and last name for clients (need to clarify where - client list? dashboard? intake display?).
+
+**Needs clarification:**
+- Which views/screens should show simplified names?
+- Current display includes full details - which parts to hide?
+
+---
+
 ### Hero Section Logo
 **Priority:** TBD | **Effort:** Low
 

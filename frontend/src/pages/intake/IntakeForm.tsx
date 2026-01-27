@@ -20,9 +20,26 @@ const STEPS = [
   'Authorization',
 ];
 
+type ServiceType = 'personal' | 'business' | null;
+
 export default function IntakeForm() {
   const [searchParams] = useSearchParams();
   const isKioskMode = searchParams.get('mode') === 'kiosk';
+
+  // Service type selection (before form steps)
+  const [serviceType, setServiceType] = useState<ServiceType>(null);
+  
+  // Business inquiry form state
+  const [businessFormData, setBusinessFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    business_name: '',
+    message: '',
+  });
+  const [businessFormSubmitting, setBusinessFormSubmitting] = useState(false);
+  const [businessFormSubmitted, setBusinessFormSubmitted] = useState(false);
+  const [businessFormError, setBusinessFormError] = useState<string | null>(null);
 
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<IntakeFormData>(defaultIntakeFormData);
@@ -40,6 +57,10 @@ export default function IntakeForm() {
     setErrors({});
     setSubmitError(null);
     setCountdown(null);
+    setServiceType(null);
+    setBusinessFormData({ name: '', email: '', phone: '', business_name: '', message: '' });
+    setBusinessFormSubmitted(false);
+    setBusinessFormError(null);
   }, []);
 
   useEffect(() => {
@@ -162,7 +183,290 @@ export default function IntakeForm() {
     }
   };
 
-  // Render success page
+  // Handle business inquiry form submission
+  const handleBusinessSubmit = async () => {
+    // Validate
+    if (!businessFormData.name.trim() || !businessFormData.email.trim() || !businessFormData.phone.trim()) {
+      setBusinessFormError('Please fill in all required fields.');
+      return;
+    }
+
+    setBusinessFormSubmitting(true);
+    setBusinessFormError(null);
+
+    // Submit using the contact form API
+    const result = await api.submitContact({
+      name: businessFormData.name,
+      email: businessFormData.email,
+      phone: businessFormData.phone,
+      subject: `Business Tax Inquiry${businessFormData.business_name ? ` - ${businessFormData.business_name}` : ''}`,
+      message: businessFormData.message || 'I would like to schedule a consultation to discuss my business tax needs.',
+    });
+
+    setBusinessFormSubmitting(false);
+
+    if (result.error) {
+      setBusinessFormError(result.error);
+    } else {
+      setBusinessFormSubmitted(true);
+    }
+  };
+
+  // Render service type selection (first screen)
+  if (serviceType === null) {
+    return (
+      <div className="min-h-screen bg-secondary flex flex-col">
+        {!isKioskMode && <IntakeHeader />}
+        <main className="flex-1 flex items-center justify-center px-4 py-8">
+          <div className="bg-white rounded-2xl shadow-sm p-8 max-w-2xl w-full">
+            <div className="text-center mb-8">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
+                How Can We Help You?
+              </h1>
+              <p className="text-gray-600">
+                Select the type of service you need to get started.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Personal Taxes Card */}
+              <button
+                onClick={() => setServiceType('personal')}
+                className="group bg-white border-2 border-gray-200 hover:border-primary rounded-xl p-6 text-left transition-all hover:shadow-lg"
+              >
+                <div className="w-14 h-14 bg-secondary rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-white transition-colors">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Personal Taxes</h2>
+                <p className="text-gray-600 text-sm mb-4">
+                  Individual tax returns, W-2s, 1099s, and personal tax planning.
+                </p>
+                <span className="text-primary font-medium text-sm inline-flex items-center gap-1">
+                  Start Online Intake
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
+              </button>
+
+              {/* Business Taxes Card */}
+              <button
+                onClick={() => setServiceType('business')}
+                className="group bg-white border-2 border-gray-200 hover:border-primary rounded-xl p-6 text-left transition-all hover:shadow-lg"
+              >
+                <div className="w-14 h-14 bg-secondary rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-white transition-colors">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Business Taxes</h2>
+                <p className="text-gray-600 text-sm mb-4">
+                  Business returns, payroll, bookkeeping, and corporate tax services.
+                </p>
+                <span className="text-primary font-medium text-sm inline-flex items-center gap-1">
+                  Schedule a Consultation
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
+              </button>
+            </div>
+
+            {!isKioskMode && (
+              <div className="mt-8 text-center">
+                <Link
+                  to="/"
+                  className="text-gray-500 hover:text-gray-700 text-sm inline-flex items-center gap-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back to Home
+                </Link>
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Render business inquiry form
+  if (serviceType === 'business') {
+    if (businessFormSubmitted) {
+      return (
+        <div className="min-h-screen bg-secondary flex flex-col">
+          {!isKioskMode && <IntakeHeader />}
+          <main className="flex-1 flex items-center justify-center px-4 py-8">
+            <div className="bg-white rounded-2xl shadow-sm p-8 max-w-lg w-full text-center">
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Request Received!</h1>
+              <p className="text-gray-600 mb-6">
+                Thank you for your interest in our business services. We'll contact you within 1-2 business days to schedule your consultation.
+              </p>
+
+              {isKioskMode ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-500">
+                    This form will reset in <span className="font-bold text-primary">{countdown}</span> seconds
+                  </p>
+                  <button
+                    onClick={resetForm}
+                    className="w-full bg-primary text-white px-6 py-4 rounded-xl font-medium hover:bg-primary-dark transition-colors min-h-[56px]"
+                  >
+                    Start New Form
+                  </button>
+                </div>
+              ) : (
+                <Link
+                  to="/"
+                  className="inline-block bg-primary text-white px-8 py-3 rounded-lg font-medium hover:bg-primary-dark transition-colors"
+                >
+                  Back to Home
+                </Link>
+              )}
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-secondary flex flex-col">
+        {!isKioskMode && <IntakeHeader />}
+        <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6 md:py-8">
+          <div className="bg-white rounded-2xl shadow-sm p-6 md:p-8">
+            {/* Back button */}
+            <button
+              onClick={() => setServiceType(null)}
+              className="text-gray-500 hover:text-gray-700 text-sm inline-flex items-center gap-1 mb-6"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to Selection
+            </button>
+
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center text-primary mx-auto mb-4">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Business Tax Consultation</h1>
+              <p className="text-gray-600">
+                Business taxes require a personalized approach. Fill out the form below and we'll contact you to schedule a consultation.
+              </p>
+            </div>
+
+            {/* Contact Info */}
+            <div className="bg-secondary rounded-xl p-4 mb-6">
+              <p className="text-sm text-gray-700 mb-2">
+                <strong>Prefer to call?</strong> Reach us directly:
+              </p>
+              <p className="text-primary font-medium">
+                <a href="tel:+16716499838" className="hover:underline">(671) 649-9838</a>
+                {' • '}
+                <a href="mailto:dmshimizucpa@gmail.com" className="hover:underline">dmshimizucpa@gmail.com</a>
+              </p>
+            </div>
+
+            {/* Form */}
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Your Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={businessFormData.name}
+                    onChange={(e) => setBusinessFormData(prev => ({ ...prev, name: e.target.value }))}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary focus:border-primary ${isKioskMode ? 'text-lg' : ''}`}
+                    placeholder="John Smith"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Business Name
+                  </label>
+                  <input
+                    type="text"
+                    value={businessFormData.business_name}
+                    onChange={(e) => setBusinessFormData(prev => ({ ...prev, business_name: e.target.value }))}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary focus:border-primary ${isKioskMode ? 'text-lg' : ''}`}
+                    placeholder="ABC Company LLC"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={businessFormData.email}
+                    onChange={(e) => setBusinessFormData(prev => ({ ...prev, email: e.target.value }))}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary focus:border-primary ${isKioskMode ? 'text-lg' : ''}`}
+                    placeholder="john@example.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={businessFormData.phone}
+                    onChange={(e) => setBusinessFormData(prev => ({ ...prev, phone: e.target.value }))}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary focus:border-primary ${isKioskMode ? 'text-lg' : ''}`}
+                    placeholder="(671) 123-4567"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tell us about your business needs
+                </label>
+                <textarea
+                  value={businessFormData.message}
+                  onChange={(e) => setBusinessFormData(prev => ({ ...prev, message: e.target.value }))}
+                  rows={4}
+                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary focus:border-primary ${isKioskMode ? 'text-lg' : ''}`}
+                  placeholder="What type of business do you have? What services are you interested in? (Optional)"
+                />
+              </div>
+
+              {businessFormError && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-700">{businessFormError}</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleBusinessSubmit}
+                disabled={businessFormSubmitting}
+                className={`w-full bg-primary text-white px-6 py-4 rounded-xl font-medium hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isKioskMode ? 'min-h-[56px] text-lg' : 'min-h-[48px]'}`}
+              >
+                {businessFormSubmitting ? 'Submitting...' : 'Request Consultation'}
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Render success page (for personal taxes)
   if (isSubmitted) {
     return (
       <div className="min-h-screen bg-secondary flex flex-col">
@@ -210,11 +514,24 @@ export default function IntakeForm() {
       {!isKioskMode && <IntakeHeader />}
 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 md:py-8">
+        {/* Back to service selection (only on first step) */}
+        {currentStep === 0 && (
+          <button
+            onClick={() => setServiceType(null)}
+            className="text-gray-500 hover:text-gray-700 text-sm inline-flex items-center gap-1 mb-4"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Change Service Type
+          </button>
+        )}
+
         {/* Progress Bar */}
         <div className="mb-6 md:mb-8">
           <div className="flex justify-between text-sm text-gray-500 mb-2">
             <span>Step {currentStep + 1} of {STEPS.length}</span>
-            <span>{STEPS[currentStep]}</span>
+            <span>Personal Tax Return: {STEPS[currentStep]}</span>
           </div>
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
@@ -315,12 +632,14 @@ function IntakeHeader() {
   return (
     <header className="bg-white shadow-sm">
       <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
-        <Link to="/" className="flex items-center">
-          <img 
-            src="/logo.jpeg" 
-            alt="Cornerstone Accounting & Business Management" 
-            className="h-14 sm:h-16 w-auto object-contain"
-          />
+        <Link to="/" className="flex items-center flex-shrink-0">
+          <div className="h-14 sm:h-16 overflow-hidden flex items-center">
+            <img 
+              src="/logo.jpeg" 
+              alt="Cornerstone Accounting & Business Management" 
+              className="h-28 sm:h-32 w-auto max-w-none object-contain"
+            />
+          </div>
         </Link>
       </div>
     </header>

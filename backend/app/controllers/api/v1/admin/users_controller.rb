@@ -38,7 +38,14 @@ module Api
         # Invite a new user by email
         def create
           email = params[:email]&.downcase&.strip
+          first_name = params[:first_name]&.strip
+          last_name = params[:last_name]&.strip
           role = params[:role] || "employee"
+
+          # Validate first name (required)
+          if first_name.blank?
+            return render json: { error: "First name is required" }, status: :unprocessable_entity
+          end
 
           # Validate email
           if email.blank?
@@ -62,6 +69,8 @@ module Api
           # Create the user (without clerk_id - they'll get linked when they sign up)
           @user = User.new(
             email: email,
+            first_name: first_name,
+            last_name: last_name.presence,
             role: role,
             clerk_id: "pending_#{SecureRandom.hex(8)}" # Temporary placeholder until they sign up
           )
@@ -118,6 +127,10 @@ module Api
           {
             id: user.id,
             email: user.email,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            display_name: user.display_name,
+            full_name: user.full_name,
             role: user.role,
             is_active: !user.clerk_id&.start_with?("pending_"),
             is_pending: user.clerk_id&.start_with?("pending_"),

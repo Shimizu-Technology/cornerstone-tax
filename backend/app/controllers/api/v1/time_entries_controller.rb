@@ -162,11 +162,14 @@ module Api
       def time_entry_params
         params.require(:time_entry).permit(
           :work_date,
+          :start_time,
+          :end_time,
           :hours,
           :description,
           :time_category_id,
           :client_id,
-          :tax_return_id
+          :tax_return_id,
+          :break_minutes
         )
       end
 
@@ -174,11 +177,18 @@ module Api
         {
           id: entry.id,
           work_date: entry.work_date.iso8601,
+          start_time: entry.start_time&.strftime("%H:%M"),
+          end_time: entry.end_time&.strftime("%H:%M"),
+          formatted_start_time: entry.formatted_start_time,
+          formatted_end_time: entry.formatted_end_time,
           hours: entry.hours.to_f,
+          break_minutes: entry.break_minutes,
           description: entry.description,
           user: {
             id: entry.user.id,
-            email: entry.user.email
+            email: entry.user.email,
+            display_name: entry.user.display_name,
+            full_name: entry.user.full_name
           },
           time_category: entry.time_category ? {
             id: entry.time_category.id,
@@ -198,8 +208,10 @@ module Api
       end
 
       def calculate_summary(entries)
+        total_break_minutes = entries.sum(:break_minutes).to_i
         {
           total_hours: entries.sum(:hours).to_f,
+          total_break_hours: (total_break_minutes / 60.0).round(2),
           entry_count: entries.count
         }
       end
