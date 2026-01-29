@@ -87,30 +87,32 @@ const INCOME_SOURCE_TYPES = [
 
 // Icons
 const EditIcon = () => (
-  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <svg className="h-4 w-4" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
   </svg>
 )
 
 const PlusIcon = () => (
-  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <svg className="h-4 w-4" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
   </svg>
 )
 
 const TrashIcon = () => (
-  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <svg className="h-4 w-4" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
   </svg>
 )
 
 const UserIcon = () => (
-  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <svg className="h-4 w-4" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
   </svg>
 )
 
 export default function TaxReturnDetailPage() {
+  useEffect(() => { document.title = 'Tax Return Details | Cornerstone Admin' }, [])
+
   const { id } = useParams<{ id: string }>()
   const [taxReturn, setTaxReturn] = useState<TaxReturnDetailLocal | null>(null)
   const [loading, setLoading] = useState(true)
@@ -344,8 +346,9 @@ export default function TaxReturnDetailPage() {
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Workflow</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <label htmlFor="return-status" className="block text-sm font-medium text-gray-700 mb-2">Status</label>
                 <select
+                  id="return-status"
                   value={taxReturn.workflow_stage?.id || ''}
                   onChange={(e) => handleStatusChange(parseInt(e.target.value))}
                   disabled={saving}
@@ -359,8 +362,9 @@ export default function TaxReturnDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Assigned To</label>
+                <label htmlFor="return-assignee" className="block text-sm font-medium text-gray-700 mb-2">Assigned To</label>
                 <select
+                  id="return-assignee"
                   value={taxReturn.assigned_to?.id || ''}
                   onChange={(e) => handleAssign(e.target.value ? parseInt(e.target.value) : null)}
                   disabled={saving}
@@ -375,8 +379,9 @@ export default function TaxReturnDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Reviewed By</label>
+                <label htmlFor="return-reviewer" className="block text-sm font-medium text-gray-700 mb-2">Reviewed By</label>
                 <select
+                  id="return-reviewer"
                   value={taxReturn.reviewed_by?.id || ''}
                   onChange={(e) => handleReviewerChange(e.target.value ? parseInt(e.target.value) : null)}
                   disabled={saving}
@@ -624,8 +629,9 @@ export default function TaxReturnDetailPage() {
 
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Type *</label>
+                <label htmlFor="income-doc-type" className="block text-sm font-medium text-gray-700 mb-2">Type *</label>
                 <select
+                  id="income-doc-type"
                   value={incomeForm.source_type}
                   onChange={e => setIncomeForm({ ...incomeForm, source_type: e.target.value })}
                   className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -637,7 +643,7 @@ export default function TaxReturnDetailPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Payer Name *</label>
+                <label htmlFor="payer-name" className="block text-sm font-medium text-gray-700 mb-2">Payer Name *</label>
                 <input
                   type="text"
                   value={incomeForm.payer_name}
@@ -648,7 +654,7 @@ export default function TaxReturnDetailPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Notes (optional)</label>
+                <label htmlFor="income-notes" className="block text-sm font-medium text-gray-700 mb-2">Notes (optional)</label>
                 <textarea
                   value={incomeForm.notes}
                   onChange={e => setIncomeForm({ ...incomeForm, notes: e.target.value })}

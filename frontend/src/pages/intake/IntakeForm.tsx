@@ -23,6 +23,8 @@ const STEPS = [
 type ServiceType = 'personal' | 'business' | null;
 
 export default function IntakeForm() {
+  useEffect(() => { document.title = 'Client Intake | Cornerstone Accounting' }, [])
+
   const [searchParams] = useSearchParams();
   const isKioskMode = searchParams.get('mode') === 'kiosk';
 
@@ -235,7 +237,7 @@ export default function IntakeForm() {
                 className="group bg-white border-2 border-gray-200 hover:border-primary rounded-xl p-6 text-left transition-all hover:shadow-lg"
               >
                 <div className="w-14 h-14 bg-secondary rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-white transition-colors">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
@@ -245,7 +247,7 @@ export default function IntakeForm() {
                 </p>
                 <span className="text-primary font-medium text-sm inline-flex items-center gap-1">
                   Start Online Intake
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </span>
@@ -257,7 +259,7 @@ export default function IntakeForm() {
                 className="group bg-white border-2 border-gray-200 hover:border-primary rounded-xl p-6 text-left transition-all hover:shadow-lg"
               >
                 <div className="w-14 h-14 bg-secondary rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-white transition-colors">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 </div>
@@ -267,7 +269,7 @@ export default function IntakeForm() {
                 </p>
                 <span className="text-primary font-medium text-sm inline-flex items-center gap-1">
                   Schedule a Consultation
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </span>
@@ -280,7 +282,7 @@ export default function IntakeForm() {
                   to="/"
                   className="text-gray-500 hover:text-gray-700 text-sm inline-flex items-center gap-1"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                   Back to Home
@@ -302,7 +304,7 @@ export default function IntakeForm() {
           <main className="flex-1 flex items-center justify-center px-4 py-8">
             <div className="bg-white rounded-2xl shadow-sm p-8 max-w-lg w-full text-center">
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
@@ -347,7 +349,7 @@ export default function IntakeForm() {
               onClick={() => setServiceType(null)}
               className="text-gray-500 hover:text-gray-700 text-sm inline-flex items-center gap-1 mb-6"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               Back to Selection
@@ -355,7 +357,7 @@ export default function IntakeForm() {
 
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center text-primary mx-auto mb-4">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
               </div>
@@ -474,7 +476,7 @@ export default function IntakeForm() {
         <main className="flex-1 flex items-center justify-center px-4 py-8">
           <div className="bg-white rounded-2xl shadow-sm p-8 max-w-lg w-full text-center">
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
@@ -520,7 +522,7 @@ export default function IntakeForm() {
             onClick={() => setServiceType(null)}
             className="text-gray-500 hover:text-gray-700 text-sm inline-flex items-center gap-1 mb-4"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Change Service Type
@@ -601,7 +603,7 @@ export default function IntakeForm() {
             >
               {isSubmitting ? (
                 <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin w-5 h-5" fill="none" aria-hidden="true" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
@@ -905,7 +907,7 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
                   onClick={() => removeW2Employer(index)}
                   className="px-3 text-red-500 hover:bg-red-50 rounded-lg"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -918,7 +920,7 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
           onClick={addW2Employer}
           className={`mt-2 text-primary font-medium flex items-center gap-1 hover:underline ${isKioskMode ? 'text-lg py-2' : ''}`}
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           Add Another Employer

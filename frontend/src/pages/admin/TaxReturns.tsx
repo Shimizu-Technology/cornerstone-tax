@@ -39,6 +39,8 @@ interface UserSummaryLocal {
 }
 
 export default function TaxReturns() {
+  useEffect(() => { document.title = 'Tax Returns | Cornerstone Admin' }, [])
+
   const [returns, setReturns] = useState<TaxReturnSummaryLocal[]>([])
   const [stages, setStages] = useState<WorkflowStageLocal[]>([])
   const [users, setUsers] = useState<UserSummaryLocal[]>([])
@@ -131,7 +133,7 @@ export default function TaxReturns() {
               Search Client
             </label>
             <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
@@ -202,7 +204,7 @@ export default function TaxReturns() {
         ) : returns.length === 0 ? (
           <div className="p-12 text-center">
             <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
@@ -258,6 +260,7 @@ export default function TaxReturns() {
                           onChange={(e) => handleStatusChange(taxReturn.id, parseInt(e.target.value))}
                           className="text-sm font-semibold px-3 py-1.5 rounded-lg border-0 cursor-pointer shadow-sm text-white"
                           style={{ backgroundColor: taxReturn.status_color || '#8B7355' }}
+                          aria-label={`Status for ${taxReturn.client.full_name}`}
                         >
                           {stages.map(stage => (
                             <option key={stage.id} value={stage.id} className="text-gray-900 bg-white">
@@ -271,6 +274,7 @@ export default function TaxReturns() {
                           value={taxReturn.assigned_to?.id || ''}
                           onChange={(e) => handleAssignmentChange(taxReturn.id, parseInt(e.target.value))}
                           className="text-sm border border-secondary-dark rounded-lg px-3 py-1.5 bg-white hover:border-primary focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
+                          aria-label={`Assigned to for ${taxReturn.client.full_name}`}
                         >
                           <option value="">Unassigned</option>
                           {users.map(user => (
@@ -319,6 +323,7 @@ export default function TaxReturns() {
                       value={stages.find(s => s.name === taxReturn.status)?.id || ''}
                       onChange={(e) => handleStatusChange(taxReturn.id, parseInt(e.target.value))}
                       className="text-sm border border-secondary-dark rounded-lg px-3 py-2 flex-1 min-w-[140px] bg-white"
+                      aria-label={`Status for ${taxReturn.client.full_name}`}
                     >
                       {stages.map(stage => (
                         <option key={stage.id} value={stage.id}>{stage.name}</option>
@@ -329,6 +334,7 @@ export default function TaxReturns() {
                       value={taxReturn.assigned_to?.id || ''}
                       onChange={(e) => handleAssignmentChange(taxReturn.id, parseInt(e.target.value))}
                       className="text-sm border border-secondary-dark rounded-lg px-3 py-2 flex-1 min-w-[140px] bg-white"
+                      aria-label={`Assigned to for ${taxReturn.client.full_name}`}
                     >
                       <option value="">Unassigned</option>
                       {users.map(user => (

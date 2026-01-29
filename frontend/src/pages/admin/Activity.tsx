@@ -122,6 +122,8 @@ const AUDITABLE_TYPE_LABELS: Record<string, string> = {
 }
 
 export default function Activity() {
+  useEffect(() => { document.title = 'Activity | Cornerstone Admin' }, [])
+
   const [activities, setActivities] = useState<UnifiedActivityItem[]>([])
   const [pagination, setPagination] = useState<Pagination | null>(null)
   const [loading, setLoading] = useState(true)
@@ -458,10 +460,11 @@ export default function Activity() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* Activity Source Filter */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
+            <label htmlFor="activity-type-filter" className="block text-xs font-medium text-gray-500 mb-1">
               Activity Type
             </label>
             <select
+              id="activity-type-filter"
               value={activitySource}
               onChange={(e) => {
                 setActivitySource(e.target.value as 'all' | 'workflow' | 'audit')
@@ -477,10 +480,11 @@ export default function Activity() {
 
           {/* Event Type Filter (only for workflow) */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
+            <label htmlFor="event-type-filter" className="block text-xs font-medium text-gray-500 mb-1">
               Event Type
             </label>
             <select
+              id="event-type-filter"
               value={eventTypeFilter}
               onChange={(e) => {
                 setEventTypeFilter(e.target.value)
@@ -500,10 +504,11 @@ export default function Activity() {
 
           {/* User Filter */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
+            <label htmlFor="user-filter" className="block text-xs font-medium text-gray-500 mb-1">
               User
             </label>
             <select
+              id="user-filter"
               value={userFilter}
               onChange={(e) => {
                 setUserFilter(e.target.value)

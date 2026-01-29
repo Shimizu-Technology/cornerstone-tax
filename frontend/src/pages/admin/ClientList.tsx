@@ -29,6 +29,8 @@ interface Meta {
 }
 
 export default function ClientList() {
+  useEffect(() => { document.title = 'Clients | Cornerstone Admin' }, [])
+
   const navigate = useNavigate()
   const [clients, setClients] = useState<Client[]>([])
   const [meta, setMeta] = useState<Meta | null>(null)

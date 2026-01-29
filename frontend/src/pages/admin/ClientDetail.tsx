@@ -82,12 +82,14 @@ interface EditFormData {
 
 // Icons
 const EditIcon = () => (
-  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <svg className="h-4 w-4" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
   </svg>
 )
 
 export default function ClientDetailPage() {
+  useEffect(() => { document.title = 'Client Details | Cornerstone Admin' }, [])
+
   const { id } = useParams<{ id: string }>()
   const [client, setClient] = useState<ClientDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -533,7 +535,7 @@ export default function ClientDetailPage() {
                 <h3 className="font-semibold text-gray-900 mb-3">Basic Information</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                    <label htmlFor="client-first-name" className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
                     <input
                       type="text"
                       value={editForm.first_name}
@@ -543,7 +545,7 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                    <label htmlFor="client-last-name" className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
                     <input
                       type="text"
                       value={editForm.last_name}
@@ -553,7 +555,7 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                    <label htmlFor="client-email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                     <input
                       type="email"
                       value={editForm.email}
@@ -563,7 +565,7 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                    <label htmlFor="client-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
                     <input
                       type="tel"
                       value={editForm.phone}
@@ -573,7 +575,7 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                    <label htmlFor="client-dob" className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
                     <input
                       type="date"
                       value={editForm.date_of_birth}
@@ -582,7 +584,7 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Filing Status</label>
+                    <label htmlFor="client-filing-status" className="block text-sm font-medium text-gray-700 mb-1">Filing Status</label>
                     <select
                       value={editForm.filing_status}
                       onChange={e => setEditForm({ ...editForm, filing_status: e.target.value })}
@@ -597,7 +599,7 @@ export default function ClientDetailPage() {
                     </select>
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Mailing Address</label>
+                    <label htmlFor="client-address" className="block text-sm font-medium text-gray-700 mb-1">Mailing Address</label>
                     <textarea
                       value={editForm.mailing_address}
                       onChange={e => setEditForm({ ...editForm, mailing_address: e.target.value })}
@@ -613,7 +615,7 @@ export default function ClientDetailPage() {
                 <h3 className="font-semibold text-gray-900 mb-3">Spouse Information</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Spouse Name</label>
+                    <label htmlFor="client-spouse-name" className="block text-sm font-medium text-gray-700 mb-1">Spouse Name</label>
                     <input
                       type="text"
                       value={editForm.spouse_name}
@@ -622,7 +624,7 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Spouse DOB</label>
+                    <label htmlFor="client-spouse-dob" className="block text-sm font-medium text-gray-700 mb-1">Spouse DOB</label>
                     <input
                       type="date"
                       value={editForm.spouse_dob}
@@ -687,7 +689,7 @@ export default function ClientDetailPage() {
                   </label>
                   {editForm.denied_eic_actc && (
                     <div className="mt-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Year Denied</label>
+                      <label htmlFor="client-year-denied" className="block text-sm font-medium text-gray-700 mb-1">Year Denied</label>
                       <input
                         type="number"
                         value={editForm.denied_eic_actc_year}
@@ -700,7 +702,7 @@ export default function ClientDetailPage() {
                 </div>
 
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Changes from Prior Year</label>
+                  <label htmlFor="client-changes" className="block text-sm font-medium text-gray-700 mb-1">Changes from Prior Year</label>
                   <textarea
                     value={editForm.changes_from_prior_year}
                     onChange={e => setEditForm({ ...editForm, changes_from_prior_year: e.target.value })}
