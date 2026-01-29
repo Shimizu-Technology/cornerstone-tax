@@ -25,18 +25,14 @@ Rails.application.routes.draw do
         end
         resources :income_sources, only: [:index, :show, :create, :update, :destroy]
         
-        # Documents nested under tax_returns
-        resources :documents, only: [:index, :create] do
+        # Documents nested under tax_returns (CST-14: all access scoped through tax_return)
+        resources :documents, only: [:index, :show, :create, :destroy] do
           collection do
             post :presign
           end
-        end
-      end
-
-      # Documents standalone routes (for show, download, destroy)
-      resources :documents, only: [:show, :destroy] do
-        member do
-          get :download
+          member do
+            get :download
+          end
         end
       end
 

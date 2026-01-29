@@ -17,6 +17,11 @@ const DOCUMENT_TYPES = [
   { value: 'other', label: 'Other' },
 ]
 
+// CST-16: File upload validation constants
+const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
+const ALLOWED_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
+const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return 'Unknown size'
   if (bytes < 1024) return `${bytes} B`
@@ -44,6 +49,20 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
 
   const uploadFile = async (file: File) => {
     setError(null)
+
+    // CST-16: Client-side file validation
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`File size (${formatFileSize(file.size)}) exceeds maximum allowed size of 50MB`)
+      return
+    }
+
+    const fileType = file.type || ''
+    const fileExt = '.' + file.name.split('.').pop()?.toLowerCase()
+    if (!ALLOWED_FILE_TYPES.includes(fileType) && !ALLOWED_FILE_EXTENSIONS.includes(fileExt)) {
+      setError('File type not allowed. Accepted types: PDF, JPEG, PNG')
+      return
+    }
+
     setUploading(true)
     setUploadProgress('Getting upload URL...')
 
@@ -52,7 +71,8 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
       const presignResult = await api.presignDocumentUpload(
         taxReturnId,
         file.name,
-        file.type || 'application/octet-stream'
+        file.type || 'application/octet-stream',
+        file.size
       )
 
       if (presignResult.error || !presignResult.data) {
@@ -132,7 +152,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
 
   const handleDownload = async (doc: Document) => {
     try {
-      const result = await api.getDocumentDownloadUrl(doc.id)
+      const result = await api.getDocumentDownloadUrl(taxReturnId, doc.id)
       if (result.data?.download_url) {
         window.open(result.data.download_url, '_blank')
       }
@@ -145,7 +165,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
     if (!confirm(`Delete "${doc.filename}"?`)) return
 
     try {
-      await api.deleteDocument(doc.id)
+      await api.deleteDocument(taxReturnId, doc.id)
       onDocumentsChange()
     } catch (err) {
       console.error('Delete error:', err)

@@ -786,10 +786,10 @@ export const api = {
   getDocuments: (taxReturnId: number) =>
     fetchApi<Document[]>(`/api/v1/tax_returns/${taxReturnId}/documents`),
 
-  presignDocumentUpload: (taxReturnId: number, filename: string, contentType: string) =>
+  presignDocumentUpload: (taxReturnId: number, filename: string, contentType: string, fileSize?: number) =>
     fetchApi<PresignResponse>(`/api/v1/tax_returns/${taxReturnId}/documents/presign`, {
       method: 'POST',
-      body: JSON.stringify({ filename, content_type: contentType }),
+      body: JSON.stringify({ filename, content_type: contentType, file_size: fileSize }),
     }),
 
   registerDocument: (taxReturnId: number, data: {
@@ -804,11 +804,11 @@ export const api = {
       body: JSON.stringify({ document: data }),
     }),
 
-  getDocumentDownloadUrl: (documentId: number) =>
-    fetchApi<DownloadResponse>(`/api/v1/documents/${documentId}/download`),
+  getDocumentDownloadUrl: (taxReturnId: number, documentId: number) =>
+    fetchApi<DownloadResponse>(`/api/v1/tax_returns/${taxReturnId}/documents/${documentId}/download`),
 
-  deleteDocument: (documentId: number) =>
-    fetchApi<void>(`/api/v1/documents/${documentId}`, {
+  deleteDocument: (taxReturnId: number, documentId: number) =>
+    fetchApi<void>(`/api/v1/tax_returns/${taxReturnId}/documents/${documentId}`, {
       method: 'DELETE',
     }),
 
