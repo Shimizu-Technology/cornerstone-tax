@@ -326,7 +326,7 @@ export default function Users() {
                   setShowInviteModal(false)
                   resetInviteForm()
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close" className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
