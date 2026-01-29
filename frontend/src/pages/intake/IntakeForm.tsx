@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import type { IntakeFormData, Dependent } from '../../types/intake';
 import {
   defaultIntakeFormData,
@@ -27,7 +27,15 @@ export default function IntakeForm() {
   const isKioskMode = searchParams.get('mode') === 'kiosk';
 
   // Service type selection (before form steps)
-  const [serviceType, setServiceType] = useState<ServiceType>(null);
+  // CST-19: Support /intake/personal and /intake/business URL paths
+  const location = useLocation();
+  const getInitialServiceType = (): ServiceType => {
+    const path = location.pathname.toLowerCase();
+    if (path.includes('/personal')) return 'personal';
+    if (path.includes('/business')) return 'business';
+    return null;
+  };
+  const [serviceType, setServiceType] = useState<ServiceType>(getInitialServiceType);
   
   // Business inquiry form state
   const [businessFormData, setBusinessFormData] = useState({
@@ -163,7 +171,7 @@ export default function IntakeForm() {
           })),
         ...formData.form_1099_types.map((type) => ({
           source_type: type,
-          payer_name: '',
+          payer_name: formData.form_1099_payer_names[type] || '',
           notes: '',
         })),
       ],
@@ -878,9 +886,20 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
     const current = formData.form_1099_types;
     if (current.includes(type)) {
       updateField('form_1099_types', current.filter((t) => t !== type));
+      // Clean up payer name when unchecking
+      const updatedNames = { ...formData.form_1099_payer_names };
+      delete updatedNames[type];
+      updateField('form_1099_payer_names', updatedNames);
     } else {
       updateField('form_1099_types', [...current, type]);
     }
+  };
+
+  const updatePayerName = (type: string, name: string) => {
+    updateField('form_1099_payer_names', {
+      ...formData.form_1099_payer_names,
+      [type]: name,
+    });
   };
 
   return (
@@ -949,6 +968,32 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
             </label>
           ))}
         </div>
+
+        {/* Payer name fields for selected 1099 types (CST-1) */}
+        {formData.form_1099_types.length > 0 && (
+          <div className="mt-4 space-y-3 p-4 bg-gray-50 rounded-xl">
+            <p className="text-sm font-medium text-gray-700">
+              Please provide the payer name for each selected form:
+            </p>
+            {formData.form_1099_types.map((type) => {
+              const typeLabel = FORM_1099_TYPES.find((t) => t.value === type)?.label || type;
+              return (
+                <div key={type}>
+                  <label className="block text-sm text-gray-600 mb-1">
+                    {typeLabel} — Payer Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.form_1099_payer_names[type] || ''}
+                    onChange={(e) => updatePayerName(type, e.target.value)}
+                    placeholder="Who paid you? (e.g., Company Name)"
+                    className={`w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent ${isKioskMode ? 'text-lg' : ''}`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

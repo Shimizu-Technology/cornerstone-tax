@@ -44,8 +44,10 @@ function App() {
           <Route path="/contact" element={<Contact />} />
         </Route>
 
-        {/* Client Intake Form */}
+        {/* Client Intake Form - CST-19: Support /intake/personal and /intake/business */}
         <Route path="/intake" element={<IntakeForm />} />
+        <Route path="/intake/personal" element={<IntakeForm />} />
+        <Route path="/intake/business" element={<IntakeForm />} />
 
         {/* Admin Dashboard - Protected (staff = admin or employee) */}
         <Route
