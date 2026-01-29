@@ -654,6 +654,7 @@ export const api = {
     auditable_type?: string;
     action_type?: string;
     user_id?: number;
+    client_id?: number;
     start_date?: string;
     end_date?: string;
   }) => {
@@ -662,6 +663,7 @@ export const api = {
     if (params?.auditable_type) searchParams.set('auditable_type', params.auditable_type);
     if (params?.action_type) searchParams.set('action_type', params.action_type);
     if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
+    if (params?.client_id) searchParams.set('client_id', params.client_id.toString());
     if (params?.start_date) searchParams.set('start_date', params.start_date);
     if (params?.end_date) searchParams.set('end_date', params.end_date);
     const query = searchParams.toString();

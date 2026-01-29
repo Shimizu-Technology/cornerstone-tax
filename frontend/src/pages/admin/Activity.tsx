@@ -233,6 +233,17 @@ export default function Activity() {
   // Use shared date utilities - formatRelativeTime returns { display, full }
   const getTimeDisplay = (dateString: string) => formatRelativeTime(dateString)
 
+  // Look up display name for audit log users (CST-4)
+  const getUserDisplayName = (user: { id: number; email: string } | null): string => {
+    if (!user) return 'System'
+    const found = users.find(u => u.id === user.id)
+    if (found) {
+      const name = [found.first_name, found.last_name].filter(Boolean).join(' ')
+      return name || found.email
+    }
+    return user.email
+  }
+
   const clearFilters = () => {
     setActivitySource('all')
     setEventTypeFilter('')
@@ -264,7 +275,7 @@ export default function Activity() {
           
           <p className="text-sm text-gray-900">
             <span className="font-medium">
-              {event.user?.email || 'System'}
+              {event.user?.name || event.user?.email || 'System'}
             </span>
             <span className="text-gray-500 mx-1">·</span>
             <span className="text-gray-600">{event.description}</span>
@@ -354,7 +365,7 @@ export default function Activity() {
           
           <p className="text-sm text-gray-900">
             <span className="font-medium">
-              {log.user?.email || 'System'}
+              {getUserDisplayName(log.user)}
             </span>
             <span className="text-gray-500 mx-1">·</span>
             <span className="text-gray-600">{log.description}</span>

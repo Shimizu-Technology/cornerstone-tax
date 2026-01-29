@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
+import { getFilingStatusLabel } from '../../lib/constants'
+import NotFound from '../../components/common/NotFound'
 
 interface Dependent {
   id: number
@@ -121,8 +123,32 @@ export default function ClientDetailPage() {
     }
   }
 
+  // Audit logs for this client (CST-7)
+  interface AuditLogEntry {
+    id: number
+    action: string
+    description: string
+    changes_made: Record<string, { from: unknown; to: unknown }> | null
+    created_at: string
+    user: { id: number; email: string; name?: string } | null
+  }
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
+
+  const loadAuditLogs = async () => {
+    if (!id) return
+    try {
+      const result = await api.getAuditLogs({ client_id: parseInt(id), page: 1 })
+      if (result.data) {
+        setAuditLogs(result.data.audit_logs)
+      }
+    } catch (err) {
+      console.error('Failed to load audit logs:', err)
+    }
+  }
+
   useEffect(() => {
     loadClient()
+    loadAuditLogs()
   }, [id])
 
   const startEditingNotes = (tr: TaxReturn) => {
@@ -215,12 +241,12 @@ export default function ClientDetailPage() {
 
   if (error || !client) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-600">{error || 'Client not found'}</p>
-        <Link to="/admin/clients" className="text-primary hover:underline mt-4 inline-block">
-          ← Back to Clients
-        </Link>
-      </div>
+      <NotFound 
+        title="Client Not Found"
+        message={error || 'This client does not exist or may have been removed.'}
+        backTo="/admin/clients"
+        backLabel="← Back to Clients"
+      />
     )
   }
 
@@ -283,7 +309,7 @@ export default function ClientDetailPage() {
               </div>
               <div>
                 <dt className="text-sm text-gray-500">Filing Status</dt>
-                <dd className="font-medium capitalize">{client.filing_status || '—'}</dd>
+                <dd className="font-medium">{getFilingStatusLabel(client.filing_status)}</dd>
               </div>
             </dl>
           </div>
@@ -471,21 +497,38 @@ export default function ClientDetailPage() {
             </dl>
           </div>
 
-          {/* Activity */}
-          {latestReturn && latestReturn.workflow_events.length > 0 && (
+          {/* Activity (CST-7: includes workflow events + client audit logs) */}
+          {(latestReturn?.workflow_events?.length > 0 || auditLogs.length > 0) && (
             <div className="bg-white rounded-xl shadow-sm p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h2>
               <div className="space-y-4">
-                {latestReturn.workflow_events.slice(0, 5).map((event) => (
-                  <div key={event.id} className="border-l-2 border-gray-200 pl-4">
-                    <p className="text-sm font-medium text-gray-900">
-                      {event.description || event.event_type}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {event.actor} • {formatDateTime(event.created_at)}
-                    </p>
-                  </div>
-                ))}
+                {/* Merge and sort workflow events + audit logs by date */}
+                {[
+                  ...(latestReturn?.workflow_events || []).map(e => ({
+                    id: `wf-${e.id}`,
+                    text: e.description || e.event_type,
+                    actor: e.actor,
+                    date: e.created_at,
+                  })),
+                  ...auditLogs.map(log => ({
+                    id: `al-${log.id}`,
+                    text: log.description,
+                    actor: log.user?.name || log.user?.email || 'System',
+                    date: log.created_at,
+                  })),
+                ]
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .slice(0, 8)
+                  .map((item) => (
+                    <div key={item.id} className="border-l-2 border-gray-200 pl-4">
+                      <p className="text-sm font-medium text-gray-900">
+                        {item.text}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {item.actor} • {formatDateTime(item.date)}
+                      </p>
+                    </div>
+                  ))}
               </div>
             </div>
           )}

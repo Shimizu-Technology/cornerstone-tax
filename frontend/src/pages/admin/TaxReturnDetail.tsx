@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { Document } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
+import { getFilingStatusLabel } from '../../lib/constants'
+import NotFound from '../../components/common/NotFound'
 import DocumentUpload from '../../components/admin/DocumentUpload'
 
 // Define types locally to avoid Vite import caching issues
@@ -129,6 +131,29 @@ export default function TaxReturnDetailPage() {
   const [showIncomeModal, setShowIncomeModal] = useState(false)
   const [editingIncomeSource, setEditingIncomeSource] = useState<IncomeSourceLocal | null>(null)
   const [incomeForm, setIncomeForm] = useState({ source_type: 'w2', payer_name: '', notes: '' })
+
+  // Deduplicate users by full_name (CST-5: Leon appears twice)
+  const deduplicatedUsers = (() => {
+    const nameCount = new Map<string, number>()
+    users.forEach(u => {
+      const name = u.full_name || u.email
+      nameCount.set(name, (nameCount.get(name) || 0) + 1)
+    })
+    // Track seen names to filter true duplicates
+    const seen = new Map<string, number>()
+    return users
+      .filter(u => {
+        const name = u.full_name || u.email
+        if (seen.has(name)) return false
+        seen.set(name, u.id)
+        return true
+      })
+      .map(u => ({
+        ...u,
+        showEmail: (nameCount.get(u.full_name || u.email) || 0) > 1
+      }))
+  })()
+
 
   // Initial load - shows full page spinner
   const loadTaxReturn = async () => {
@@ -297,12 +322,12 @@ export default function TaxReturnDetailPage() {
 
   if (error || !taxReturn) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-600">{error || 'Tax return not found'}</p>
-        <Link to="/admin/returns" className="text-primary hover:underline mt-4 inline-block">
-          ← Back to Tax Returns
-        </Link>
-      </div>
+      <NotFound 
+        title="Tax Return Not Found"
+        message={error || 'This tax return does not exist or may have been removed.'}
+        backTo="/admin/returns"
+        backLabel="← Back to Tax Returns"
+      />
     )
   }
 
@@ -367,9 +392,9 @@ export default function TaxReturnDetailPage() {
                   className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 >
                   <option value="">Unassigned</option>
-                  {users.map((user) => (
+                  {deduplicatedUsers.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.email}
+                      {user.full_name}{user.showEmail ? ` (${user.email})` : ''}
                     </option>
                   ))}
                 </select>
@@ -383,9 +408,9 @@ export default function TaxReturnDetailPage() {
                   className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 >
                   <option value="">Not Reviewed</option>
-                  {users.map((user) => (
+                  {deduplicatedUsers.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.email}
+                      {user.full_name}{user.showEmail ? ` (${user.email})` : ''}
                     </option>
                   ))}
                 </select>
@@ -419,7 +444,7 @@ export default function TaxReturnDetailPage() {
               </div>
               <div>
                 <dt className="text-sm text-gray-500">Filing Status</dt>
-                <dd className="font-medium capitalize">{taxReturn.client.filing_status || '—'}</dd>
+                <dd className="font-medium">{getFilingStatusLabel(taxReturn.client.filing_status)}</dd>
               </div>
             </dl>
           </div>

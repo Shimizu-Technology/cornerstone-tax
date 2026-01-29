@@ -371,7 +371,7 @@ export default function IntakeForm() {
                 <strong>Prefer to call?</strong> Reach us directly:
               </p>
               <p className="text-primary font-medium">
-                <a href="tel:+16716499838" className="hover:underline">(671) 649-9838</a>
+                <a href="tel:+16718288591" className="hover:underline">(671) 828-8591</a>
                 {' • '}
                 <a href="mailto:dmshimizucpa@gmail.com" className="hover:underline">dmshimizucpa@gmail.com</a>
               </p>
@@ -619,7 +619,7 @@ export default function IntakeForm() {
         {!isKioskMode && (
           <p className="text-center text-sm text-gray-500 mt-6">
             Questions? Call us at{' '}
-            <a href="tel:+16714828671" className="text-primary hover:underline">(671) 482-8671</a>
+            <a href="tel:+16718288591" className="text-primary hover:underline">(671) 828-8591</a>
           </p>
         )}
       </main>
