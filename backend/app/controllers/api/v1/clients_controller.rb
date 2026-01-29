@@ -9,7 +9,7 @@ module Api
 
       # GET /api/v1/clients
       def index
-        clients = Client.includes(:tax_returns, tax_returns: :workflow_stage)
+        clients = Client.includes(:tax_returns, tax_returns: [:workflow_stage, :assigned_to])
                         .order(created_at: :desc)
 
         # Search
@@ -159,7 +159,7 @@ module Api
       end
 
       def client_summary(client)
-        latest_return = client.tax_returns.order(created_at: :desc).first
+        latest_return = client.tax_returns.max_by(&:created_at)
 
         {
           id: client.id,
