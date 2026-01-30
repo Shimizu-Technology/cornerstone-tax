@@ -4,6 +4,7 @@ import { api } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
 import { getFilingStatusLabel } from '../../lib/constants'
 import NotFound from '../../components/common/NotFound'
+import { FadeUp } from '../../components/ui/MotionComponents'
 
 interface Dependent {
   id: number
@@ -255,6 +256,7 @@ export default function ClientDetailPage() {
   const latestReturn = client.tax_returns[0]
 
   return (
+    <FadeUp>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -262,7 +264,7 @@ export default function ClientDetailPage() {
           <Link to="/admin/clients" className="text-gray-500 hover:text-gray-700 text-sm mb-2 inline-block">
             ← Back to Clients
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">{client.full_name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{client.full_name}</h1>
           <p className="text-gray-500">{client.email}</p>
         </div>
         <div className="flex items-center gap-3 self-start">
@@ -288,7 +290,7 @@ export default function ClientDetailPage() {
         {/* Main Info */}
         <div className="lg:col-span-2 space-y-6">
           {/* Contact Info */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h2>
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -318,7 +320,7 @@ export default function ClientDetailPage() {
 
           {/* Spouse Info */}
           {client.spouse_name && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Spouse Information</h2>
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -337,7 +339,7 @@ export default function ClientDetailPage() {
 
           {/* Dependents */}
           {client.dependents.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
                 Dependents ({client.dependents.length})
               </h2>
@@ -361,7 +363,7 @@ export default function ClientDetailPage() {
           )}
 
           {/* Tax Returns */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Tax Returns</h2>
             {client.tax_returns.length === 0 ? (
               <p className="text-gray-500">No tax returns yet</p>
@@ -469,7 +471,7 @@ export default function ClientDetailPage() {
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Quick Info */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Info</h2>
             <dl className="space-y-3">
               <div className="flex justify-between">
@@ -501,7 +503,7 @@ export default function ClientDetailPage() {
 
           {/* Activity (CST-7: includes workflow events + client audit logs) */}
           {(latestReturn?.workflow_events?.length > 0 || auditLogs.length > 0) && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h2>
               <div className="space-y-4">
                 {/* Merge and sort workflow events + audit logs by date */}
@@ -537,7 +539,7 @@ export default function ClientDetailPage() {
 
           {/* Changes from Prior Year */}
           {client.changes_from_prior_year && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Changes from Prior Year</h2>
               <p className="text-gray-700 whitespace-pre-line">{client.changes_from_prior_year}</p>
             </div>
@@ -788,5 +790,6 @@ export default function ClientDetailPage() {
         </div>
       )}
     </div>
+    </FadeUp>
   )
 }
