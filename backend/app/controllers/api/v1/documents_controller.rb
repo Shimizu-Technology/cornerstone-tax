@@ -4,6 +4,7 @@ module Api
   module V1
     class DocumentsController < BaseController
       before_action :authenticate_user!
+      before_action :require_staff!
       before_action :set_tax_return
       before_action :set_document, only: [:show, :download, :destroy]
 
@@ -100,20 +101,24 @@ module Api
 
       # DELETE /api/v1/tax_returns/:tax_return_id/documents/:id
       def destroy
-        # Delete from S3 first
-        if S3Service.configured?
-          S3Service.delete_object(s3_key: @document.s3_key)
+        s3_key = @document.s3_key
+
+        ActiveRecord::Base.transaction do
+          # Log the deletion
+          @document.tax_return.workflow_events.create!(
+            user: current_user,
+            event_type: "document_deleted",
+            old_value: @document.filename,
+            description: "Document deleted: #{@document.filename}"
+          )
+
+          @document.destroy!
         end
 
-        # Log the deletion
-        @document.tax_return.workflow_events.create!(
-          user: current_user,
-          event_type: "document_deleted",
-          old_value: @document.filename,
-          description: "Document deleted: #{@document.filename}"
-        )
-
-        @document.destroy
+        # Delete from S3 after successful DB commit to avoid orphaned records
+        if S3Service.configured?
+          S3Service.delete_object(s3_key: s3_key)
+        end
 
         render json: { message: "Document deleted" }
       end

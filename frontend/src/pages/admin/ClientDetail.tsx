@@ -667,6 +667,7 @@ export default function ClientDetailPage() {
                   <div>
                     <label htmlFor="client-spouse-name" className="block text-sm font-medium text-gray-700 mb-1">Spouse Name</label>
                     <input
+                      id="client-spouse-name"
                       type="text"
                       value={editForm.spouse_name}
                       onChange={e => setEditForm({ ...editForm, spouse_name: e.target.value })}
@@ -676,6 +677,7 @@ export default function ClientDetailPage() {
                   <div>
                     <label htmlFor="client-spouse-dob" className="block text-sm font-medium text-gray-700 mb-1">Spouse DOB</label>
                     <input
+                      id="client-spouse-dob"
                       type="date"
                       value={editForm.spouse_dob}
                       onChange={e => setEditForm({ ...editForm, spouse_dob: e.target.value })}
@@ -741,6 +743,7 @@ export default function ClientDetailPage() {
                     <div className="mt-3">
                       <label htmlFor="client-year-denied" className="block text-sm font-medium text-gray-700 mb-1">Year Denied</label>
                       <input
+                        id="client-year-denied"
                         type="number"
                         value={editForm.denied_eic_actc_year}
                         onChange={e => setEditForm({ ...editForm, denied_eic_actc_year: e.target.value })}
@@ -754,6 +757,7 @@ export default function ClientDetailPage() {
                 <div className="mt-4">
                   <label htmlFor="client-changes" className="block text-sm font-medium text-gray-700 mb-1">Changes from Prior Year</label>
                   <textarea
+                    id="client-changes"
                     value={editForm.changes_from_prior_year}
                     onChange={e => setEditForm({ ...editForm, changes_from_prior_year: e.target.value })}
                     rows={3}
