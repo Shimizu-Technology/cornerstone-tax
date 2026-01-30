@@ -25,6 +25,11 @@ module Api
           @audit_logs = @audit_logs.where(user_id: params[:user_id])
         end
 
+        # Filter by client (CST-7)
+        if params[:client_id].present?
+          @audit_logs = @audit_logs.where(auditable_type: 'Client', auditable_id: params[:client_id])
+        end
+
         # Filter by date range
         if params[:start_date].present?
           @audit_logs = @audit_logs.where("created_at >= ?", Date.parse(params[:start_date]).beginning_of_day)
@@ -65,7 +70,8 @@ module Api
           created_at: log.created_at.iso8601,
           user: log.user ? {
             id: log.user.id,
-            email: log.user.email
+            email: log.user.email,
+            name: log.user.full_name
           } : nil
         }
       end

@@ -654,6 +654,7 @@ export const api = {
     auditable_type?: string;
     action_type?: string;
     user_id?: number;
+    client_id?: number;
     start_date?: string;
     end_date?: string;
   }) => {
@@ -662,6 +663,7 @@ export const api = {
     if (params?.auditable_type) searchParams.set('auditable_type', params.auditable_type);
     if (params?.action_type) searchParams.set('action_type', params.action_type);
     if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
+    if (params?.client_id) searchParams.set('client_id', params.client_id.toString());
     if (params?.start_date) searchParams.set('start_date', params.start_date);
     if (params?.end_date) searchParams.set('end_date', params.end_date);
     const query = searchParams.toString();
@@ -786,10 +788,10 @@ export const api = {
   getDocuments: (taxReturnId: number) =>
     fetchApi<Document[]>(`/api/v1/tax_returns/${taxReturnId}/documents`),
 
-  presignDocumentUpload: (taxReturnId: number, filename: string, contentType: string) =>
+  presignDocumentUpload: (taxReturnId: number, filename: string, contentType: string, fileSize?: number) =>
     fetchApi<PresignResponse>(`/api/v1/tax_returns/${taxReturnId}/documents/presign`, {
       method: 'POST',
-      body: JSON.stringify({ filename, content_type: contentType }),
+      body: JSON.stringify({ filename, content_type: contentType, file_size: fileSize }),
     }),
 
   registerDocument: (taxReturnId: number, data: {
@@ -804,11 +806,11 @@ export const api = {
       body: JSON.stringify({ document: data }),
     }),
 
-  getDocumentDownloadUrl: (documentId: number) =>
-    fetchApi<DownloadResponse>(`/api/v1/documents/${documentId}/download`),
+  getDocumentDownloadUrl: (taxReturnId: number, documentId: number) =>
+    fetchApi<DownloadResponse>(`/api/v1/tax_returns/${taxReturnId}/documents/${documentId}/download`),
 
-  deleteDocument: (documentId: number) =>
-    fetchApi<void>(`/api/v1/documents/${documentId}`, {
+  deleteDocument: (taxReturnId: number, documentId: number) =>
+    fetchApi<void>(`/api/v1/tax_returns/${taxReturnId}/documents/${documentId}`, {
       method: 'DELETE',
     }),
 

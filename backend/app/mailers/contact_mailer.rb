@@ -1,23 +1,29 @@
 # frozen_string_literal: true
 
+require "cgi"
+
 class ContactMailer < ApplicationMailer
   def contact_form_email(name:, email:, phone:, subject:, message:)
-    @name = name
-    @email = email
-    @phone = phone
-    @subject_line = subject
-    @message = message
+    @name = CGI.escapeHTML(name.to_s)
+    @email = CGI.escapeHTML(email.to_s)
+    @phone = CGI.escapeHTML(phone.to_s)
+    @subject_line = CGI.escapeHTML(subject.to_s)
+    @message = CGI.escapeHTML(message.to_s)
 
     from_email = ENV.fetch("MAILER_FROM_EMAIL", "noreply@example.com")
     to_email = Setting.get("contact_email")
+
+    # Sanitize reply_to and subject to prevent CRLF header injection
+    safe_reply_to = email.to_s.delete("\r\n")
+    safe_subject = subject.to_s.delete("\r\n")
 
     Rails.logger.info "📧 Sending contact form email to: #{to_email}"
 
     Resend::Emails.send({
       from: from_email,
       to: to_email,
-      reply_to: email,
-      subject: "Contact Form: #{subject}",
+      reply_to: safe_reply_to,
+      subject: "Contact Form: #{safe_subject}",
       html: contact_form_html
     })
   end

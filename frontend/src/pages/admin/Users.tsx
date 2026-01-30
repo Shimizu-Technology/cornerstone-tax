@@ -18,6 +18,8 @@ interface AdminUser {
 }
 
 export default function Users() {
+  useEffect(() => { document.title = 'Users | Cornerstone Admin' }, [])
+
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [showInviteModal, setShowInviteModal] = useState(false)
@@ -122,7 +124,7 @@ export default function Users() {
           onClick={() => setShowInviteModal(true)}
           className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors font-medium"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
           Invite User
@@ -190,6 +192,7 @@ export default function Users() {
                         value={user.role}
                         onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'employee')}
                         className="px-3 py-1.5 bg-secondary border border-secondary-dark rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        aria-label={`Role for ${user.display_name || user.email}`}
                       >
                         <option value="admin">Admin</option>
                         <option value="employee">Employee</option>
@@ -259,6 +262,7 @@ export default function Users() {
                 value={user.role}
                 onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'employee')}
                 className="flex-1 px-3 py-2 bg-secondary border border-secondary-dark rounded-lg text-sm"
+                aria-label={`Role for ${user.display_name || user.email}`}
               >
                 <option value="admin">Admin</option>
                 <option value="employee">Employee</option>
@@ -276,18 +280,55 @@ export default function Users() {
 
       {/* Invite Modal */}
       {showInviteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => { setShowInviteModal(false); resetInviteForm() }}>
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invite-modal-title"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setShowInviteModal(false)
+                resetInviteForm()
+              }
+              if (e.key === 'Tab') {
+                const modal = e.currentTarget
+                const focusable = modal.querySelectorAll<HTMLElement>(
+                  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                )
+                const first = focusable[0]
+                const last = focusable[focusable.length - 1]
+                if (e.shiftKey) {
+                  if (document.activeElement === first) {
+                    e.preventDefault()
+                    last.focus()
+                  }
+                } else {
+                  if (document.activeElement === last) {
+                    e.preventDefault()
+                    first.focus()
+                  }
+                }
+              }
+            }}
+            ref={(el) => {
+              if (el) {
+                const firstInput = el.querySelector<HTMLElement>('input, select, textarea')
+                if (firstInput) setTimeout(() => firstInput.focus(), 0)
+              }
+            }}
+          >
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-primary-dark">Invite User</h2>
+              <h2 id="invite-modal-title" className="text-xl font-bold text-primary-dark">Invite User</h2>
               <button
                 onClick={() => {
                   setShowInviteModal(false)
                   resetInviteForm()
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close" className="text-gray-400 hover:text-gray-600"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -302,10 +343,11 @@ export default function Users() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="invite-first-name" className="block text-sm font-medium text-gray-700 mb-1">
                     First Name *
                   </label>
                   <input
+                    id="invite-first-name"
                     type="text"
                     value={inviteFirstName}
                     onChange={(e) => setInviteFirstName(e.target.value)}
@@ -315,10 +357,11 @@ export default function Users() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="invite-last-name" className="block text-sm font-medium text-gray-700 mb-1">
                     Last Name
                   </label>
                   <input
+                    id="invite-last-name"
                     type="text"
                     value={inviteLastName}
                     onChange={(e) => setInviteLastName(e.target.value)}
@@ -329,10 +372,11 @@ export default function Users() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="invite-email" className="block text-sm font-medium text-gray-700 mb-1">
                   Email Address *
                 </label>
                 <input
+                  id="invite-email"
                   type="email"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
@@ -346,10 +390,11 @@ export default function Users() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="invite-role" className="block text-sm font-medium text-gray-700 mb-1">
                   Role
                 </label>
                 <select
+                  id="invite-role"
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value as 'admin' | 'employee')}
                   className="w-full px-4 py-3 bg-secondary border border-secondary-dark rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"

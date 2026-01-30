@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
+import { getFilingStatusLabel } from '../../lib/constants'
+import NotFound from '../../components/common/NotFound'
 
 interface Dependent {
   id: number
@@ -82,12 +84,14 @@ interface EditFormData {
 
 // Icons
 const EditIcon = () => (
-  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <svg className="h-4 w-4" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
   </svg>
 )
 
 export default function ClientDetailPage() {
+  useEffect(() => { document.title = 'Client Details | Cornerstone Admin' }, [])
+
   const { id } = useParams<{ id: string }>()
   const [client, setClient] = useState<ClientDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -121,8 +125,32 @@ export default function ClientDetailPage() {
     }
   }
 
+  // Audit logs for this client (CST-7)
+  interface AuditLogEntry {
+    id: number
+    action: string
+    description: string
+    changes_made: Record<string, { from: unknown; to: unknown }> | null
+    created_at: string
+    user: { id: number; email: string; name?: string } | null
+  }
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
+
+  const loadAuditLogs = async () => {
+    if (!id) return
+    try {
+      const result = await api.getAuditLogs({ client_id: parseInt(id), page: 1 })
+      if (result.data) {
+        setAuditLogs(result.data.audit_logs)
+      }
+    } catch (err) {
+      console.error('Failed to load audit logs:', err)
+    }
+  }
+
   useEffect(() => {
     loadClient()
+    loadAuditLogs()
   }, [id])
 
   const startEditingNotes = (tr: TaxReturn) => {
@@ -215,12 +243,12 @@ export default function ClientDetailPage() {
 
   if (error || !client) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-600">{error || 'Client not found'}</p>
-        <Link to="/admin/clients" className="text-primary hover:underline mt-4 inline-block">
-          ← Back to Clients
-        </Link>
-      </div>
+      <NotFound 
+        title="Client Not Found"
+        message={error || 'This client does not exist or may have been removed.'}
+        backTo="/admin/clients"
+        backLabel="← Back to Clients"
+      />
     )
   }
 
@@ -283,7 +311,7 @@ export default function ClientDetailPage() {
               </div>
               <div>
                 <dt className="text-sm text-gray-500">Filing Status</dt>
-                <dd className="font-medium capitalize">{client.filing_status || '—'}</dd>
+                <dd className="font-medium">{getFilingStatusLabel(client.filing_status)}</dd>
               </div>
             </dl>
           </div>
@@ -471,21 +499,38 @@ export default function ClientDetailPage() {
             </dl>
           </div>
 
-          {/* Activity */}
-          {latestReturn && latestReturn.workflow_events.length > 0 && (
+          {/* Activity (CST-7: includes workflow events + client audit logs) */}
+          {(latestReturn?.workflow_events?.length > 0 || auditLogs.length > 0) && (
             <div className="bg-white rounded-xl shadow-sm p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h2>
               <div className="space-y-4">
-                {latestReturn.workflow_events.slice(0, 5).map((event) => (
-                  <div key={event.id} className="border-l-2 border-gray-200 pl-4">
-                    <p className="text-sm font-medium text-gray-900">
-                      {event.description || event.event_type}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {event.actor} • {formatDateTime(event.created_at)}
-                    </p>
-                  </div>
-                ))}
+                {/* Merge and sort workflow events + audit logs by date */}
+                {[
+                  ...(latestReturn?.workflow_events || []).map(e => ({
+                    id: `wf-${e.id}`,
+                    text: e.description || e.event_type,
+                    actor: e.actor,
+                    date: e.created_at,
+                  })),
+                  ...auditLogs.map(log => ({
+                    id: `al-${log.id}`,
+                    text: log.description,
+                    actor: log.user?.name || log.user?.email || 'System',
+                    date: log.created_at,
+                  })),
+                ]
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .slice(0, 8)
+                  .map((item) => (
+                    <div key={item.id} className="border-l-2 border-gray-200 pl-4">
+                      <p className="text-sm font-medium text-gray-900">
+                        {item.text}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {item.actor} • {formatDateTime(item.date)}
+                      </p>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
@@ -533,8 +578,9 @@ export default function ClientDetailPage() {
                 <h3 className="font-semibold text-gray-900 mb-3">Basic Information</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                    <label htmlFor="client-first-name" className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
                     <input
+                      id="client-first-name"
                       type="text"
                       value={editForm.first_name}
                       onChange={e => setEditForm({ ...editForm, first_name: e.target.value })}
@@ -543,8 +589,9 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                    <label htmlFor="client-last-name" className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
                     <input
+                      id="client-last-name"
                       type="text"
                       value={editForm.last_name}
                       onChange={e => setEditForm({ ...editForm, last_name: e.target.value })}
@@ -553,8 +600,9 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                    <label htmlFor="client-email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                     <input
+                      id="client-email"
                       type="email"
                       value={editForm.email}
                       onChange={e => setEditForm({ ...editForm, email: e.target.value })}
@@ -563,8 +611,9 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                    <label htmlFor="client-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
                     <input
+                      id="client-phone"
                       type="tel"
                       value={editForm.phone}
                       onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
@@ -573,8 +622,9 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                    <label htmlFor="client-dob" className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
                     <input
+                      id="client-dob"
                       type="date"
                       value={editForm.date_of_birth}
                       onChange={e => setEditForm({ ...editForm, date_of_birth: e.target.value })}
@@ -582,8 +632,9 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Filing Status</label>
+                    <label htmlFor="client-filing-status" className="block text-sm font-medium text-gray-700 mb-1">Filing Status</label>
                     <select
+                      id="client-filing-status"
                       value={editForm.filing_status}
                       onChange={e => setEditForm({ ...editForm, filing_status: e.target.value })}
                       className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -597,8 +648,9 @@ export default function ClientDetailPage() {
                     </select>
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Mailing Address</label>
+                    <label htmlFor="client-address" className="block text-sm font-medium text-gray-700 mb-1">Mailing Address</label>
                     <textarea
+                      id="client-address"
                       value={editForm.mailing_address}
                       onChange={e => setEditForm({ ...editForm, mailing_address: e.target.value })}
                       rows={3}
@@ -613,8 +665,9 @@ export default function ClientDetailPage() {
                 <h3 className="font-semibold text-gray-900 mb-3">Spouse Information</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Spouse Name</label>
+                    <label htmlFor="client-spouse-name" className="block text-sm font-medium text-gray-700 mb-1">Spouse Name</label>
                     <input
+                      id="client-spouse-name"
                       type="text"
                       value={editForm.spouse_name}
                       onChange={e => setEditForm({ ...editForm, spouse_name: e.target.value })}
@@ -622,8 +675,9 @@ export default function ClientDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Spouse DOB</label>
+                    <label htmlFor="client-spouse-dob" className="block text-sm font-medium text-gray-700 mb-1">Spouse DOB</label>
                     <input
+                      id="client-spouse-dob"
                       type="date"
                       value={editForm.spouse_dob}
                       onChange={e => setEditForm({ ...editForm, spouse_dob: e.target.value })}
@@ -687,8 +741,9 @@ export default function ClientDetailPage() {
                   </label>
                   {editForm.denied_eic_actc && (
                     <div className="mt-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Year Denied</label>
+                      <label htmlFor="client-year-denied" className="block text-sm font-medium text-gray-700 mb-1">Year Denied</label>
                       <input
+                        id="client-year-denied"
                         type="number"
                         value={editForm.denied_eic_actc_year}
                         onChange={e => setEditForm({ ...editForm, denied_eic_actc_year: e.target.value })}
@@ -700,8 +755,9 @@ export default function ClientDetailPage() {
                 </div>
 
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Changes from Prior Year</label>
+                  <label htmlFor="client-changes" className="block text-sm font-medium text-gray-700 mb-1">Changes from Prior Year</label>
                   <textarea
+                    id="client-changes"
                     value={editForm.changes_from_prior_year}
                     onChange={e => setEditForm({ ...editForm, changes_from_prior_year: e.target.value })}
                     rows={3}

@@ -7,11 +7,22 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    # Allow origins from environment variable or localhost for development
-    # Set FRONTEND_URL in production (e.g., "https://cornerstone.netlify.app")
-    frontend_url = ENV.fetch("FRONTEND_URL", "http://localhost:5173")
-    allowed_origins = [frontend_url, "http://localhost:5173", "http://127.0.0.1:5173"].uniq
-    
+    # CST-15: Only allow configured origins; fail-safe in production
+    frontend_url = ENV["FRONTEND_URL"]
+
+    if frontend_url.blank? && !(Rails.env.development? || Rails.env.test?)
+      raise "FRONTEND_URL must be set in non-development environments"
+    end
+
+    allowed_origins = [frontend_url || "http://localhost:5173"].compact
+
+    # Only include dev origins in development/test
+    if Rails.env.development? || Rails.env.test?
+      allowed_origins += ["http://localhost:5173", "http://127.0.0.1:5173"]
+    end
+
+    allowed_origins.uniq!
+
     origins(*allowed_origins)
 
     resource "*",
