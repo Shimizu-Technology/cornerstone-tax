@@ -33,6 +33,14 @@ interface UserActivity {
   entries: TimeEntry[]
 }
 
+// Helper to get local date string (YYYY-MM-DD) without timezone issues
+const getLocalDateString = (date: Date = new Date()): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export default function Dashboard() {
   useEffect(() => { document.title = 'Dashboard | Cornerstone Admin' }, [])
 
@@ -46,7 +54,7 @@ export default function Dashboard() {
   const [recentClients, setRecentClients] = useState<RecentClient[]>([])
   const [mySchedule, setMySchedule] = useState<Schedule[]>([])
   const [teamActivity, setTeamActivity] = useState<UserActivity[]>([])
-  const [activityDate, setActivityDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [activityDate, setActivityDate] = useState<string>(getLocalDateString())
   const [loading, setLoading] = useState(true)
   const [activityLoading, setActivityLoading] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -111,7 +119,7 @@ export default function Dashboard() {
         }
 
         // Load today's activity
-        await loadTeamActivity(new Date().toISOString().split('T')[0])
+        await loadTeamActivity(getLocalDateString())
       } catch (error) {
         console.error('Failed to load dashboard data:', error)
       } finally {
@@ -249,9 +257,9 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  const currentDate = new Date(activityDate + 'T00:00:00')
+                  const currentDate = new Date(activityDate + 'T12:00:00')
                   currentDate.setDate(currentDate.getDate() - 1)
-                  const dateStr = currentDate.toISOString().split('T')[0]
+                  const dateStr = getLocalDateString(currentDate)
                   setActivityDate(dateStr)
                   loadTeamActivity(dateStr)
                 }}
@@ -264,12 +272,12 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => {
-                  const today = new Date().toISOString().split('T')[0]
+                  const today = getLocalDateString()
                   setActivityDate(today)
                   loadTeamActivity(today)
                 }}
                 className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                  activityDate === new Date().toISOString().split('T')[0]
+                  activityDate === getLocalDateString()
                     ? 'bg-primary text-white'
                     : 'text-gray-600 hover:bg-secondary'
                 }`}
@@ -278,15 +286,15 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => {
-                  const currentDate = new Date(activityDate + 'T00:00:00')
+                  const currentDate = new Date(activityDate + 'T12:00:00')
                   currentDate.setDate(currentDate.getDate() + 1)
-                  const dateStr = currentDate.toISOString().split('T')[0]
+                  const dateStr = getLocalDateString(currentDate)
                   setActivityDate(dateStr)
                   loadTeamActivity(dateStr)
                 }}
                 className="p-2 text-gray-500 hover:text-primary hover:bg-secondary rounded-lg transition-colors"
                 title="Next day"
-                disabled={activityDate >= new Date().toISOString().split('T')[0]}
+                disabled={activityDate >= getLocalDateString()}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -294,7 +302,7 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-          {activityDate !== new Date().toISOString().split('T')[0] && (
+          {activityDate !== getLocalDateString() && (
             <p className="text-sm text-primary mt-2 font-medium">
               {new Date(activityDate + 'T00:00:00').toLocaleDateString('en-US', { 
                 weekday: 'long', 
