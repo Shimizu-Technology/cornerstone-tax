@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
 import { FadeUp } from '../../components/ui/MotionComponents'
-import { AnimatePresence, motion } from 'framer-motion'
 
 // Define types locally to avoid Vite caching issues
 interface AdminUser {
