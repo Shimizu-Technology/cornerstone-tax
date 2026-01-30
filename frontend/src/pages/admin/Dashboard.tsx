@@ -4,7 +4,7 @@ import { api } from '../../lib/api'
 import type { Schedule, TimeEntry } from '../../lib/api'
 import QuickCreateClientModal from '../../components/admin/QuickCreateClientModal'
 import { SkeletonStats, SkeletonCard, SkeletonTimeEntry } from '../../components/ui/Skeleton'
-import { FadeIn } from '../../components/ui/FadeIn'
+import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
 
 interface DashboardStats {
   totalClients: number
@@ -159,17 +159,17 @@ export default function Dashboard() {
   }
 
   return (
-    <FadeIn>
+    <FadeUp>
     <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Dashboard</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
           <p className="text-gray-500 mt-1">Welcome back! Here's what's happening today.</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center justify-center gap-2 bg-primary text-white px-5 py-3 rounded-xl font-medium hover:bg-primary-dark transition-all shadow-md hover:shadow-lg"
+          className="inline-flex items-center justify-center gap-2 bg-primary text-white px-5 py-3 rounded-xl font-medium hover:bg-primary-dark hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-md hover:shadow-lg"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -187,8 +187,8 @@ export default function Dashboard() {
       />
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        <StatCard
+      <StaggerContainer className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        <StaggerItem><StatCard
           title="Total Clients"
           value={stats.totalClients}
           icon={
@@ -197,8 +197,8 @@ export default function Dashboard() {
             </svg>
           }
           gradient="from-primary to-primary-dark"
-        />
-        <StatCard
+        /></StaggerItem>
+        <StaggerItem><StatCard
           title="Active Returns"
           value={stats.activeReturns}
           icon={
@@ -207,8 +207,8 @@ export default function Dashboard() {
             </svg>
           }
           gradient="from-emerald-500 to-emerald-600"
-        />
-        <StatCard
+        /></StaggerItem>
+        <StaggerItem><StatCard
           title="In Review"
           value={stats.pendingReview}
           icon={
@@ -218,8 +218,8 @@ export default function Dashboard() {
             </svg>
           }
           gradient="from-amber-500 to-amber-600"
-        />
-        <StatCard
+        /></StaggerItem>
+        <StaggerItem><StatCard
           title="Ready for Pickup"
           value={stats.readyForPickup}
           icon={
@@ -228,11 +228,11 @@ export default function Dashboard() {
             </svg>
           }
           gradient="from-teal-500 to-teal-600"
-        />
-      </div>
+        /></StaggerItem>
+      </StaggerContainer>
 
       {/* Team Activity Widget */}
-      <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden transition-shadow hover:shadow-md">
         <div className="px-6 py-5 border-b border-secondary-dark">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -242,7 +242,7 @@ export default function Dashboard() {
                 </svg>
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Team Activity</h2>
+                <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Team Activity</h2>
                 <p className="text-sm text-gray-500">What everyone's working on</p>
               </div>
             </div>
@@ -390,9 +390,9 @@ export default function Dashboard() {
       </div>
 
       {/* My Schedule */}
-      <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden transition-shadow hover:shadow-md">
         <div className="px-6 py-5 border-b border-secondary-dark flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">My Upcoming Shifts</h2>
+          <h2 className="text-lg font-semibold text-gray-900 tracking-tight">My Upcoming Shifts</h2>
           <Link
             to="/admin/schedule"
             className="text-primary hover:text-primary-dark text-sm font-medium inline-flex items-center gap-1 transition-colors"
@@ -447,9 +447,9 @@ export default function Dashboard() {
       </div>
 
       {/* Recent Clients */}
-      <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden transition-shadow hover:shadow-md">
         <div className="px-6 py-5 border-b border-secondary-dark flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Recent Clients</h2>
+          <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Recent Clients</h2>
           <Link
             to="/admin/clients"
             className="text-primary hover:text-primary-dark text-sm font-medium inline-flex items-center gap-1 transition-colors"
@@ -515,7 +515,7 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
-    </FadeIn>
+    </FadeUp>
   )
 }
 
