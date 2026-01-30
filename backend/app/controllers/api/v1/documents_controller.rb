@@ -34,9 +34,14 @@ module Api
           return render json: { error: "Filename is required" }, status: :unprocessable_entity
         end
 
+        # CST-16: Validate file size is positive
+        if file_size <= 0
+          return render json: { error: "File size is required and must be positive" }, status: :unprocessable_entity
+        end
+
         # CST-16: Validate file size (max 50MB)
         max_size = 50.megabytes
-        if file_size > 0 && file_size > max_size
+        if file_size > max_size
           return render json: {
             error: "File size exceeds maximum allowed size of 50MB"
           }, status: :unprocessable_entity

@@ -580,6 +580,7 @@ export default function ClientDetailPage() {
                   <div>
                     <label htmlFor="client-first-name" className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
                     <input
+                      id="client-first-name"
                       type="text"
                       value={editForm.first_name}
                       onChange={e => setEditForm({ ...editForm, first_name: e.target.value })}
@@ -590,6 +591,7 @@ export default function ClientDetailPage() {
                   <div>
                     <label htmlFor="client-last-name" className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
                     <input
+                      id="client-last-name"
                       type="text"
                       value={editForm.last_name}
                       onChange={e => setEditForm({ ...editForm, last_name: e.target.value })}
@@ -600,6 +602,7 @@ export default function ClientDetailPage() {
                   <div>
                     <label htmlFor="client-email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                     <input
+                      id="client-email"
                       type="email"
                       value={editForm.email}
                       onChange={e => setEditForm({ ...editForm, email: e.target.value })}
@@ -610,6 +613,7 @@ export default function ClientDetailPage() {
                   <div>
                     <label htmlFor="client-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
                     <input
+                      id="client-phone"
                       type="tel"
                       value={editForm.phone}
                       onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
@@ -620,6 +624,7 @@ export default function ClientDetailPage() {
                   <div>
                     <label htmlFor="client-dob" className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
                     <input
+                      id="client-dob"
                       type="date"
                       value={editForm.date_of_birth}
                       onChange={e => setEditForm({ ...editForm, date_of_birth: e.target.value })}
@@ -629,6 +634,7 @@ export default function ClientDetailPage() {
                   <div>
                     <label htmlFor="client-filing-status" className="block text-sm font-medium text-gray-700 mb-1">Filing Status</label>
                     <select
+                      id="client-filing-status"
                       value={editForm.filing_status}
                       onChange={e => setEditForm({ ...editForm, filing_status: e.target.value })}
                       className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -644,6 +650,7 @@ export default function ClientDetailPage() {
                   <div className="sm:col-span-2">
                     <label htmlFor="client-address" className="block text-sm font-medium text-gray-700 mb-1">Mailing Address</label>
                     <textarea
+                      id="client-address"
                       value={editForm.mailing_address}
                       onChange={e => setEditForm({ ...editForm, mailing_address: e.target.value })}
                       rows={3}

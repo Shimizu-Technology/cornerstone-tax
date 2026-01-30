@@ -1102,13 +1102,13 @@ function PresetForm({ formData, onChange, onSave, onCancel, saving, error }: Pre
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label className="block text-sm font-medium text-primary-dark mb-2">
+          <label htmlFor="preset-label" className="block text-sm font-medium text-primary-dark mb-2">
             Label <span className="text-red-500">*</span>
           </label>
           <input
+            id="preset-label"
             type="text"
             value={formData.label}
-            aria-label="Time preset label"
             onChange={(e) => onChange({ ...formData, label: e.target.value })}
             placeholder="e.g., 8-5"
             className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
@@ -1116,26 +1116,26 @@ function PresetForm({ formData, onChange, onSave, onCancel, saving, error }: Pre
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-primary-dark mb-2">
+          <label htmlFor="preset-start-time" className="block text-sm font-medium text-primary-dark mb-2">
             Start Time <span className="text-red-500">*</span>
           </label>
           <input
+            id="preset-start-time"
             type="time"
             value={formData.start_time}
-            aria-label="Start time"
             onChange={(e) => onChange({ ...formData, start_time: e.target.value })}
             className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-primary-dark mb-2">
+          <label htmlFor="preset-end-time" className="block text-sm font-medium text-primary-dark mb-2">
             End Time <span className="text-red-500">*</span>
           </label>
           <input
+            id="preset-end-time"
             type="time"
             value={formData.end_time}
-            aria-label="End time"
             onChange={(e) => onChange({ ...formData, end_time: e.target.value })}
             className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
           />

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
 
 interface QuickCreateClientModalProps {
@@ -43,6 +43,19 @@ export default function QuickCreateClientModal({
   })
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
+
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -127,7 +140,7 @@ export default function QuickCreateClientModal({
           {/* Form */}
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {errors.length > 0 && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg" role="alert">
                 <ul className="text-sm text-red-600 space-y-1">
                   {errors.map((error, i) => (
                     <li key={i}>{error}</li>
@@ -138,10 +151,11 @@ export default function QuickCreateClientModal({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="qc-first-name" className="block text-sm font-medium text-gray-700 mb-1">
                   First Name *
                 </label>
                 <input
+                  id="qc-first-name"
                   type="text"
                   name="first_name"
                   value={formData.first_name}
@@ -151,10 +165,11 @@ export default function QuickCreateClientModal({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="qc-last-name" className="block text-sm font-medium text-gray-700 mb-1">
                   Last Name *
                 </label>
                 <input
+                  id="qc-last-name"
                   type="text"
                   name="last_name"
                   value={formData.last_name}
@@ -166,10 +181,11 @@ export default function QuickCreateClientModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="qc-email" className="block text-sm font-medium text-gray-700 mb-1">
                 Email *
               </label>
               <input
+                id="qc-email"
                 type="email"
                 name="email"
                 value={formData.email}
@@ -180,10 +196,11 @@ export default function QuickCreateClientModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="qc-phone" className="block text-sm font-medium text-gray-700 mb-1">
                 Phone *
               </label>
               <input
+                id="qc-phone"
                 type="tel"
                 name="phone"
                 value={formData.phone}
@@ -196,10 +213,11 @@ export default function QuickCreateClientModal({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="qc-date-of-birth" className="block text-sm font-medium text-gray-700 mb-1">
                   Date of Birth
                 </label>
                 <input
+                  id="qc-date-of-birth"
                   type="date"
                   name="date_of_birth"
                   value={formData.date_of_birth}
@@ -208,10 +226,11 @@ export default function QuickCreateClientModal({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="qc-tax-year" className="block text-sm font-medium text-gray-700 mb-1">
                   Tax Year
                 </label>
                 <select
+                  id="qc-tax-year"
                   name="tax_year"
                   value={formData.tax_year}
                   onChange={handleChange}
@@ -225,10 +244,11 @@ export default function QuickCreateClientModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="qc-filing-status" className="block text-sm font-medium text-gray-700 mb-1">
                 Filing Status
               </label>
               <select
+                id="qc-filing-status"
                 name="filing_status"
                 value={formData.filing_status}
                 onChange={handleChange}

@@ -214,7 +214,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
           type="file" aria-label="Upload document"
           onChange={handleFileSelect}
           className="hidden"
-          accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx"
+          accept=".pdf,.jpg,.jpeg,.png"
         />
 
         {uploading ? (
@@ -230,7 +230,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
             <p className="text-gray-600 mb-1">
               <span className="font-medium text-primary">Click to upload</span> or drag and drop
             </p>
-            <p className="text-sm text-gray-500">PDF, images, or documents up to 25MB</p>
+            <p className="text-sm text-gray-500">PDF, JPEG, or PNG up to 50MB</p>
           </>
         )}
       </div>

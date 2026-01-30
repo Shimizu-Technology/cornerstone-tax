@@ -5,7 +5,7 @@
 
 class Rack::Attack
   # Use Rails cache for throttle storage
-  Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
+  Rack::Attack.cache.store = Rails.cache
 
   # --- Throttle Rules ---
 

@@ -7,9 +7,14 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    # CST-15: Only allow localhost origins in development
-    frontend_url = ENV.fetch("FRONTEND_URL", "http://localhost:5173")
-    allowed_origins = [frontend_url]
+    # CST-15: Only allow configured origins; fail-safe in production
+    frontend_url = ENV["FRONTEND_URL"]
+
+    if frontend_url.blank? && !Rails.env.development?
+      raise "FRONTEND_URL must be set in non-development environments"
+    end
+
+    allowed_origins = [frontend_url || "http://localhost:5173"].compact
 
     # Only include dev origins in development
     if Rails.env.development?

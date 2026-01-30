@@ -670,6 +670,7 @@ export default function TaxReturnDetailPage() {
               <div>
                 <label htmlFor="payer-name" className="block text-sm font-medium text-gray-700 mb-2">Payer Name *</label>
                 <input
+                  id="payer-name"
                   type="text"
                   value={incomeForm.payer_name}
                   onChange={e => setIncomeForm({ ...incomeForm, payer_name: e.target.value })}
@@ -681,6 +682,7 @@ export default function TaxReturnDetailPage() {
               <div>
                 <label htmlFor="income-notes" className="block text-sm font-medium text-gray-700 mb-2">Notes (optional)</label>
                 <textarea
+                  id="income-notes"
                   value={incomeForm.notes}
                   onChange={e => setIncomeForm({ ...incomeForm, notes: e.target.value })}
                   rows={3}
