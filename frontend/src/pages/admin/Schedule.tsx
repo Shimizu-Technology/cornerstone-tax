@@ -53,6 +53,8 @@ function formatDayLong(date: Date): string {
 }
 
 export default function Schedule() {
+  useEffect(() => { document.title = 'Schedule | Cornerstone Admin' }, [])
+
   const navigate = useNavigate()
   const [schedules, setSchedules] = useState<ScheduleType[]>([])
   const [users, setUsers] = useState<UserOption[]>([])
@@ -284,7 +286,7 @@ export default function Schedule() {
             }`}
           >
             <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
               </svg>
               <span className="hidden sm:inline">List</span>
@@ -299,7 +301,7 @@ export default function Schedule() {
             }`}
           >
             <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
               </svg>
               <span className="hidden sm:inline">Grid</span>
@@ -316,7 +318,7 @@ export default function Schedule() {
             className="p-3 sm:p-2 hover:bg-neutral-warm rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
             aria-label="Previous week"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
@@ -345,7 +347,7 @@ export default function Schedule() {
             className="p-3 sm:p-2 hover:bg-neutral-warm rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
             aria-label="Next week"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </button>
@@ -363,7 +365,7 @@ export default function Schedule() {
           {schedules.length === 0 ? (
             <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-12 text-center">
               <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
@@ -429,7 +431,7 @@ export default function Schedule() {
                                 className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium rounded-lg transition-colors min-h-[44px] sm:min-h-0"
                                 title="Log this shift as a time entry"
                               >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                                 <span>Log Time</span>
@@ -439,7 +441,7 @@ export default function Schedule() {
                                 className="inline-flex items-center justify-center p-2.5 sm:p-2 text-text-muted hover:text-primary-dark hover:bg-neutral-warm rounded-lg transition-colors min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0"
                                 title="Edit shift"
                               >
-                                <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                 </svg>
                               </button>

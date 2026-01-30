@@ -5,9 +5,9 @@
 
 @theme {
   /* Primary - Darker Dusty Rose (for buttons/links - good contrast) */
-  --color-primary: #9E8A80;
-  --color-primary-dark: #8A7870;
-  --color-primary-light: #B09A90;
+  --color-primary: #78645A;
+  --color-primary-dark: #6A584E;
+  --color-primary-light: #9E8A80;
   
   /* Secondary - Cream with blush undertone (backgrounds) */
   --color-secondary: #F5F0EC;

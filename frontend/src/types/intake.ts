@@ -37,6 +37,7 @@ export interface IntakeFormData {
   income_sources: IncomeSource[];
   w2_employers: string[];
   form_1099_types: string[];
+  form_1099_payer_names: Record<string, string>;
 
   // Section 4: Special Questions
   denied_eic_actc: boolean;
@@ -77,6 +78,7 @@ export const defaultIntakeFormData: IntakeFormData = {
   income_sources: [],
   w2_employers: [''],
   form_1099_types: [],
+  form_1099_payer_names: {},
   denied_eic_actc: false,
   denied_eic_actc_year: '',
   has_crypto_transactions: false,

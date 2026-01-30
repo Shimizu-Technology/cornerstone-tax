@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "cgi"
+
 class EmailService
   class << self
     def send_invitation_email(user:, invited_by:)
@@ -15,10 +17,10 @@ class EmailService
         html: invitation_html(user: user, invited_by: invited_by, sign_up_url: sign_up_url)
       })
 
-      Rails.logger.info "Resend API response for #{user.email}: #{response.inspect}"
+      Rails.logger.info "Resend API response for #{CGI.escapeHTML(user.email.to_s)}: #{response.inspect}"
       true
     rescue StandardError => e
-      Rails.logger.error "Failed to send invitation email to #{user.email}: #{e.class} - #{e.message}"
+      Rails.logger.error "Failed to send invitation email to #{CGI.escapeHTML(user.email.to_s)}: #{e.class} - #{e.message}"
       Rails.logger.error e.backtrace.first(5).join("\n") if e.backtrace
       false
     end
@@ -63,18 +65,18 @@ class EmailService
                       <h2 style="color: #2d2a26; margin: 0 0 20px 0; font-size: 22px;">You're Invited!</h2>
                       
                       <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-                        #{invited_by&.email || "An administrator"} has invited you to join the Cornerstone Accounting team portal.
+                        #{CGI.escapeHTML((invited_by&.email || "An administrator").to_s)} has invited you to join the Cornerstone Accounting team portal.
                       </p>
 
                       <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
-                        You've been granted <strong>#{user.role}</strong> access. Click the button below to create your account and get started.
+                        You've been granted <strong>#{CGI.escapeHTML(user.role.to_s)}</strong> access. Click the button below to create your account and get started.
                       </p>
 
                       <!-- CTA Button -->
                       <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto 30px auto;">
                         <tr>
                           <td style="background-color: #8b7355; border-radius: 8px;">
-                            <a href="#{sign_up_url}" target="_blank" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">
+                            <a href="#{CGI.escapeHTML(sign_up_url.to_s)}" target="_blank" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">
                               Create Your Account
                             </a>
                           </td>
@@ -85,13 +87,13 @@ class EmailService
                         Or copy and paste this link into your browser:
                       </p>
                       <p style="color: #8b7355; font-size: 14px; word-break: break-all; margin: 0 0 30px 0;">
-                        #{sign_up_url}
+                        #{CGI.escapeHTML(sign_up_url.to_s)}
                       </p>
 
                       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 30px 0;">
 
                       <p style="color: #888888; font-size: 14px; line-height: 1.6; margin: 0;">
-                        <strong>Important:</strong> Make sure to sign up using this email address (<strong>#{user.email}</strong>) to gain access.
+                        <strong>Important:</strong> Make sure to sign up using this email address (<strong>#{CGI.escapeHTML(user.email.to_s)}</strong>) to gain access.
                       </p>
                     </td>
                   </tr>

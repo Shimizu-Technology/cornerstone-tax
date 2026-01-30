@@ -2,10 +2,9 @@
 
 module Api
   module V1
-    class DocumentsController < ApplicationController
-      include ClerkAuthenticatable
+    class DocumentsController < BaseController
       before_action :authenticate_user!
-      before_action :set_tax_return, only: [:presign, :create, :index]
+      before_action :set_tax_return
       before_action :set_document, only: [:show, :download, :destroy]
 
       # GET /api/v1/tax_returns/:tax_return_id/documents
@@ -15,7 +14,7 @@ module Api
         render json: documents.map { |doc| document_json(doc) }
       end
 
-      # GET /api/v1/documents/:id
+      # GET /api/v1/tax_returns/:tax_return_id/documents/:id
       def show
         render json: document_json(@document)
       end
@@ -29,9 +28,27 @@ module Api
 
         filename = params[:filename]
         content_type = params[:content_type] || "application/octet-stream"
+        file_size = params[:file_size].to_i
 
         if filename.blank?
           return render json: { error: "Filename is required" }, status: :unprocessable_entity
+        end
+
+        # CST-16: Validate file size (max 50MB)
+        max_size = 50.megabytes
+        if file_size > 0 && file_size > max_size
+          return render json: {
+            error: "File size exceeds maximum allowed size of 50MB"
+          }, status: :unprocessable_entity
+        end
+
+        # CST-16: Validate content type (PDF, JPEG, PNG only)
+        allowed_types = %w[application/pdf image/jpeg image/png]
+        unless allowed_types.include?(content_type)
+          return render json: {
+            error: "File type not allowed. Accepted types: PDF, JPEG, PNG",
+            allowed_types: allowed_types
+          }, status: :unprocessable_entity
         end
 
         result = S3Service.presign_upload(
@@ -60,7 +77,7 @@ module Api
         end
       end
 
-      # GET /api/v1/documents/:id/download
+      # GET /api/v1/tax_returns/:tax_return_id/documents/:id/download
       # Get a presigned URL for downloading
       def download
         unless S3Service.configured?
@@ -76,7 +93,7 @@ module Api
         render json: { download_url: download_url, expires_in: 3600 }
       end
 
-      # DELETE /api/v1/documents/:id
+      # DELETE /api/v1/tax_returns/:tax_return_id/documents/:id
       def destroy
         # Delete from S3 first
         if S3Service.configured?
@@ -98,12 +115,14 @@ module Api
 
       private
 
+      # CST-14: Always scope through tax_return to prevent unauthorized access
       def set_tax_return
         @tax_return = TaxReturn.find(params[:tax_return_id])
       end
 
+      # CST-14: Scope document lookup through tax_return
       def set_document
-        @document = Document.find(params[:id])
+        @document = @tax_return.documents.find(params[:id])
       end
 
       def document_params

@@ -136,7 +136,7 @@ export default function ClerkProtectedContent({ children, requiredRole }: ClerkP
 
   // Not signed in - redirect to sign in
   if (authStatus === 'unauthorized' || !isSignedIn) {
-    return <RedirectToSignIn />
+    return <RedirectToSignIn redirectUrl={window.location.href} />
   }
 
   // Access denied - user doesn't have required role

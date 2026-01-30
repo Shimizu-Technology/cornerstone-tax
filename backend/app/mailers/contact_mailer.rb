@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
+require "cgi"
+
 class ContactMailer < ApplicationMailer
   def contact_form_email(name:, email:, phone:, subject:, message:)
-    @name = name
-    @email = email
-    @phone = phone
-    @subject_line = subject
-    @message = message
+    @name = CGI.escapeHTML(name.to_s)
+    @email = CGI.escapeHTML(email.to_s)
+    @phone = CGI.escapeHTML(phone.to_s)
+    @subject_line = CGI.escapeHTML(subject.to_s)
+    @message = CGI.escapeHTML(message.to_s)
 
     from_email = ENV.fetch("MAILER_FROM_EMAIL", "noreply@example.com")
     to_email = Setting.get("contact_email")
