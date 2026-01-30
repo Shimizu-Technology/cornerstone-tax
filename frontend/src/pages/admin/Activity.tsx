@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FadeUp } from '../../components/ui/MotionComponents'
+import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { formatRelativeTime } from '../../lib/dateUtils'
@@ -597,19 +597,18 @@ export default function Activity() {
             )}
           </div>
         ) : (
-          <div className="divide-y divide-secondary-dark">
+          <StaggerContainer className="divide-y divide-secondary-dark">
             {activities.map((activity) => (
-              <div
-                key={`${activity.type}-${activity.data.id}`}
+              <StaggerItem key={`${activity.type}-${activity.data.id}`}><div
                 className="p-4 sm:p-5 hover:bg-secondary/30 transition-colors"
               >
                 {activity.type === 'workflow' 
                   ? renderWorkflowEvent(activity.data as WorkflowEventItem)
                   : renderAuditLog(activity.data as AuditLogItem)
                 }
-              </div>
+              </div></StaggerItem>
             ))}
-          </div>
+          </StaggerContainer>
         )}
 
         {/* Pagination */}

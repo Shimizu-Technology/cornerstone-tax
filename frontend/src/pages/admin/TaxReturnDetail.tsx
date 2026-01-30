@@ -7,7 +7,7 @@ import { formatDate, formatDateTime } from '../../lib/dateUtils'
 import { getFilingStatusLabel } from '../../lib/constants'
 import NotFound from '../../components/common/NotFound'
 import DocumentUpload from '../../components/admin/DocumentUpload'
-import { FadeUp } from '../../components/ui/MotionComponents'
+import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
 
 // Define types locally to avoid Vite import caching issues
 interface IncomeSourceLocal {
@@ -477,9 +477,9 @@ export default function TaxReturnDetailPage() {
               {taxReturn.income_sources.length === 0 ? (
                 <p className="text-gray-400 italic">No income sources added yet</p>
               ) : (
-                <div className="space-y-3">
+                <StaggerContainer className="space-y-3">
                   {taxReturn.income_sources.map((src) => (
-                    <div key={src.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                    <StaggerItem key={src.id}><div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
                       <div>
                         <p className="font-medium">{src.payer_name}</p>
                         <p className="text-sm text-gray-500">
@@ -502,9 +502,9 @@ export default function TaxReturnDetailPage() {
                           <TrashIcon />
                         </button>
                       </div>
-                    </div>
+                    </div></StaggerItem>
                   ))}
-                </div>
+                </StaggerContainer>
               )}
             </div>
           </FadeUp>
@@ -625,18 +625,18 @@ export default function TaxReturnDetailPage() {
               {taxReturn.workflow_events.length === 0 ? (
                 <p className="text-gray-500 text-sm">No activity yet</p>
               ) : (
-                <div className="space-y-4 max-h-96 overflow-y-auto">
+                <StaggerContainer className="space-y-4 max-h-96 overflow-y-auto">
                   {taxReturn.workflow_events.map((event) => (
-                    <div key={event.id} className="border-l-2 border-gray-200 pl-4">
+                    <StaggerItem key={event.id}><div className="border-l-2 border-gray-200 pl-4">
                       <p className="text-sm font-medium text-gray-900">
                         {event.description || event.event_type}
                       </p>
                       <p className="text-xs text-gray-500">
                         {event.actor} \u2022 {formatDateTime(event.created_at)}
                       </p>
-                    </div>
+                    </div></StaggerItem>
                   ))}
-                </div>
+                </StaggerContainer>
               )}
             </div>
           </FadeUp>
