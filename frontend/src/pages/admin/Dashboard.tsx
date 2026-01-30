@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
-import type { Schedule } from '../../lib/api'
+import type { Schedule, TimeEntry } from '../../lib/api'
 import QuickCreateClientModal from '../../components/admin/QuickCreateClientModal'
+import { SkeletonStats, SkeletonCard, SkeletonTimeEntry } from '../../components/ui/Skeleton'
+import { FadeIn } from '../../components/ui/FadeIn'
 
 interface DashboardStats {
   totalClients: number
@@ -22,6 +24,15 @@ interface RecentClient {
   } | null
 }
 
+// Group time entries by user for the activity widget
+interface UserActivity {
+  userId: number
+  displayName: string
+  totalHours: number
+  totalBreakMinutes: number
+  entries: TimeEntry[]
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<DashboardStats>({
@@ -32,8 +43,48 @@ export default function Dashboard() {
   })
   const [recentClients, setRecentClients] = useState<RecentClient[]>([])
   const [mySchedule, setMySchedule] = useState<Schedule[]>([])
+  const [teamActivity, setTeamActivity] = useState<UserActivity[]>([])
+  const [activityDate, setActivityDate] = useState<string>(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
+  const [activityLoading, setActivityLoading] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+
+  // Load team activity for a given date
+  const loadTeamActivity = async (date: string) => {
+    setActivityLoading(true)
+    try {
+      const result = await api.getTimeEntries({ date })
+      if (result.data) {
+        // Group entries by user
+        const userMap = new Map<number, UserActivity>()
+        
+        for (const entry of result.data.time_entries) {
+          const userId = entry.user.id
+          if (!userMap.has(userId)) {
+            userMap.set(userId, {
+              userId,
+              displayName: entry.user.display_name || entry.user.email.split('@')[0],
+              totalHours: 0,
+              totalBreakMinutes: 0,
+              entries: []
+            })
+          }
+          const userActivity = userMap.get(userId)!
+          userActivity.totalHours += entry.hours
+          userActivity.totalBreakMinutes += entry.break_minutes || 0
+          userActivity.entries.push(entry)
+        }
+        
+        // Sort by total hours descending
+        const activities = Array.from(userMap.values()).sort((a, b) => b.totalHours - a.totalHours)
+        setTeamActivity(activities)
+      }
+    } catch (error) {
+      console.error('Failed to load team activity:', error)
+    } finally {
+      setActivityLoading(false)
+    }
+  }
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -56,6 +107,9 @@ export default function Dashboard() {
         if (scheduleResult.data) {
           setMySchedule(scheduleResult.data.schedules)
         }
+
+        // Load today's activity
+        await loadTeamActivity(new Date().toISOString().split('T')[0])
       } catch (error) {
         console.error('Failed to load dashboard data:', error)
       } finally {
@@ -68,13 +122,42 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+      <div className="space-y-8">
+        {/* Header skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="space-y-2">
+            <div className="h-8 w-40 bg-gray-200 rounded animate-pulse" />
+            <div className="h-5 w-64 bg-gray-200 rounded animate-pulse" />
+          </div>
+          <div className="h-12 w-32 bg-gray-200 rounded-xl animate-pulse" />
+        </div>
+        
+        {/* Stats skeleton */}
+        <SkeletonStats />
+        
+        {/* Team Activity skeleton */}
+        <div className="bg-white rounded-2xl border border-secondary-dark overflow-hidden">
+          <div className="px-6 py-5 border-b border-secondary-dark">
+            <div className="h-6 w-40 bg-gray-200 rounded animate-pulse" />
+          </div>
+          <div className="divide-y divide-secondary-dark">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <SkeletonTimeEntry key={i} />
+            ))}
+          </div>
+        </div>
+        
+        {/* Schedule skeleton */}
+        <SkeletonCard />
+        
+        {/* Recent clients skeleton */}
+        <SkeletonCard />
       </div>
     )
   }
 
   return (
+    <FadeIn>
     <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -144,6 +227,164 @@ export default function Dashboard() {
           }
           gradient="from-teal-500 to-teal-600"
         />
+      </div>
+
+      {/* Team Activity Widget */}
+      <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden">
+        <div className="px-6 py-5 border-b border-secondary-dark">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Team Activity</h2>
+                <p className="text-sm text-gray-500">What everyone's working on</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const yesterday = new Date()
+                  yesterday.setDate(yesterday.getDate() - 1)
+                  const dateStr = yesterday.toISOString().split('T')[0]
+                  setActivityDate(dateStr)
+                  loadTeamActivity(dateStr)
+                }}
+                className="p-2 text-gray-500 hover:text-primary hover:bg-secondary rounded-lg transition-colors"
+                title="Previous day"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0]
+                  setActivityDate(today)
+                  loadTeamActivity(today)
+                }}
+                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                  activityDate === new Date().toISOString().split('T')[0]
+                    ? 'bg-primary text-white'
+                    : 'text-gray-600 hover:bg-secondary'
+                }`}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => {
+                  const tomorrow = new Date()
+                  tomorrow.setDate(tomorrow.getDate() + 1)
+                  const dateStr = tomorrow.toISOString().split('T')[0]
+                  setActivityDate(dateStr)
+                  loadTeamActivity(dateStr)
+                }}
+                className="p-2 text-gray-500 hover:text-primary hover:bg-secondary rounded-lg transition-colors"
+                title="Next day"
+                disabled={activityDate >= new Date().toISOString().split('T')[0]}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          {activityDate !== new Date().toISOString().split('T')[0] && (
+            <p className="text-sm text-primary mt-2 font-medium">
+              {new Date(activityDate + 'T00:00:00').toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </p>
+          )}
+        </div>
+        <div className="divide-y divide-secondary-dark">
+          {activityLoading ? (
+            <div className="px-6 py-8 text-center">
+              <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+              <p className="text-gray-500 text-sm">Loading activity...</p>
+            </div>
+          ) : teamActivity.length === 0 ? (
+            <div className="px-6 py-8 text-center">
+              <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-gray-500">No time logged for this day</p>
+              <Link to="/admin/time" className="text-primary text-sm font-medium hover:underline mt-1 inline-block">
+                Log time now →
+              </Link>
+            </div>
+          ) : (
+            teamActivity.map((activity) => (
+              <div key={activity.userId} className="px-6 py-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-primary-light to-primary rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-white font-semibold text-sm">
+                      {activity.displayName.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="font-medium text-gray-900">{activity.displayName}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-primary">
+                          {activity.totalHours.toFixed(1)}h
+                        </span>
+                        {activity.totalBreakMinutes > 0 && (
+                          <span className="text-xs text-gray-500">
+                            ({activity.totalBreakMinutes}m break)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      {activity.entries.map((entry) => (
+                        <div key={entry.id} className="flex items-start gap-2 text-sm">
+                          <span className="text-gray-400 flex-shrink-0">
+                            {entry.formatted_start_time} - {entry.formatted_end_time}
+                          </span>
+                          <span className="text-gray-600 truncate">
+                            {entry.time_category?.name || 'General'}
+                            {entry.description && (
+                              <span className="text-gray-500"> — {entry.description}</span>
+                            )}
+                            {entry.client && (
+                              <span className="text-primary-dark"> • {entry.client.name}</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        {teamActivity.length > 0 && (
+          <div className="px-6 py-3 bg-secondary/30 border-t border-secondary-dark">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">
+                <strong>{teamActivity.length}</strong> {teamActivity.length === 1 ? 'person' : 'people'} logged time
+              </span>
+              <Link
+                to="/admin/time"
+                className="text-primary hover:text-primary-dark text-sm font-medium inline-flex items-center gap-1"
+              >
+                View All Time
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* My Schedule */}
@@ -272,6 +513,7 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+    </FadeIn>
   )
 }
 

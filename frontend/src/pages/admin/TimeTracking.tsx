@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
+import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
+import { FadeIn } from '../../components/ui/FadeIn'
 
 // Local types to avoid Vite caching issues
 interface TimeCategory {
@@ -762,16 +764,35 @@ export default function TimeTracking() {
         </div>
       )}
 
-      {/* Loading */}
+      {/* Loading Skeleton */}
       {loading ? (
-        <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-8">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <span className="ml-3 text-text-muted">Loading time entries...</span>
+        <div className="bg-white rounded-lg shadow-sm border border-neutral-warm overflow-hidden">
+          {/* Header skeleton */}
+          <div className="p-4 border-b border-neutral-warm">
+            <div className="flex items-center justify-between">
+              <Skeleton height={20} className="w-32" />
+              <Skeleton height={32} className="w-24 rounded-lg" />
+            </div>
+          </div>
+          {/* Week view skeleton */}
+          <div className="grid grid-cols-7 border-b border-neutral-warm">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="p-3 text-center border-r border-neutral-warm last:border-r-0">
+                <Skeleton height={14} className="w-12 mx-auto mb-2" />
+                <Skeleton height={24} className="w-8 mx-auto rounded-full" />
+              </div>
+            ))}
+          </div>
+          {/* Content skeleton */}
+          <div className="divide-y divide-neutral-warm">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <SkeletonTimeEntry key={i} />
+            ))}
           </div>
         </div>
       ) : viewMode === 'week' ? (
         /* Week View */
+        <FadeIn>
         <div className="bg-white rounded-lg shadow-sm border border-neutral-warm overflow-hidden">
           <div className="overflow-x-auto">
             {/* Week Header */}
@@ -851,8 +872,10 @@ export default function TimeTracking() {
             </div>
           </div>
         </div>
+        </FadeIn>
       ) : (
         /* Day View */
+        <FadeIn>
         <div className="bg-white rounded-lg shadow-sm border border-neutral-warm">
           {entries.length === 0 ? (
             <div className="p-8 text-center">
@@ -929,6 +952,7 @@ export default function TimeTracking() {
             </div>
           )}
         </div>
+        </FadeIn>
       )}
 
       {/* Entry Modal */}

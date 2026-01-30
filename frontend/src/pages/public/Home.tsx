@@ -83,11 +83,11 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight">
-              Your Trusted Partner in{' '}
-              <span className="text-primary">Financial Success</span>
+              Building Strong{' '}
+              <span className="text-primary">Financial Foundations</span>
             </h1>
             <p className="mt-6 text-lg md:text-xl text-gray-600 leading-relaxed">
-              We believe accounting is more than numbers—it's about people, goals, and informed decisions. Let us help you build a strong financial foundation.
+              We believe accounting is more than numbers—it's about people, goals, and informed decisions. A family-operated firm dedicated to helping individuals and businesses succeed.
             </p>
             <p className="mt-4 text-base text-primary font-medium">
               Based in Guam. Built on integrity, accuracy, and trust.
@@ -201,10 +201,10 @@ export default function Home() {
                 Why Choose Cornerstone?
               </h2>
               <p className="text-gray-600 text-lg mb-6 leading-relaxed">
-                We believe accounting should empower, not overwhelm.
+                Established by Dafne Shimizu, a Guam-licensed U.S. CPA, we're a family-operated firm dedicated to providing dependable, high-quality accounting services.
               </p>
               <p className="text-gray-600 leading-relaxed mb-4">
-                Our approach is hands-on, collaborative, and tailored to each client's unique needs. We translate financial data into clear, practical insights so our clients can stay compliant, improve cash flow, and plan strategically with confidence.
+                Our mission is to bring clarity, confidence, and peace of mind to our clients. We translate financial data into clear, practical insights so you can stay compliant, improve cash flow, and plan strategically.
               </p>
               <p className="text-primary font-medium italic">
                 Your numbers, explained clearly, every step of the way.
