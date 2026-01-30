@@ -249,9 +249,9 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  const yesterday = new Date()
-                  yesterday.setDate(yesterday.getDate() - 1)
-                  const dateStr = yesterday.toISOString().split('T')[0]
+                  const currentDate = new Date(activityDate + 'T00:00:00')
+                  currentDate.setDate(currentDate.getDate() - 1)
+                  const dateStr = currentDate.toISOString().split('T')[0]
                   setActivityDate(dateStr)
                   loadTeamActivity(dateStr)
                 }}
@@ -278,9 +278,9 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => {
-                  const tomorrow = new Date()
-                  tomorrow.setDate(tomorrow.getDate() + 1)
-                  const dateStr = tomorrow.toISOString().split('T')[0]
+                  const currentDate = new Date(activityDate + 'T00:00:00')
+                  currentDate.setDate(currentDate.getDate() + 1)
+                  const dateStr = currentDate.toISOString().split('T')[0]
                   setActivityDate(dateStr)
                   loadTeamActivity(dateStr)
                 }}
