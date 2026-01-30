@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { FadeUp } from '../../components/ui/MotionComponents'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { Schedule as ScheduleType, ScheduleTimePreset } from '../../lib/api'
@@ -553,14 +554,24 @@ export default function Schedule() {
       )}
 
       {/* Add/Edit Modal */}
+      <AnimatePresence>
       {showModal && (
-        <div
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowModal(false)
           }}
         >
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.25, delay: 0.1 }}
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full">
             <div className="p-6">
               <h2 className="text-xl font-bold text-primary-dark mb-4">
                 {editingSchedule ? 'Edit Shift' : 'Add Shift'}
@@ -701,9 +712,10 @@ export default function Schedule() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FadeUp } from '../../components/ui/MotionComponents'
+import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
@@ -961,14 +962,24 @@ export default function TimeTracking() {
       )}
 
       {/* Entry Modal */}
+      <AnimatePresence>
       {showModal && (
-        <div 
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowModal(false)
           }}
         >
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.25, delay: 0.1 }}
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-xl font-bold text-primary-dark mb-4">
                 {editingEntry ? 'Edit Time Entry' : 'Log Time'}
@@ -1138,9 +1149,10 @@ export default function TimeTracking() {
                 </div>
               </form>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
       </>
       )}
 
@@ -1201,32 +1213,40 @@ export default function TimeTracking() {
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-              <div className="text-sm text-text-muted">Work Hours</div>
-              <div className="text-3xl font-bold text-primary mt-1">
-                {reportLoading ? '...' : reportSummary.total_hours.toFixed(1)}
+          <StaggerContainer className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <StaggerItem>
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
+                <div className="text-sm text-text-muted">Work Hours</div>
+                <div className="text-3xl font-bold text-primary mt-1">
+                  {reportLoading ? '...' : reportSummary.total_hours.toFixed(1)}
+                </div>
               </div>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-              <div className="text-sm text-text-muted">Break Hours</div>
-              <div className="text-3xl font-bold text-text-muted mt-1">
-                {reportLoading ? '...' : reportSummary.total_break_hours.toFixed(1)}
+            </StaggerItem>
+            <StaggerItem>
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
+                <div className="text-sm text-text-muted">Break Hours</div>
+                <div className="text-3xl font-bold text-text-muted mt-1">
+                  {reportLoading ? '...' : reportSummary.total_break_hours.toFixed(1)}
+                </div>
               </div>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-              <div className="text-sm text-text-muted">Total Entries</div>
-              <div className="text-3xl font-bold text-primary-dark mt-1">
-                {reportLoading ? '...' : reportSummary.entry_count}
+            </StaggerItem>
+            <StaggerItem>
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
+                <div className="text-sm text-text-muted">Total Entries</div>
+                <div className="text-3xl font-bold text-primary-dark mt-1">
+                  {reportLoading ? '...' : reportSummary.entry_count}
+                </div>
               </div>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-              <div className="text-sm text-text-muted">Avg Hours/Entry</div>
-              <div className="text-3xl font-bold text-text-muted mt-1">
-                {reportLoading ? '...' : (reportSummary.entry_count > 0 ? (reportSummary.total_hours / reportSummary.entry_count).toFixed(1) : '0')}
+            </StaggerItem>
+            <StaggerItem>
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
+                <div className="text-sm text-text-muted">Avg Hours/Entry</div>
+                <div className="text-3xl font-bold text-text-muted mt-1">
+                  {reportLoading ? '...' : (reportSummary.entry_count > 0 ? (reportSummary.total_hours / reportSummary.entry_count).toFixed(1) : '0')}
+                </div>
               </div>
-            </div>
-          </div>
+            </StaggerItem>
+          </StaggerContainer>
 
           {/* Summary Tables */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
