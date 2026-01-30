@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { FadeUp } from '../../components/ui/MotionComponents'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { formatRelativeTime } from '../../lib/dateUtils'
@@ -443,9 +444,10 @@ export default function Activity() {
   return (
     <div className="space-y-6">
       {/* Header */}
+      <FadeUp>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark">Activity</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark tracking-tight">Activity</h1>
           <p className="text-gray-600 mt-1">Track all workflow events and changes</p>
         </div>
         {pagination && (
@@ -454,8 +456,10 @@ export default function Activity() {
           </div>
         )}
       </div>
+      </FadeUp>
 
       {/* Filters */}
+      <FadeUp delay={0.05}>
       <div className="bg-white rounded-2xl border border-secondary-dark p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-gray-700">Filters</h2>
@@ -569,9 +573,11 @@ export default function Activity() {
           </div>
         </div>
       </div>
+      </FadeUp>
 
       {/* Activity Feed */}
-      <div className="bg-white rounded-2xl border border-secondary-dark overflow-hidden">
+      <FadeUp delay={0.1}>
+      <div className="bg-white rounded-2xl border border-secondary-dark overflow-hidden hover:shadow-md transition-shadow duration-300">
         {loading ? (
           <div className="p-8 text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
@@ -631,6 +637,7 @@ export default function Activity() {
           </div>
         )}
       </div>
+      </FadeUp>
     </div>
   )
 }

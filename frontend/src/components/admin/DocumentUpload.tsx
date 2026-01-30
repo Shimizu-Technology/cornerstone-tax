@@ -173,8 +173,8 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">Documents</h2>
+    <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+      <h2 className="text-lg font-semibold text-gray-900 tracking-tight mb-4">Documents</h2>
 
       {/* Document Type Selector */}
       <div className="mb-4">
@@ -184,7 +184,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
         <select
           value={selectedType}
           onChange={(e) => setSelectedType(e.target.value)}
-          className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+          className="w-full sm:w-64 px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
         >
           {DOCUMENT_TYPES.map((type) => (
             <option key={type.value} value={type.value}>
@@ -201,7 +201,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
         className={`
-          border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
+          border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors
           ${isDragging
             ? 'border-primary bg-primary/5'
             : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
@@ -236,7 +236,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
       </div>
 
       {error && (
-        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
           {error}
         </div>
       )}
@@ -249,7 +249,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <svg className="w-8 h-8 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
