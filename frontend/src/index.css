@@ -8,31 +8,63 @@
   --color-primary: #78645A;
   --color-primary-dark: #6A584E;
   --color-primary-light: #9E8A80;
-  
+
   /* Secondary - Cream with blush undertone (backgrounds) */
   --color-secondary: #F5F0EC;
   --color-secondary-dark: #EBE4DE;
-  
+
   /* Neutral - Warm off-white (from folder borders) */
   --color-neutral-warm: #E5DDD6;
   --color-text-muted: #5E6F70;
-  
+
   /* Accent - Brand dusty rose (from folder: #B9A399) */
   --color-accent: #B9A399;
   --color-accent-light: #D4C8C0;
+
+  /* Typography */
+  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-body);
   color: #3D3D3D;
   margin: 0;
   min-height: 100vh;
 }
 
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+/* Gradient text utility — use on ONE heading per page max */
+.gradient-text {
+  background: linear-gradient(135deg, #B9A399 0%, #78645A 50%, #6A584E 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Noise texture overlay */
+.noise-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Dot pattern background */
+.dot-pattern {
+  background-image: radial-gradient(circle, #B9A39915 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
 /* Ensure minimum touch targets for accessibility */
-button, 
-a, 
-input[type="submit"], 
+button,
+a,
+input[type="submit"],
 input[type="button"],
 .touchable {
   min-height: 44px;
@@ -44,7 +76,44 @@ input[type="button"],
   outline-offset: 2px;
 }
 
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
+/* Smooth scrolling — respect reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Custom animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes subtle-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float 8s ease-in-out 2s infinite;
+}
+
+.animate-subtle-pulse {
+  animation: subtle-pulse 4s ease-in-out infinite;
+}
+
+/* Floating label pattern for Contact page */
+.floating-input:focus ~ .floating-label,
+.floating-input:not(:placeholder-shown) ~ .floating-label {
+  transform: translateY(-1.25rem) scale(0.85);
+  color: var(--color-primary);
+}
+
+.floating-label {
+  transition: all 200ms ease;
+  transform-origin: left;
 }
