@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
+import { FadeUp } from '../../components/ui/MotionComponents'
+import { AnimatePresence, motion } from 'framer-motion'
 
 // Define types locally to avoid Vite caching issues
 interface AdminUser {
@@ -113,11 +115,12 @@ export default function Users() {
   }
 
   return (
+    <FadeUp>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark">User Management</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark tracking-tight">User Management</h1>
           <p className="text-gray-600 mt-1">Invite and manage team members</p>
         </div>
         <button
@@ -431,5 +434,6 @@ export default function Users() {
         </div>
       )}
     </div>
+    </FadeUp>
   )
 }
