@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
 
 interface QuickCreateClientModalProps {
@@ -111,19 +112,31 @@ export default function QuickCreateClientModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <AnimatePresence>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 overflow-y-auto"
+    >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 transition-opacity"
+        className="fixed inset-0 bg-black/50"
         onClick={onClose}
       />
 
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md transform transition-all" role="dialog" aria-modal="true" aria-labelledby="quick-create-modal-title">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 10 }}
+          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          className="relative bg-white rounded-2xl shadow-xl w-full max-w-md" role="dialog" aria-modal="true" aria-labelledby="quick-create-modal-title">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            <h2 id="quick-create-modal-title" className="text-lg font-semibold text-gray-900">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-secondary-dark">
+            <h2 id="quick-create-modal-title" className="text-lg font-semibold text-gray-900 tracking-tight">
               Quick Create Client
             </h2>
             <button
@@ -140,7 +153,7 @@ export default function QuickCreateClientModal({
           {/* Form */}
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {errors.length > 0 && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg" role="alert">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl" role="alert">
                 <ul className="text-sm text-red-600 space-y-1">
                   {errors.map((error, i) => (
                     <li key={i}>{error}</li>
@@ -161,7 +174,7 @@ export default function QuickCreateClientModal({
                   value={formData.first_name}
                   onChange={handleChange}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
               </div>
               <div>
@@ -175,7 +188,7 @@ export default function QuickCreateClientModal({
                   value={formData.last_name}
                   onChange={handleChange}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
               </div>
             </div>
@@ -191,7 +204,7 @@ export default function QuickCreateClientModal({
                 value={formData.email}
                 onChange={handleChange}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
               />
             </div>
 
@@ -207,7 +220,7 @@ export default function QuickCreateClientModal({
                 onChange={handleChange}
                 required
                 placeholder="6711234567"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
               />
             </div>
 
@@ -222,7 +235,7 @@ export default function QuickCreateClientModal({
                   name="date_of_birth"
                   value={formData.date_of_birth}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
               </div>
               <div>
@@ -234,7 +247,7 @@ export default function QuickCreateClientModal({
                   name="tax_year"
                   value={formData.tax_year}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
                 >
                   <option value={currentYear}>{currentYear}</option>
                   <option value={currentYear - 1}>{currentYear - 1}</option>
@@ -252,7 +265,7 @@ export default function QuickCreateClientModal({
                 name="filing_status"
                 value={formData.filing_status}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
               >
                 {FILING_STATUS_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -271,21 +284,22 @@ export default function QuickCreateClientModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex-1 px-4 py-2 border border-secondary-dark text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Creating...' : 'Create Client'}
               </button>
             </div>
           </form>
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
+    </AnimatePresence>
   )
 }

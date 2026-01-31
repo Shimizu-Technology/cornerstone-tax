@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAuthContext } from '../../contexts/AuthContext'
+import { AnimatePresence } from 'framer-motion'
+import { FadeUp } from '../ui/MotionComponents'
 import {
   SignedIn,
   UserButton,
@@ -119,12 +121,12 @@ export default function AdminLayout() {
         Skip to main content
       </a>
       {/* Mobile sidebar backdrop */}
-      {sidebarOpen && (
+      <AnimatePresence>{sidebarOpen && (
         <div
           className="fixed inset-0 bg-primary/30 backdrop-blur-sm z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
-      )}
+      )}</AnimatePresence>
 
       {/* Mobile sidebar */}
       <div
@@ -256,7 +258,7 @@ export default function AdminLayout() {
 
         {/* Page content */}
         <main id="main-content" tabIndex={-1} className="flex-1 p-4 sm:p-6 lg:p-8">
-          <Outlet />
+          <FadeUp><Outlet /></FadeUp>
         </main>
       </div>
     </div>

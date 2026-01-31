@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
+import { FadeUp } from '../../components/ui/MotionComponents'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { Schedule as ScheduleType, ScheduleTimePreset } from '../../lib/api'
@@ -269,9 +271,10 @@ export default function Schedule() {
   return (
     <div className="space-y-6">
       {/* Header */}
+      <FadeUp>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-primary-dark">Employee Schedule</h1>
+          <h1 className="text-2xl font-bold text-primary-dark tracking-tight">Employee Schedule</h1>
           <p className="text-text-muted mt-1">Plan and manage employee work schedules</p>
         </div>
         
@@ -309,9 +312,10 @@ export default function Schedule() {
           </button>
         </div>
       </div>
+      </FadeUp>
 
       {/* Week Navigation */}
-      <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-3 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-3 sm:p-4 hover:shadow-md transition-shadow duration-300">
         <div className="flex items-center justify-between gap-2">
           <button
             onClick={goToPrevWeek}
@@ -356,14 +360,14 @@ export default function Schedule() {
 
       {/* Content based on view mode */}
       {loading ? (
-        <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-12 text-center">
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-12 text-center">
           <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto" />
         </div>
       ) : viewMode === 'list' ? (
         /* List View */
         <div className="space-y-4">
           {schedules.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-12 text-center">
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-12 text-center">
               <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -383,7 +387,7 @@ export default function Schedule() {
               const isToday = dateStr === formatDateISO(new Date())
               
               return (
-                <div key={dateStr} className="bg-white rounded-lg shadow-sm border border-neutral-warm overflow-hidden">
+                <div key={dateStr} className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
                   <div className={`px-5 py-3 border-b border-neutral-warm ${isToday ? 'bg-primary/10' : 'bg-secondary/50'}`}>
                     <div className="flex items-center justify-between">
                       <h3 className={`font-semibold ${isToday ? 'text-primary' : 'text-primary-dark'}`}>
@@ -458,7 +462,7 @@ export default function Schedule() {
         </div>
       ) : (
         /* Grid View */
-        <div className="bg-white rounded-lg shadow-sm border border-neutral-warm overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
           {users.length === 0 ? (
             <div className="p-12 text-center">
               <p className="text-text-muted">No employees found</p>
@@ -550,14 +554,24 @@ export default function Schedule() {
       )}
 
       {/* Add/Edit Modal */}
+      <AnimatePresence>
       {showModal && (
-        <div
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowModal(false)
           }}
         >
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.25, delay: 0.1 }}
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full">
             <div className="p-6">
               <h2 className="text-xl font-bold text-primary-dark mb-4">
                 {editingSchedule ? 'Edit Shift' : 'Add Shift'}
@@ -698,9 +712,10 @@ export default function Schedule() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   )
 }

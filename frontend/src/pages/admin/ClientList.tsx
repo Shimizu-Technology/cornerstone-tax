@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
 import QuickCreateClientModal from '../../components/admin/QuickCreateClientModal'
+import { FadeUp } from '../../components/ui/MotionComponents'
 
 interface Client {
   id: number
@@ -65,11 +66,12 @@ export default function ClientList() {
   }
 
   return (
+    <FadeUp>
     <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Clients</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">Clients</h1>
           <p className="text-gray-500 mt-1">
             {meta ? `${meta.total_count} total client${meta.total_count !== 1 ? 's' : ''}` : 'Loading...'}
           </p>
@@ -221,7 +223,7 @@ export default function ClientList() {
                 <Link
                   key={client.id}
                   to={`/admin/clients/${client.id}`}
-                  className="block p-4 hover:bg-secondary/30 transition-colors"
+                  className="block p-4 hover:bg-secondary/30 hover:shadow-md transition-all rounded-xl"
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-11 h-11 bg-gradient-to-br from-primary-light to-primary rounded-full flex items-center justify-center flex-shrink-0">
@@ -283,5 +285,6 @@ export default function ClientList() {
         )}
       </div>
     </div>
+    </FadeUp>
   )
 }

@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
 import type { Document } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
 import { getFilingStatusLabel } from '../../lib/constants'
 import NotFound from '../../components/common/NotFound'
 import DocumentUpload from '../../components/admin/DocumentUpload'
+import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
 
 // Define types locally to avoid Vite import caching issues
 interface IncomeSourceLocal {
@@ -141,7 +143,6 @@ export default function TaxReturnDetailPage() {
       const name = u.full_name || u.email
       nameCount.set(name, (nameCount.get(name) || 0) + 1)
     })
-    // Track seen names to filter true duplicates
     const seen = new Map<string, number>()
     return users
       .filter(u => {
@@ -156,8 +157,6 @@ export default function TaxReturnDetailPage() {
       }))
   })()
 
-
-  // Initial load - shows full page spinner
   const loadTaxReturn = async () => {
     if (!id) return
     setLoading(true)
@@ -176,7 +175,6 @@ export default function TaxReturnDetailPage() {
     }
   }
 
-  // Refresh without full page loading spinner (for inline updates)
   const refreshTaxReturn = async () => {
     if (!id) return
     try {
@@ -265,7 +263,6 @@ export default function TaxReturnDetailPage() {
     }
   }
 
-  // Income source handlers
   const openAddIncomeModal = () => {
     setEditingIncomeSource(null)
     setIncomeForm({ source_type: 'w2', payer_name: '', notes: '' })
@@ -328,7 +325,7 @@ export default function TaxReturnDetailPage() {
         title="Tax Return Not Found"
         message={error || 'This tax return does not exist or may have been removed.'}
         backTo="/admin/returns"
-        backLabel="← Back to Tax Returns"
+        backLabel="\u2190 Back to Tax Returns"
       />
     )
   }
@@ -336,381 +333,408 @@ export default function TaxReturnDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div>
-          <Link to="/admin/returns" className="text-gray-500 hover:text-gray-700 text-sm mb-2 inline-block">
-            ← Back to Tax Returns
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {taxReturn.tax_year} Tax Return
-          </h1>
-          <Link 
-            to={`/admin/clients/${taxReturn.client.id}`}
-            className="text-primary hover:text-primary-dark font-medium"
-          >
-            {taxReturn.client.full_name}
-          </Link>
-          <p className="text-gray-500">{taxReturn.client.email}</p>
-        </div>
+      <FadeUp>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <Link to="/admin/returns" className="text-gray-500 hover:text-gray-700 text-sm mb-2 inline-block transition-colors">
+              \u2190 Back to Tax Returns
+            </Link>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+              {taxReturn.tax_year} Tax Return
+            </h1>
+            <Link 
+              to={`/admin/clients/${taxReturn.client.id}`}
+              className="text-primary hover:text-primary-dark font-medium transition-colors"
+            >
+              {taxReturn.client.full_name}
+            </Link>
+            <p className="text-gray-500">{taxReturn.client.email}</p>
+          </div>
 
-        {taxReturn.workflow_stage && (
-          <span
-            className="px-4 py-2 rounded-full text-sm font-medium text-white self-start"
-            style={{ backgroundColor: taxReturn.workflow_stage.color || '#6B7280' }}
-          >
-            {taxReturn.workflow_stage.name}
-          </span>
-        )}
-      </div>
+          {taxReturn.workflow_stage && (
+            <motion.span
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="px-4 py-2 rounded-full text-sm font-medium text-white self-start shadow-sm"
+              style={{ backgroundColor: taxReturn.workflow_stage.color || '#6B7280' }}
+            >
+              {taxReturn.workflow_stage.name}
+            </motion.span>
+          )}
+        </div>
+      </FadeUp>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Workflow Card */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Workflow</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label htmlFor="return-status" className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                <select
-                  id="return-status"
-                  value={taxReturn.workflow_stage?.id || ''}
-                  onChange={(e) => handleStatusChange(parseInt(e.target.value))}
-                  disabled={saving}
-                  className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                >
-                  {stages.map((stage) => (
-                    <option key={stage.id} value={stage.id}>
-                      {stage.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="return-assignee" className="block text-sm font-medium text-gray-700 mb-2">Assigned To</label>
-                <select
-                  id="return-assignee"
-                  value={taxReturn.assigned_to?.id || ''}
-                  onChange={(e) => handleAssign(e.target.value ? parseInt(e.target.value) : null)}
-                  disabled={saving}
-                  className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                >
-                  <option value="">Unassigned</option>
-                  {deduplicatedUsers.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.full_name}{user.showEmail ? ` (${user.email})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="return-reviewer" className="block text-sm font-medium text-gray-700 mb-2">Reviewed By</label>
-                <select
-                  id="return-reviewer"
-                  value={taxReturn.reviewed_by?.id || ''}
-                  onChange={(e) => handleReviewerChange(e.target.value ? parseInt(e.target.value) : null)}
-                  disabled={saving}
-                  className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                >
-                  <option value="">Not Reviewed</option>
-                  {deduplicatedUsers.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.full_name}{user.showEmail ? ` (${user.email})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Client Info Card */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Client Information</h2>
-              <Link 
-                to={`/admin/clients/${taxReturn.client.id}`}
-                className="text-primary hover:text-primary-dark text-sm font-medium"
-              >
-                View Full Profile →
-              </Link>
-            </div>
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <dt className="text-sm text-gray-500">Name</dt>
-                <dd className="font-medium">{taxReturn.client.full_name}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Email</dt>
-                <dd className="font-medium">{taxReturn.client.email}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Phone</dt>
-                <dd className="font-medium">{taxReturn.client.phone || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500">Filing Status</dt>
-                <dd className="font-medium">{getFilingStatusLabel(taxReturn.client.filing_status)}</dd>
-              </div>
-            </dl>
-          </div>
-
-          {/* Income Sources */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Income Sources ({taxReturn.income_sources.length})
-              </h2>
-              <button
-                onClick={openAddIncomeModal}
-                className="inline-flex items-center gap-1 text-primary hover:text-primary-dark text-sm font-medium"
-              >
-                <PlusIcon />
-                Add Source
-              </button>
-            </div>
-            {taxReturn.income_sources.length === 0 ? (
-              <p className="text-gray-400 italic">No income sources added yet</p>
-            ) : (
-              <div className="space-y-3">
-                {taxReturn.income_sources.map((src) => (
-                  <div key={src.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">{src.payer_name}</p>
-                      <p className="text-sm text-gray-500">
-                        {INCOME_SOURCE_TYPES.find(t => t.value === src.source_type)?.label || src.source_type.toUpperCase()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => openEditIncomeModal(src)}
-                        className="p-2 text-gray-500 hover:text-primary hover:bg-white rounded-lg transition-colors"
-                        title="Edit"
-                      >
-                        <EditIcon />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteIncomeSource(src.id)}
-                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-white rounded-lg transition-colors"
-                        title="Delete"
-                      >
-                        <TrashIcon />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Documents */}
-          <DocumentUpload
-            taxReturnId={taxReturn.id}
-            documents={taxReturn.documents}
-            onDocumentsChange={refreshTaxReturn}
-          />
-
-          {/* Notes */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Internal Notes</h2>
-              {!editingNotes && (
-                <button
-                  onClick={() => setEditingNotes(true)}
-                  className="inline-flex items-center gap-1 text-primary hover:text-primary-dark text-sm font-medium"
-                >
-                  <EditIcon />
-                  {taxReturn.notes ? 'Edit' : 'Add Note'}
-                </button>
-              )}
-            </div>
-            
-            {editingNotes ? (
-              <div className="space-y-3">
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={5}
-                  className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  placeholder="Add internal notes about this tax return..."
-                  autoFocus
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => {
-                      setEditingNotes(false)
-                      setNotes(taxReturn.notes || '')
-                    }}
-                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium"
+          <FadeUp delay={0.05}>
+            <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+              <h2 className="text-lg font-semibold text-gray-900 tracking-tight mb-4">Workflow</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label htmlFor="return-status" className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <select
+                    id="return-status"
+                    value={taxReturn.workflow_stage?.id || ''}
+                    onChange={(e) => handleStatusChange(parseInt(e.target.value))}
                     disabled={saving}
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveNotes}
+                    {stages.map((stage) => (
+                      <option key={stage.id} value={stage.id}>
+                        {stage.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="return-assignee" className="block text-sm font-medium text-gray-700 mb-2">Assigned To</label>
+                  <select
+                    id="return-assignee"
+                    value={taxReturn.assigned_to?.id || ''}
+                    onChange={(e) => handleAssign(e.target.value ? parseInt(e.target.value) : null)}
                     disabled={saving}
-                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark font-medium disabled:opacity-50"
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
                   >
-                    {saving ? 'Saving...' : 'Save Notes'}
-                  </button>
+                    <option value="">Unassigned</option>
+                    {deduplicatedUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name}{user.showEmail ? ` (${user.email})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="return-reviewer" className="block text-sm font-medium text-gray-700 mb-2">Reviewed By</label>
+                  <select
+                    id="return-reviewer"
+                    value={taxReturn.reviewed_by?.id || ''}
+                    onChange={(e) => handleReviewerChange(e.target.value ? parseInt(e.target.value) : null)}
+                    disabled={saving}
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                  >
+                    <option value="">Not Reviewed</option>
+                    {deduplicatedUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name}{user.showEmail ? ` (${user.email})` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
-            ) : (
-              <p className="text-gray-700 whitespace-pre-wrap">
-                {taxReturn.notes || <span className="text-gray-400 italic">No notes yet</span>}
-              </p>
-            )}
-          </div>
+            </div>
+          </FadeUp>
+
+          {/* Client Info Card */}
+          <FadeUp delay={0.1}>
+            <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Client Information</h2>
+                <Link 
+                  to={`/admin/clients/${taxReturn.client.id}`}
+                  className="text-primary hover:text-primary-dark text-sm font-medium transition-colors"
+                >
+                  View Full Profile \u2192
+                </Link>
+              </div>
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <dt className="text-sm text-gray-500">Name</dt>
+                  <dd className="font-medium">{taxReturn.client.full_name}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-gray-500">Email</dt>
+                  <dd className="font-medium">{taxReturn.client.email}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-gray-500">Phone</dt>
+                  <dd className="font-medium">{taxReturn.client.phone || '\u2014'}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-gray-500">Filing Status</dt>
+                  <dd className="font-medium">{getFilingStatusLabel(taxReturn.client.filing_status)}</dd>
+                </div>
+              </dl>
+            </div>
+          </FadeUp>
+
+          {/* Income Sources */}
+          <FadeUp delay={0.15}>
+            <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 tracking-tight">
+                  Income Sources ({taxReturn.income_sources.length})
+                </h2>
+                <button
+                  onClick={openAddIncomeModal}
+                  className="inline-flex items-center gap-1 text-primary hover:text-primary-dark text-sm font-medium transition-colors"
+                >
+                  <PlusIcon />
+                  Add Source
+                </button>
+              </div>
+              {taxReturn.income_sources.length === 0 ? (
+                <p className="text-gray-400 italic">No income sources added yet</p>
+              ) : (
+                <StaggerContainer className="space-y-3">
+                  {taxReturn.income_sources.map((src) => (
+                    <StaggerItem key={src.id}><div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                      <div>
+                        <p className="font-medium">{src.payer_name}</p>
+                        <p className="text-sm text-gray-500">
+                          {INCOME_SOURCE_TYPES.find(t => t.value === src.source_type)?.label || src.source_type.toUpperCase()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openEditIncomeModal(src)}
+                          className="p-2 text-gray-500 hover:text-primary hover:bg-white rounded-lg transition-colors"
+                          title="Edit"
+                        >
+                          <EditIcon />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteIncomeSource(src.id)}
+                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-white rounded-lg transition-colors"
+                          title="Delete"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div></StaggerItem>
+                  ))}
+                </StaggerContainer>
+              )}
+            </div>
+          </FadeUp>
+
+          {/* Documents */}
+          <FadeUp delay={0.2}>
+            <DocumentUpload
+              taxReturnId={taxReturn.id}
+              documents={taxReturn.documents}
+              onDocumentsChange={refreshTaxReturn}
+            />
+          </FadeUp>
+
+          {/* Notes */}
+          <FadeUp delay={0.25}>
+            <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Internal Notes</h2>
+                {!editingNotes && (
+                  <button
+                    onClick={() => setEditingNotes(true)}
+                    className="inline-flex items-center gap-1 text-primary hover:text-primary-dark text-sm font-medium transition-colors"
+                  >
+                    <EditIcon />
+                    {taxReturn.notes ? 'Edit' : 'Add Note'}
+                  </button>
+                )}
+              </div>
+              
+              {editingNotes ? (
+                <div className="space-y-3">
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={5}
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                    placeholder="Add internal notes about this tax return..."
+                    autoFocus
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingNotes(false)
+                        setNotes(taxReturn.notes || '')
+                      }}
+                      className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-xl font-medium transition-colors"
+                      disabled={saving}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveNotes}
+                      disabled={saving}
+                      className="px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark font-medium disabled:opacity-50 transition-colors"
+                    >
+                      {saving ? 'Saving...' : 'Save Notes'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-700 whitespace-pre-wrap">
+                  {taxReturn.notes || <span className="text-gray-400 italic">No notes yet</span>}
+                </p>
+              )}
+            </div>
+          </FadeUp>
         </div>
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Quick Info */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Details</h2>
-            <dl className="space-y-3">
-              <div className="flex justify-between">
-                <dt className="text-gray-500">Tax Year</dt>
-                <dd className="font-bold text-lg">{taxReturn.tax_year}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-500">Assigned To</dt>
-                <dd className="font-medium">
-                  {taxReturn.assigned_to ? (
-                    <span className="inline-flex items-center gap-1">
-                      <UserIcon />
-                      {taxReturn.assigned_to.name}
-                    </span>
-                  ) : (
-                    <span className="text-gray-400">Unassigned</span>
-                  )}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-500">Reviewed By</dt>
-                <dd className="font-medium">
-                  {taxReturn.reviewed_by ? (
-                    <span className="inline-flex items-center gap-1">
-                      <UserIcon />
-                      {taxReturn.reviewed_by.name}
-                    </span>
-                  ) : (
-                    <span className="text-gray-400">Not Reviewed</span>
-                  )}
-                </dd>
-              </div>
-              {taxReturn.completed_at && (
+          <FadeUp delay={0.1}>
+            <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+              <h2 className="text-lg font-semibold text-gray-900 tracking-tight mb-4">Details</h2>
+              <dl className="space-y-3">
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Completed</dt>
-                  <dd className="font-medium">{formatDate(taxReturn.completed_at)}</dd>
+                  <dt className="text-gray-500">Tax Year</dt>
+                  <dd className="font-bold text-lg">{taxReturn.tax_year}</dd>
                 </div>
-              )}
-            </dl>
-          </div>
-
-          {/* Activity Timeline */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Activity</h2>
-            {taxReturn.workflow_events.length === 0 ? (
-              <p className="text-gray-500 text-sm">No activity yet</p>
-            ) : (
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {taxReturn.workflow_events.map((event) => (
-                  <div key={event.id} className="border-l-2 border-gray-200 pl-4">
-                    <p className="text-sm font-medium text-gray-900">
-                      {event.description || event.event_type}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {event.actor} • {formatDateTime(event.created_at)}
-                    </p>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Assigned To</dt>
+                  <dd className="font-medium">
+                    {taxReturn.assigned_to ? (
+                      <span className="inline-flex items-center gap-1">
+                        <UserIcon />
+                        {taxReturn.assigned_to.name}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">Unassigned</span>
+                    )}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Reviewed By</dt>
+                  <dd className="font-medium">
+                    {taxReturn.reviewed_by ? (
+                      <span className="inline-flex items-center gap-1">
+                        <UserIcon />
+                        {taxReturn.reviewed_by.name}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">Not Reviewed</span>
+                    )}
+                  </dd>
+                </div>
+                {taxReturn.completed_at && (
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500">Completed</dt>
+                    <dd className="font-medium">{formatDate(taxReturn.completed_at)}</dd>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                )}
+              </dl>
+            </div>
+          </FadeUp>
 
-          {/* Timestamps */}
-          <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-500">
-            <p>Created: {formatDateTime(taxReturn.created_at)}</p>
-            <p>Updated: {formatDateTime(taxReturn.updated_at)}</p>
-          </div>
+          <FadeUp delay={0.15}>
+            <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+              <h2 className="text-lg font-semibold text-gray-900 tracking-tight mb-4">Activity</h2>
+              {taxReturn.workflow_events.length === 0 ? (
+                <p className="text-gray-500 text-sm">No activity yet</p>
+              ) : (
+                <StaggerContainer className="space-y-4 max-h-96 overflow-y-auto">
+                  {taxReturn.workflow_events.map((event) => (
+                    <StaggerItem key={event.id}><div className="border-l-2 border-gray-200 pl-4">
+                      <p className="text-sm font-medium text-gray-900">
+                        {event.description || event.event_type}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {event.actor} \u2022 {formatDateTime(event.created_at)}
+                      </p>
+                    </div></StaggerItem>
+                  ))}
+                </StaggerContainer>
+              )}
+            </div>
+          </FadeUp>
+
+          <FadeUp delay={0.2}>
+            <div className="bg-secondary/50 rounded-2xl p-4 text-sm text-gray-500">
+              <p>Created: {formatDateTime(taxReturn.created_at)}</p>
+              <p>Updated: {formatDateTime(taxReturn.updated_at)}</p>
+            </div>
+          </FadeUp>
         </div>
       </div>
 
       {/* Income Source Modal */}
-      {showIncomeModal && (
-        <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowIncomeModal(false)}
-        >
-          <div 
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full"
-            onClick={e => e.stopPropagation()}
+      <AnimatePresence>
+        {showIncomeModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowIncomeModal(false)}
           >
-            <div className="p-6 border-b border-secondary-dark">
-              <h2 className="text-xl font-bold text-primary-dark">
-                {editingIncomeSource ? 'Edit Income Source' : 'Add Income Source'}
-              </h2>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-6 border-b border-secondary-dark">
+                <h2 className="text-xl font-bold text-primary-dark tracking-tight">
+                  {editingIncomeSource ? 'Edit Income Source' : 'Add Income Source'}
+                </h2>
+              </div>
 
-            <div className="p-6 space-y-4">
-              <div>
-                <label htmlFor="income-doc-type" className="block text-sm font-medium text-gray-700 mb-2">Type *</label>
-                <select
-                  id="income-doc-type"
-                  value={incomeForm.source_type}
-                  onChange={e => setIncomeForm({ ...incomeForm, source_type: e.target.value })}
-                  className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              <div className="p-6 space-y-4">
+                <div>
+                  <label htmlFor="income-doc-type" className="block text-sm font-medium text-gray-700 mb-2">Type *</label>
+                  <select
+                    id="income-doc-type"
+                    value={incomeForm.source_type}
+                    onChange={e => setIncomeForm({ ...incomeForm, source_type: e.target.value })}
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                  >
+                    {INCOME_SOURCE_TYPES.map(type => (
+                      <option key={type.value} value={type.value}>{type.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="payer-name" className="block text-sm font-medium text-gray-700 mb-2">Payer Name *</label>
+                  <input
+                    id="payer-name"
+                    type="text"
+                    value={incomeForm.payer_name}
+                    onChange={e => setIncomeForm({ ...incomeForm, payer_name: e.target.value })}
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                    placeholder="e.g., Shimizu Technology"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="income-notes" className="block text-sm font-medium text-gray-700 mb-2">Notes (optional)</label>
+                  <textarea
+                    id="income-notes"
+                    value={incomeForm.notes}
+                    onChange={e => setIncomeForm({ ...incomeForm, notes: e.target.value })}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                    placeholder="Any additional notes..."
+                  />
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-secondary-dark flex justify-end gap-3">
+                <button
+                  onClick={() => setShowIncomeModal(false)}
+                  className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-xl transition-colors"
+                  disabled={saving}
                 >
-                  {INCOME_SOURCE_TYPES.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
-                </select>
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveIncomeSource}
+                  disabled={saving || !incomeForm.payer_name.trim()}
+                  className="px-6 py-2 bg-primary text-white font-medium rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : editingIncomeSource ? 'Save Changes' : 'Add Source'}
+                </button>
               </div>
-
-              <div>
-                <label htmlFor="payer-name" className="block text-sm font-medium text-gray-700 mb-2">Payer Name *</label>
-                <input
-                  id="payer-name"
-                  type="text"
-                  value={incomeForm.payer_name}
-                  onChange={e => setIncomeForm({ ...incomeForm, payer_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  placeholder="e.g., Shimizu Technology"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="income-notes" className="block text-sm font-medium text-gray-700 mb-2">Notes (optional)</label>
-                <textarea
-                  id="income-notes"
-                  value={incomeForm.notes}
-                  onChange={e => setIncomeForm({ ...incomeForm, notes: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  placeholder="Any additional notes..."
-                />
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-secondary-dark flex justify-end gap-3">
-              <button
-                onClick={() => setShowIncomeModal(false)}
-                className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveIncomeSource}
-                disabled={saving || !incomeForm.payer_name.trim()}
-                className="px-6 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : editingIncomeSource ? 'Save Changes' : 'Add Source'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

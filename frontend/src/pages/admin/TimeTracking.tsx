@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
+import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
@@ -520,9 +522,10 @@ export default function TimeTracking() {
   return (
     <div className="space-y-6">
       {/* Header */}
+      <FadeUp>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-primary-dark">Time Tracking</h1>
+          <h1 className="text-2xl font-bold text-primary-dark tracking-tight">Time Tracking</h1>
           <p className="text-text-muted mt-1">Track your hours by category and client</p>
         </div>
         {activeTab === 'entries' && (
@@ -535,6 +538,7 @@ export default function TimeTracking() {
           </button>
         )}
       </div>
+      </FadeUp>
       
       {/* Tab Navigation */}
       <div className="border-b border-neutral-warm">
@@ -571,7 +575,7 @@ export default function TimeTracking() {
       <>
       {/* Filters (Admin only) */}
       {isAdmin && (
-        <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm text-text-muted mb-1">Employee</label>
@@ -626,7 +630,7 @@ export default function TimeTracking() {
       )}
 
       {/* View Controls */}
-      <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
         {/* Mobile Layout */}
         <div className="flex flex-col gap-4 sm:hidden">
           {/* Top row: Date range and total */}
@@ -761,14 +765,14 @@ export default function TimeTracking() {
 
       {/* Error Display */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-800">
           {error}
         </div>
       )}
 
       {/* Loading Skeleton */}
       {loading ? (
-        <div className="bg-white rounded-lg shadow-sm border border-neutral-warm overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
           {/* Header skeleton */}
           <div className="p-4 border-b border-neutral-warm">
             <div className="flex items-center justify-between">
@@ -795,7 +799,7 @@ export default function TimeTracking() {
       ) : viewMode === 'week' ? (
         /* Week View */
         <FadeIn>
-        <div className="bg-white rounded-lg shadow-sm border border-neutral-warm overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
           <div className="overflow-x-auto">
             {/* Week Header */}
             <div className="grid grid-cols-7 border-b border-neutral-warm min-w-[600px]">
@@ -878,7 +882,7 @@ export default function TimeTracking() {
       ) : (
         /* Day View */
         <FadeIn>
-        <div className="bg-white rounded-lg shadow-sm border border-neutral-warm">
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm hover:shadow-md transition-shadow duration-300">
           {entries.length === 0 ? (
             <div className="p-8 text-center">
               <div className="w-12 h-12 mx-auto mb-3 text-primary-dark">
@@ -958,14 +962,24 @@ export default function TimeTracking() {
       )}
 
       {/* Entry Modal */}
+      <AnimatePresence>
       {showModal && (
-        <div 
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowModal(false)
           }}
         >
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.25, delay: 0.1 }}
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-xl font-bold text-primary-dark mb-4">
                 {editingEntry ? 'Edit Time Entry' : 'Log Time'}
@@ -1135,9 +1149,10 @@ export default function TimeTracking() {
                 </div>
               </form>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
       </>
       )}
 
@@ -1145,7 +1160,7 @@ export default function TimeTracking() {
       {activeTab === 'reports' && isAdmin && (
         <div className="space-y-6">
           {/* Report Filters */}
-          <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
             <h3 className="text-sm font-medium text-primary-dark mb-4">Filter Report</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
@@ -1198,37 +1213,45 @@ export default function TimeTracking() {
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
-              <div className="text-sm text-text-muted">Work Hours</div>
-              <div className="text-3xl font-bold text-primary mt-1">
-                {reportLoading ? '...' : reportSummary.total_hours.toFixed(1)}
+          <StaggerContainer className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <StaggerItem>
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
+                <div className="text-sm text-text-muted">Work Hours</div>
+                <div className="text-3xl font-bold text-primary mt-1">
+                  {reportLoading ? '...' : reportSummary.total_hours.toFixed(1)}
+                </div>
               </div>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
-              <div className="text-sm text-text-muted">Break Hours</div>
-              <div className="text-3xl font-bold text-text-muted mt-1">
-                {reportLoading ? '...' : reportSummary.total_break_hours.toFixed(1)}
+            </StaggerItem>
+            <StaggerItem>
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
+                <div className="text-sm text-text-muted">Break Hours</div>
+                <div className="text-3xl font-bold text-text-muted mt-1">
+                  {reportLoading ? '...' : reportSummary.total_break_hours.toFixed(1)}
+                </div>
               </div>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
-              <div className="text-sm text-text-muted">Total Entries</div>
-              <div className="text-3xl font-bold text-primary-dark mt-1">
-                {reportLoading ? '...' : reportSummary.entry_count}
+            </StaggerItem>
+            <StaggerItem>
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
+                <div className="text-sm text-text-muted">Total Entries</div>
+                <div className="text-3xl font-bold text-primary-dark mt-1">
+                  {reportLoading ? '...' : reportSummary.entry_count}
+                </div>
               </div>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-neutral-warm p-4">
-              <div className="text-sm text-text-muted">Avg Hours/Entry</div>
-              <div className="text-3xl font-bold text-text-muted mt-1">
-                {reportLoading ? '...' : (reportSummary.entry_count > 0 ? (reportSummary.total_hours / reportSummary.entry_count).toFixed(1) : '0')}
+            </StaggerItem>
+            <StaggerItem>
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
+                <div className="text-sm text-text-muted">Avg Hours/Entry</div>
+                <div className="text-3xl font-bold text-text-muted mt-1">
+                  {reportLoading ? '...' : (reportSummary.entry_count > 0 ? (reportSummary.total_hours / reportSummary.entry_count).toFixed(1) : '0')}
+                </div>
               </div>
-            </div>
-          </div>
+            </StaggerItem>
+          </StaggerContainer>
 
           {/* Summary Tables */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* By Category */}
-            <div className="bg-white rounded-lg shadow-sm border border-neutral-warm overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
               <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
                 <h3 className="font-semibold text-primary-dark">Hours by Category</h3>
               </div>
@@ -1251,7 +1274,7 @@ export default function TimeTracking() {
             </div>
 
             {/* By Employee */}
-            <div className="bg-white rounded-lg shadow-sm border border-neutral-warm overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
               <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
                 <h3 className="font-semibold text-primary-dark">Hours by Employee</h3>
               </div>
@@ -1274,7 +1297,7 @@ export default function TimeTracking() {
             </div>
 
             {/* By Client */}
-            <div className="bg-white rounded-lg shadow-sm border border-neutral-warm overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
               <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
                 <h3 className="font-semibold text-primary-dark">Hours by Client</h3>
               </div>
@@ -1298,7 +1321,7 @@ export default function TimeTracking() {
           </div>
 
           {/* Detailed Entries Table */}
-          <div className="bg-white rounded-lg shadow-sm border border-neutral-warm overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
             <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
               <h3 className="font-semibold text-primary-dark">Detailed Entries</h3>
             </div>

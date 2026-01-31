@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { FadeUp } from '../../components/ui/MotionComponents'
 
 const services = [
   {
@@ -12,11 +14,6 @@ const services = [
       'Tax planning and strategy',
       'Prior year returns and amendments',
     ],
-    icon: (
-      <svg className="w-10 h-10" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-      </svg>
-    ),
   },
   {
     title: 'Accounting & Bookkeeping',
@@ -28,11 +25,6 @@ const services = [
       'Chart of accounts setup',
       'Clean-up and catch-up services',
     ],
-    icon: (
-      <svg className="w-10 h-10" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-      </svg>
-    ),
   },
   {
     title: 'Payroll & Compliance',
@@ -44,11 +36,6 @@ const services = [
       'New hire reporting',
       'Compliance monitoring',
     ],
-    icon: (
-      <svg className="w-10 h-10" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-      </svg>
-    ),
   },
   {
     title: 'Financial Statement Preparation',
@@ -60,11 +47,6 @@ const services = [
       'Custom financial reports',
       'Trend analysis',
     ],
-    icon: (
-      <svg className="w-10 h-10" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
   },
   {
     title: 'Business Advisory & Consulting',
@@ -76,11 +58,6 @@ const services = [
       'Growth strategy',
       'Exit planning',
     ],
-    icon: (
-      <svg className="w-10 h-10" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-      </svg>
-    ),
   },
   {
     title: 'QuickBooks & Cloud Accounting',
@@ -92,11 +69,6 @@ const services = [
       'Software integration',
       'Ongoing support',
     ],
-    icon: (
-      <svg className="w-10 h-10" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-      </svg>
-    ),
   },
 ]
 
@@ -106,92 +78,128 @@ export default function Services() {
   return (
     <div>
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-secondary to-white py-16 md:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="relative bg-gradient-to-br from-secondary via-secondary to-white py-24 md:py-32 overflow-hidden">
+        <div className="absolute inset-0 dot-pattern opacity-40 pointer-events-none" />
+        <div className="absolute top-1/3 -right-32 w-96 h-96 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="max-w-3xl">
-            <h1 className="text-4xl md:text-5xl font-bold text-gray-900">Our Services</h1>
-            <p className="mt-6 text-lg text-gray-600 leading-relaxed">
-              We go beyond compliance to meet our clients where they are, whether they're starting a business, growing operations, or navigating complex financial and tax matters.
-            </p>
-            <p className="mt-4 text-base text-primary font-medium italic">
+            <motion.span
+              className="inline-block px-4 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded-full mb-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              What We Offer
+            </motion.span>
+            <motion.h1
+              className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 tracking-tight"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+            >
+              Our <span className="gradient-text">Services</span>
+            </motion.h1>
+            <motion.p
+              className="mt-6 text-lg md:text-xl text-gray-600 leading-relaxed max-w-2xl"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            >
+              We go beyond compliance to meet our clients where they are, whether they&rsquo;re starting a business, growing operations, or navigating complex financial and tax matters.
+            </motion.p>
+            <motion.p
+              className="mt-4 text-base text-primary font-medium italic"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.5 }}
+            >
               Reliable support. Clear insights. Thoughtful guidance.
-            </p>
+            </motion.p>
           </div>
         </div>
       </section>
 
-      {/* Services List */}
-      <section className="py-16 md:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="space-y-12">
+      {/* Services List — Numbered editorial layout */}
+      <section className="py-24 md:py-32">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="space-y-20 lg:space-y-28">
             {services.map((service, index) => (
-              <div
-                key={service.title}
-                className={`flex flex-col lg:flex-row gap-8 ${
-                  index % 2 === 1 ? 'lg:flex-row-reverse' : ''
-                }`}
-              >
-                <div className="lg:w-1/2">
-                  <div className="bg-secondary rounded-2xl p-8 h-full">
-                    <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center text-white mb-6">
-                      {service.icon}
+              <FadeUp key={service.title}>
+                <div className={`grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start ${
+                  index % 2 === 1 ? 'lg:direction-rtl' : ''
+                }`}>
+                  {/* Number + Service info */}
+                  <div className={`lg:col-span-7 ${index % 2 === 1 ? 'lg:col-start-6 lg:order-2' : ''}`}>
+                    <div className="bg-secondary rounded-3xl p-8 lg:p-10">
+                      <div className="flex items-start gap-5 mb-5">
+                        <span className="text-5xl lg:text-6xl font-bold text-primary/15 tracking-tighter leading-none select-none">
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <div>
+                          <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">{service.title}</h2>
+                        </div>
+                      </div>
+                      <p className="text-gray-600 leading-relaxed text-lg">{service.description}</p>
                     </div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4">{service.title}</h2>
-                    <p className="text-gray-600 leading-relaxed">{service.description}</p>
+                  </div>
+                  {/* Features */}
+                  <div className={`lg:col-span-5 flex items-center ${index % 2 === 1 ? 'lg:col-start-1 lg:order-1' : ''}`}>
+                    <div className="w-full">
+                      <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-5">What&rsquo;s Included</h3>
+                      <ul className="space-y-3">
+                        {service.features.map((feature) => (
+                          <li key={feature} className="flex items-start gap-3">
+                            <svg
+                              className="w-5 h-5 text-primary flex-shrink-0 mt-0.5"
+                              fill="none"
+                              stroke="currentColor"
+                              aria-hidden="true" viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                            <span className="text-gray-600">{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 </div>
-                <div className="lg:w-1/2 flex items-center">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">What's Included:</h3>
-                    <ul className="space-y-3">
-                      {service.features.map((feature) => (
-                        <li key={feature} className="flex items-start gap-3">
-                          <svg
-                            className="w-5 h-5 text-primary flex-shrink-0 mt-0.5"
-                            fill="none"
-                            stroke="currentColor"
-                            aria-hidden="true" viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                          <span className="text-gray-600">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
+              </FadeUp>
             ))}
           </div>
         </div>
       </section>
 
       {/* CTA */}
-      <section className="bg-primary py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">Need Help Getting Started?</h2>
-          <p className="text-white opacity-90 mb-8 max-w-2xl mx-auto">
-            Not sure which service is right for you? Contact us for a consultation and we'll help you determine the best path forward.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              to="/intake"
-              className="bg-white text-primary px-6 py-3 rounded-lg text-base font-medium hover:bg-gray-100 transition-colors min-h-[48px] flex items-center justify-center"
-            >
-              Start Client Intake
-            </Link>
-            <Link
-              to="/contact"
-              className="bg-transparent text-white border-2 border-white px-6 py-3 rounded-lg text-base font-medium hover:bg-white/10 transition-colors min-h-[48px] flex items-center justify-center"
-            >
-              Contact Us
-            </Link>
-          </div>
+      <section className="py-24 md:py-32 bg-primary relative overflow-hidden">
+        <div className="absolute -top-20 -left-20 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+          <FadeUp>
+            <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-5 tracking-tight">Need Help Getting Started?</h2>
+            <p className="text-white/85 mb-10 max-w-2xl mx-auto text-lg">
+              Not sure which service is right for you? Contact us for a consultation and we&rsquo;ll help you determine the best path forward.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                to="/intake"
+                className="bg-white text-primary px-7 py-3.5 rounded-xl text-base font-medium hover:bg-gray-100 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 min-h-[48px] flex items-center justify-center"
+              >
+                Start Client Intake
+              </Link>
+              <Link
+                to="/contact"
+                className="bg-transparent text-white border-2 border-white/30 px-7 py-3.5 rounded-xl text-base font-medium hover:bg-white/10 hover:border-white/50 transition-all duration-200 min-h-[48px] flex items-center justify-center"
+              >
+                Contact Us
+              </Link>
+            </div>
+          </FadeUp>
         </div>
       </section>
     </div>

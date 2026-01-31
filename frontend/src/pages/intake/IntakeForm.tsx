@@ -8,6 +8,8 @@ import {
   emptyDependent,
 } from '../../types/intake';
 import { api } from '../../lib/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FadeUp } from '../../components/ui/MotionComponents';
 
 const STEPS = [
   'Client Information',
@@ -85,6 +87,10 @@ export default function IntakeForm() {
       resetForm();
     }
   }, [countdown, resetForm]);
+
+  useEffect(() => {
+    document.title = 'Client Intake Form | Cornerstone Tax';
+  }, []);
 
   const updateField = <K extends keyof IntakeFormData>(
     field: K,
@@ -226,7 +232,7 @@ export default function IntakeForm() {
       <div className="min-h-screen bg-secondary flex flex-col">
         {!isKioskMode && <IntakeHeader />}
         <main className="flex-1 flex items-center justify-center px-4 py-8">
-          <div className="bg-white rounded-2xl shadow-sm p-8 max-w-2xl w-full">
+          <FadeUp><div className="bg-white rounded-2xl shadow-sm p-8 max-w-2xl w-full">
             <div className="text-center mb-8">
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
                 How Can We Help You?
@@ -240,7 +246,7 @@ export default function IntakeForm() {
               {/* Personal Taxes Card */}
               <button
                 onClick={() => setServiceType('personal')}
-                className="group bg-white border-2 border-gray-200 hover:border-primary rounded-xl p-6 text-left transition-all hover:shadow-lg"
+                className="group bg-white border-2 border-gray-200 hover:border-primary rounded-xl p-6 text-left transition-all hover:shadow-lg hover:-translate-y-1"
               >
                 <div className="w-14 h-14 bg-secondary rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-white transition-colors">
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
@@ -262,7 +268,7 @@ export default function IntakeForm() {
               {/* Business Taxes Card */}
               <button
                 onClick={() => setServiceType('business')}
-                className="group bg-white border-2 border-gray-200 hover:border-primary rounded-xl p-6 text-left transition-all hover:shadow-lg"
+                className="group bg-white border-2 border-gray-200 hover:border-primary rounded-xl p-6 text-left transition-all hover:shadow-lg hover:-translate-y-1"
               >
                 <div className="w-14 h-14 bg-secondary rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-white transition-colors">
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
@@ -295,7 +301,7 @@ export default function IntakeForm() {
                 </Link>
               </div>
             )}
-          </div>
+          </div></FadeUp>
         </main>
       </div>
     );
@@ -308,7 +314,7 @@ export default function IntakeForm() {
         <div className="min-h-screen bg-secondary flex flex-col">
           {!isKioskMode && <IntakeHeader />}
           <main className="flex-1 flex items-center justify-center px-4 py-8">
-            <div className="bg-white rounded-2xl shadow-sm p-8 max-w-lg w-full text-center">
+            <FadeUp><div className="bg-white rounded-2xl shadow-sm p-8 max-w-lg w-full text-center">
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
                 <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -339,7 +345,7 @@ export default function IntakeForm() {
                   Back to Home
                 </Link>
               )}
-            </div>
+            </div></FadeUp>
           </main>
         </div>
       );
@@ -349,7 +355,7 @@ export default function IntakeForm() {
       <div className="min-h-screen bg-secondary flex flex-col">
         {!isKioskMode && <IntakeHeader />}
         <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6 md:py-8">
-          <div className="bg-white rounded-2xl shadow-sm p-6 md:p-8">
+          <FadeUp><div className="bg-white rounded-2xl shadow-sm p-6 md:p-8">
             {/* Back button */}
             <button
               onClick={() => setServiceType(null)}
@@ -468,7 +474,7 @@ export default function IntakeForm() {
                 {businessFormSubmitting ? 'Submitting...' : 'Request Consultation'}
               </button>
             </div>
-          </div>
+          </div></FadeUp>
         </main>
       </div>
     );
@@ -480,7 +486,7 @@ export default function IntakeForm() {
       <div className="min-h-screen bg-secondary flex flex-col">
         {!isKioskMode && <IntakeHeader />}
         <main className="flex-1 flex items-center justify-center px-4 py-8">
-          <div className="bg-white rounded-2xl shadow-sm p-8 max-w-lg w-full text-center">
+          <FadeUp><div className="bg-white rounded-2xl shadow-sm p-8 max-w-lg w-full text-center">
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -511,7 +517,7 @@ export default function IntakeForm() {
                 Back to Home
               </Link>
             )}
-          </div>
+          </div></FadeUp>
         </main>
       </div>
     );
@@ -542,46 +548,58 @@ export default function IntakeForm() {
             <span>Personal Tax Return: {STEPS[currentStep]}</span>
           </div>
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-300"
-              style={{ width: `${((currentStep + 1) / STEPS.length) * 100}%` }}
+            <motion.div
+              className="h-full bg-primary rounded-full"
+              initial={false}
+              animate={{ width: `${((currentStep + 1) / STEPS.length) * 100}%` }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             />
           </div>
         </div>
 
         {/* Form Card */}
+        <FadeUp>
         <div className="bg-white rounded-2xl shadow-sm p-6 md:p-8">
-          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-6">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 tracking-tight mb-6">
             {STEPS[currentStep]}
           </h2>
 
           {/* Step Content */}
-          <div className="space-y-6">
-            {currentStep === 0 && (
-              <StepClientInfo formData={formData} updateField={updateField} errors={errors} isKioskMode={isKioskMode} />
-            )}
-            {currentStep === 1 && (
-              <StepFilingInfo formData={formData} updateField={updateField} errors={errors} isKioskMode={isKioskMode} />
-            )}
-            {currentStep === 2 && (
-              <StepIncomeSources formData={formData} updateField={updateField} isKioskMode={isKioskMode} />
-            )}
-            {currentStep === 3 && (
-              <StepSpecialQuestions formData={formData} updateField={updateField} isKioskMode={isKioskMode} />
-            )}
-            {currentStep === 4 && (
-              <StepSpouseInfo formData={formData} updateField={updateField} isKioskMode={isKioskMode} />
-            )}
-            {currentStep === 5 && (
-              <StepDependents formData={formData} setFormData={setFormData} isKioskMode={isKioskMode} />
-            )}
-            {currentStep === 6 && (
-              <StepRefundPreference formData={formData} updateField={updateField} isKioskMode={isKioskMode} />
-            )}
-            {currentStep === 7 && (
-              <StepAuthorization formData={formData} updateField={updateField} errors={errors} isKioskMode={isKioskMode} />
-            )}
-          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentStep}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="space-y-6"
+            >
+              {currentStep === 0 && (
+                <StepClientInfo formData={formData} updateField={updateField} errors={errors} isKioskMode={isKioskMode} />
+              )}
+              {currentStep === 1 && (
+                <StepFilingInfo formData={formData} updateField={updateField} errors={errors} isKioskMode={isKioskMode} />
+              )}
+              {currentStep === 2 && (
+                <StepIncomeSources formData={formData} updateField={updateField} isKioskMode={isKioskMode} />
+              )}
+              {currentStep === 3 && (
+                <StepSpecialQuestions formData={formData} updateField={updateField} isKioskMode={isKioskMode} />
+              )}
+              {currentStep === 4 && (
+                <StepSpouseInfo formData={formData} updateField={updateField} isKioskMode={isKioskMode} />
+              )}
+              {currentStep === 5 && (
+                <StepDependents formData={formData} setFormData={setFormData} isKioskMode={isKioskMode} />
+              )}
+              {currentStep === 6 && (
+                <StepRefundPreference formData={formData} updateField={updateField} isKioskMode={isKioskMode} />
+              )}
+              {currentStep === 7 && (
+                <StepAuthorization formData={formData} updateField={updateField} errors={errors} isKioskMode={isKioskMode} />
+              )}
+            </motion.div>
+          </AnimatePresence>
 
           {/* Error Display */}
           {submitError && (
@@ -596,7 +614,7 @@ export default function IntakeForm() {
               <button
                 type="button"
                 onClick={prevStep}
-                className={`flex-1 sm:flex-none px-6 py-3 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors ${isKioskMode ? 'min-h-[56px]' : 'min-h-[48px]'}`}
+                className={`flex-1 sm:flex-none px-6 py-3 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-all hover:-translate-y-0.5 active:translate-y-0 ${isKioskMode ? 'min-h-[56px]' : 'min-h-[48px]'}`}
               >
                 Back
               </button>
@@ -605,7 +623,7 @@ export default function IntakeForm() {
               type="button"
               onClick={currentStep === STEPS.length - 1 ? handleSubmit : nextStep}
               disabled={isSubmitting}
-              className={`flex-1 px-6 py-3 bg-primary text-white rounded-xl font-medium hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isKioskMode ? 'min-h-[56px]' : 'min-h-[48px]'}`}
+              className={`flex-1 px-6 py-3 bg-primary text-white rounded-xl font-medium hover:bg-primary-dark transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/20 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none ${isKioskMode ? 'min-h-[56px]' : 'min-h-[48px]'}`}
             >
               {isSubmitting ? (
                 <span className="flex items-center justify-center gap-2">
@@ -623,6 +641,7 @@ export default function IntakeForm() {
             </button>
           </div>
         </div>
+        </FadeUp>
 
         {!isKioskMode && (
           <p className="text-center text-sm text-gray-500 mt-6">
