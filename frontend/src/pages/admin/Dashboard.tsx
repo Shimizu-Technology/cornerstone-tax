@@ -57,11 +57,26 @@ export default function Dashboard() {
   const [activityDate, setActivityDate] = useState<string>(getLocalDateString())
   const [loading, setLoading] = useState(true)
   const [activityLoading, setActivityLoading] = useState(false)
+  const [expandedEntries, setExpandedEntries] = useState<Set<number>>(new Set())
   const [showCreateModal, setShowCreateModal] = useState(false)
+
+  // Toggle entry expansion
+  const toggleEntryExpanded = (entryId: number) => {
+    setExpandedEntries(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(entryId)) {
+        newSet.delete(entryId)
+      } else {
+        newSet.add(entryId)
+      }
+      return newSet
+    })
+  }
 
   // Load team activity for a given date
   const loadTeamActivity = async (date: string) => {
     setActivityLoading(true)
+    setExpandedEntries(new Set()) // Clear expanded state when changing dates
     try {
       const result = await api.getTimeEntries({ date })
       if (result.data) {
@@ -357,23 +372,44 @@ export default function Dashboard() {
                         )}
                       </div>
                     </div>
-                    <div className="space-y-1">
-                      {activity.entries.map((entry) => (
-                        <div key={entry.id} className="flex items-start gap-2 text-sm">
-                          <span className="text-gray-400 flex-shrink-0">
-                            {entry.formatted_start_time} - {entry.formatted_end_time}
-                          </span>
-                          <span className="text-gray-600 truncate">
-                            {entry.time_category?.name || 'General'}
-                            {entry.description && (
-                              <span className="text-gray-500"> — {entry.description}</span>
-                            )}
-                            {entry.client && (
-                              <span className="text-primary-dark"> • {entry.client.name}</span>
-                            )}
-                          </span>
-                        </div>
-                      ))}
+                    <div className="space-y-2">
+                      {activity.entries.map((entry) => {
+                        const isExpanded = expandedEntries.has(entry.id)
+                        const hasLongContent = (entry.description?.length || 0) > 50
+                        
+                        return (
+                          <div key={entry.id} className="text-sm">
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-400 flex-shrink-0">
+                                {entry.formatted_start_time} - {entry.formatted_end_time}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-gray-600">
+                                  {entry.time_category?.name || 'General'}
+                                  {entry.client && (
+                                    <span className="text-primary-dark"> • {entry.client.name}</span>
+                                  )}
+                                </span>
+                                {entry.description && (
+                                  <div className="mt-1">
+                                    <p className={`text-gray-500 ${!isExpanded && hasLongContent ? 'line-clamp-1' : ''}`}>
+                                      {entry.description}
+                                    </p>
+                                    {hasLongContent && (
+                                      <button
+                                        onClick={() => toggleEntryExpanded(entry.id)}
+                                        className="text-primary text-xs font-medium hover:underline mt-0.5"
+                                      >
+                                        {isExpanded ? 'Show less' : 'Show more'}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
