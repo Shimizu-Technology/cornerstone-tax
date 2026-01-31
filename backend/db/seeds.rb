@@ -71,6 +71,131 @@ schedule_presets.each do |attrs|
 end
 
 # ============================================
+# Service Types (Configurable)
+# ============================================
+puts "Creating service types..."
+
+service_types_data = [
+  {
+    name: "Tax Preparation & Planning",
+    description: "Expert tax preparation for individuals and businesses",
+    color: "#3B82F6",
+    position: 1,
+    tasks: [
+      "Individual tax returns (Form 1040)",
+      "Business tax returns (1120, 1120S, 1065)",
+      "Guam and federal tax filing",
+      "Tax planning and strategy",
+      "Prior year returns and amendments"
+    ]
+  },
+  {
+    name: "Accounting & Bookkeeping",
+    description: "Comprehensive accounting services for your business",
+    color: "#10B981",
+    position: 2,
+    tasks: [
+      "Monthly bookkeeping",
+      "Account reconciliation",
+      "General ledger maintenance",
+      "Chart of accounts setup",
+      "Clean-up and catch-up services"
+    ]
+  },
+  {
+    name: "Payroll & Compliance",
+    description: "Reliable payroll processing and compliance support",
+    color: "#F59E0B",
+    position: 3,
+    tasks: [
+      "Payroll processing",
+      "Payroll tax filings",
+      "W-2 and 1099 preparation",
+      "New hire reporting",
+      "Compliance monitoring"
+    ]
+  },
+  {
+    name: "Financial Statement Preparation",
+    description: "Clear, accurate financial statements for your business",
+    color: "#8B5CF6",
+    position: 4,
+    tasks: [
+      "Balance sheets",
+      "Income statements",
+      "Cash flow statements",
+      "Custom financial reports",
+      "Trend analysis"
+    ]
+  },
+  {
+    name: "Business Advisory & Consulting",
+    description: "Strategic guidance to help you achieve your business goals",
+    color: "#EC4899",
+    position: 5,
+    tasks: [
+      "Business entity selection",
+      "Financial planning",
+      "Cash flow management",
+      "Growth strategy",
+      "Exit planning"
+    ]
+  },
+  {
+    name: "QuickBooks & Cloud Accounting",
+    description: "Expert setup and support for cloud-based accounting",
+    color: "#06B6D4",
+    position: 6,
+    tasks: [
+      "QuickBooks setup and training",
+      "Data migration",
+      "Cloud accounting solutions",
+      "Software integration",
+      "Ongoing support"
+    ]
+  },
+  {
+    name: "General/Administrative",
+    description: "Internal work, meetings, and administrative tasks",
+    color: "#6B7280",
+    position: 7,
+    tasks: [
+      "Team meeting",
+      "Training",
+      "Administrative work",
+      "Client communication",
+      "Other"
+    ]
+  }
+]
+
+service_types_data.each do |st_data|
+  service_type = ServiceType.find_or_initialize_by(name: st_data[:name])
+  service_type.assign_attributes(
+    description: st_data[:description],
+    color: st_data[:color],
+    position: st_data[:position],
+    is_active: true
+  )
+  service_type.save!
+  puts "  ✓ #{service_type.name}"
+
+  # Create tasks for this service type
+  st_data[:tasks].each_with_index do |task_name, index|
+    task = ServiceTask.find_or_initialize_by(
+      service_type: service_type,
+      name: task_name
+    )
+    task.assign_attributes(
+      position: index + 1,
+      is_active: true
+    )
+    task.save!
+  end
+  puts "    └─ #{st_data[:tasks].count} tasks"
+end
+
+# ============================================
 # Staff Users (Development only)
 # ============================================
 if Rails.env.development? || Rails.env.test?
@@ -111,4 +236,6 @@ puts "✅ Seeding complete!"
 puts "   - #{WorkflowStage.count} workflow stages"
 puts "   - #{TimeCategory.count} time categories"
 puts "   - #{ScheduleTimePreset.count} schedule time presets"
+puts "   - #{ServiceType.count} service types"
+puts "   - #{ServiceTask.count} service tasks"
 puts "   - #{User.count} users" if Rails.env.development? || Rails.env.test?

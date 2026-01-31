@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
+ActiveRecord::Schema[8.1].define(version: 2026_01_31_010653) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -29,11 +29,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.index ["user_id"], name: "index_audit_logs_on_user_id"
   end
 
+  create_table "client_service_types", force: :cascade do |t|
+    t.bigint "client_id", null: false
+    t.datetime "created_at", null: false
+    t.bigint "service_type_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["client_id", "service_type_id"], name: "index_client_service_types_on_client_id_and_service_type_id", unique: true
+    t.index ["client_id"], name: "index_client_service_types_on_client_id"
+    t.index ["service_type_id"], name: "index_client_service_types_on_service_type_id"
+  end
+
   create_table "clients", force: :cascade do |t|
     t.string "bank_account_number_encrypted"
     t.string "bank_account_type"
     t.string "bank_routing_number_encrypted"
+    t.string "business_name"
     t.text "changes_from_prior_year"
+    t.string "client_type", default: "individual"
     t.datetime "created_at", null: false
     t.date "date_of_birth"
     t.boolean "denied_eic_actc", default: false
@@ -44,6 +56,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.boolean "has_crypto_transactions", default: false
     t.boolean "has_prior_year_return", default: false
     t.boolean "is_new_client", default: true
+    t.boolean "is_service_only", default: false, null: false
     t.string "last_name", null: false
     t.text "mailing_address"
     t.string "phone"
@@ -51,7 +64,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.string "spouse_name"
     t.datetime "updated_at", null: false
     t.boolean "wants_direct_deposit", default: false
+    t.index ["client_type"], name: "index_clients_on_client_type"
     t.index ["email"], name: "index_clients_on_email"
+    t.index ["is_service_only"], name: "index_clients_on_is_service_only"
     t.index ["last_name", "first_name"], name: "index_clients_on_last_name_and_first_name"
   end
 
@@ -137,6 +152,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.index ["work_date"], name: "index_schedules_on_work_date"
   end
 
+  create_table "service_tasks", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.boolean "is_active", default: true, null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.bigint "service_type_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["is_active"], name: "index_service_tasks_on_is_active"
+    t.index ["service_type_id", "position"], name: "index_service_tasks_on_service_type_id_and_position"
+    t.index ["service_type_id"], name: "index_service_tasks_on_service_type_id"
+  end
+
+  create_table "service_types", force: :cascade do |t|
+    t.string "color"
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.boolean "is_active", default: true, null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["is_active"], name: "index_service_types_on_is_active"
+    t.index ["position"], name: "index_service_types_on_position"
+  end
+
   create_table "settings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "description"
@@ -178,6 +218,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.text "description"
     t.time "end_time"
     t.decimal "hours", precision: 4, scale: 2, null: false
+    t.bigint "service_task_id"
+    t.bigint "service_type_id"
     t.time "start_time"
     t.bigint "tax_return_id"
     t.bigint "time_category_id"
@@ -185,6 +227,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.bigint "user_id", null: false
     t.date "work_date", null: false
     t.index ["client_id"], name: "index_time_entries_on_client_id"
+    t.index ["service_task_id"], name: "index_time_entries_on_service_task_id"
+    t.index ["service_type_id"], name: "index_time_entries_on_service_type_id"
     t.index ["tax_return_id"], name: "index_time_entries_on_tax_return_id"
     t.index ["time_category_id"], name: "index_time_entries_on_time_category_id"
     t.index ["user_id"], name: "index_time_entries_on_user_id"
@@ -251,6 +295,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
   end
 
   add_foreign_key "audit_logs", "users"
+  add_foreign_key "client_service_types", "clients"
+  add_foreign_key "client_service_types", "service_types"
   add_foreign_key "dependents", "clients"
   add_foreign_key "documents", "tax_returns"
   add_foreign_key "documents", "users", column: "uploaded_by_id"
@@ -259,11 +305,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
   add_foreign_key "notifications", "tax_returns"
   add_foreign_key "schedules", "users"
   add_foreign_key "schedules", "users", column: "created_by_id"
+  add_foreign_key "service_tasks", "service_types"
   add_foreign_key "tax_returns", "clients"
   add_foreign_key "tax_returns", "users", column: "assigned_to_id"
   add_foreign_key "tax_returns", "users", column: "reviewed_by_id"
   add_foreign_key "tax_returns", "workflow_stages"
   add_foreign_key "time_entries", "clients"
+  add_foreign_key "time_entries", "service_tasks"
+  add_foreign_key "time_entries", "service_types"
   add_foreign_key "time_entries", "tax_returns"
   add_foreign_key "time_entries", "time_categories"
   add_foreign_key "time_entries", "users"

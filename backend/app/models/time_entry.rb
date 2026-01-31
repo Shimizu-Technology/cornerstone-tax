@@ -5,12 +5,16 @@ class TimeEntry < ApplicationRecord
   belongs_to :client, optional: true
   belongs_to :tax_return, optional: true
   belongs_to :time_category, optional: true
+  belongs_to :service_type, optional: true
+  belongs_to :service_task, optional: true
 
   validates :work_date, presence: true
   validates :start_time, presence: true
   validates :end_time, presence: true
   validates :hours, presence: true, numericality: { greater_than: 0, less_than_or_equal_to: 24 }
   validate :end_time_after_start_time
+  validate :service_type_required_if_client
+  validate :service_task_matches_service_type
 
   before_validation :calculate_hours_from_times
 
@@ -58,6 +62,22 @@ class TimeEntry < ApplicationRecord
 
     if end_time <= start_time
       errors.add(:end_time, "must be after start time")
+    end
+  end
+
+  # If a client is selected, service_type is required
+  def service_type_required_if_client
+    if client_id.present? && service_type_id.blank?
+      errors.add(:service_type, "is required when a client is selected")
+    end
+  end
+
+  # If service_task is selected, it must belong to the selected service_type
+  def service_task_matches_service_type
+    return unless service_task_id.present? && service_type_id.present?
+
+    unless service_task.service_type_id == service_type_id
+      errors.add(:service_task, "must belong to the selected service type")
     end
   end
 end
