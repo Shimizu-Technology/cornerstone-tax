@@ -312,11 +312,15 @@ export default function Dashboard() {
             </p>
           )}
         </div>
-        <div className="divide-y divide-secondary-dark">
+        <div className="divide-y divide-secondary-dark overflow-hidden">
+          <div 
+            key={activityDate}
+            className={`transition-opacity duration-200 ${activityLoading ? 'opacity-40' : 'opacity-100 animate-fadeIn'}`}
+          >
           {activityLoading ? (
             <div className="px-6 py-8 text-center">
-              <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
-              <p className="text-gray-500 text-sm">Loading activity...</p>
+              <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full mx-auto mb-2 animate-spin"></div>
+              <p className="text-gray-400 text-sm">Loading...</p>
             </div>
           ) : teamActivity.length === 0 ? (
             <div className="px-6 py-8 text-center">
@@ -376,6 +380,7 @@ export default function Dashboard() {
               </div>
             ))
           )}
+          </div>
         </div>
         {teamActivity.length > 0 && (
           <div className="px-6 py-3 bg-secondary/30 border-t border-secondary-dark">
