@@ -213,6 +213,7 @@ export default function TimeTracking() {
     time_category_id: '',
     client_id: '',
     service_type_id: '',
+    service_task_id: '',
     break_minutes: null as number | null
   })
   const [saving, setSaving] = useState(false)
@@ -387,6 +388,7 @@ export default function TimeTracking() {
         time_category_id: '',
         client_id: '',
         service_type_id: '',
+        service_task_id: '',
         break_minutes: null
       })
       setShowModal(true)
@@ -430,6 +432,7 @@ export default function TimeTracking() {
       time_category_id: '',
       client_id: '',
       service_type_id: '',
+      service_task_id: '',
       break_minutes: null
     })
     setShowModal(true)
@@ -445,6 +448,7 @@ export default function TimeTracking() {
       time_category_id: entry.time_category?.id.toString() || '',
       client_id: entry.client?.id.toString() || '',
       service_type_id: entry.service_type?.id.toString() || '',
+      service_task_id: entry.service_task?.id.toString() || '',
       break_minutes: entry.break_minutes
     })
     setShowModal(true)
@@ -464,6 +468,7 @@ export default function TimeTracking() {
         time_category_id: formData.time_category_id ? parseInt(formData.time_category_id) : undefined,
         client_id: formData.client_id ? parseInt(formData.client_id) : undefined,
         service_type_id: formData.service_type_id ? parseInt(formData.service_type_id) : undefined,
+        service_task_id: formData.service_task_id ? parseInt(formData.service_task_id) : undefined,
         break_minutes: formData.break_minutes
       }
 
@@ -550,6 +555,14 @@ export default function TimeTracking() {
     const serviceName = entry.service_type?.name || 'No Service'
     if (!acc[serviceName]) acc[serviceName] = 0
     acc[serviceName] += entry.hours
+    return acc
+  }, {} as Record<string, number>)
+
+  const reportByTask = reportData.reduce((acc, entry) => {
+    if (!entry.service_task) return acc
+    const taskName = entry.service_task.name
+    if (!acc[taskName]) acc[taskName] = 0
+    acc[taskName] += entry.hours
     return acc
   }, {} as Record<string, number>)
 
@@ -900,7 +913,7 @@ export default function TimeTracking() {
                             className="text-[10px] sm:text-xs font-medium truncate px-1 rounded text-white"
                             style={{ backgroundColor: entry.service_type.color || '#8B7355' }}
                           >
-                            {entry.service_type.name}
+                            {entry.service_type.name}{entry.service_task ? ` → ${entry.service_task.name}` : ''}
                           </div>
                         )}
                         {isAdmin && (
@@ -984,6 +997,11 @@ export default function TimeTracking() {
                           style={{ backgroundColor: entry.service_type.color || '#8B7355' }}
                         >
                           {entry.service_type.name}
+                        </span>
+                      )}
+                      {entry.service_task && (
+                        <span className="inline-block mt-1 ml-1 px-2 py-0.5 rounded text-xs font-medium bg-primary-dark/10 text-primary-dark">
+                          {entry.service_task.name}
                         </span>
                       )}
                     </div>
@@ -1154,7 +1172,7 @@ export default function TimeTracking() {
                   </label>
                   <select
                     value={formData.client_id}
-                    onChange={(e) => setFormData({ ...formData, client_id: e.target.value, service_type_id: '' })}
+                    onChange={(e) => setFormData({ ...formData, client_id: e.target.value, service_type_id: '', service_task_id: '' })}
                     className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   >
                     <option value="">No client</option>
@@ -1173,7 +1191,7 @@ export default function TimeTracking() {
                   </label>
                   <select
                     value={formData.service_type_id}
-                    onChange={(e) => setFormData({ ...formData, service_type_id: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, service_type_id: e.target.value, service_task_id: '' })}
                     className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                     required={!!formData.client_id}
                   >
@@ -1186,6 +1204,30 @@ export default function TimeTracking() {
                     <p className="text-xs text-red-500 mt-1">Service is required when logging time for a client</p>
                   )}
                 </div>
+
+                {/* Task (optional, filtered by selected service) */}
+                {formData.service_type_id && (() => {
+                  const selectedService = serviceTypes.find(st => st.id.toString() === formData.service_type_id)
+                  const tasks = selectedService?.tasks || []
+                  if (tasks.length === 0) return null
+                  return (
+                    <div>
+                      <label className="block text-sm font-medium text-primary-dark mb-1">
+                        Task (optional)
+                      </label>
+                      <select
+                        value={formData.service_task_id}
+                        onChange={(e) => setFormData({ ...formData, service_task_id: e.target.value })}
+                        className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      >
+                        <option value="">No specific task</option>
+                        {tasks.map(task => (
+                          <option key={task.id} value={task.id}>{task.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                })()}
 
                 {/* Description */}
                 <div>
@@ -1320,7 +1362,7 @@ export default function TimeTracking() {
           </StaggerContainer>
 
           {/* Summary Tables */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
             {/* By Category */}
             <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
               <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
@@ -1412,6 +1454,29 @@ export default function TimeTracking() {
                 )}
               </div>
             </div>
+
+            {/* By Task */}
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
+              <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
+                <h3 className="font-semibold text-primary-dark">Hours by Task</h3>
+              </div>
+              <div className="divide-y divide-neutral-warm max-h-[300px] overflow-y-auto">
+                {reportLoading ? (
+                  <div className="p-4 text-center text-text-muted">Loading...</div>
+                ) : Object.entries(reportByTask).length === 0 ? (
+                  <div className="p-4 text-center text-text-muted">No tasks logged</div>
+                ) : (
+                  Object.entries(reportByTask)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([name, hours]) => (
+                      <div key={name} className="px-4 py-3 flex justify-between items-center">
+                        <span className="text-primary-dark truncate max-w-[150px]">{name}</span>
+                        <span className="font-semibold text-primary">{hours.toFixed(1)}h</span>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Detailed Entries Table */}
@@ -1428,6 +1493,7 @@ export default function TimeTracking() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Time</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Category</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Service</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Task</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Client</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-text-muted uppercase">Hours</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Description</th>
@@ -1436,11 +1502,11 @@ export default function TimeTracking() {
                 <tbody className="divide-y divide-neutral-warm">
                   {reportLoading ? (
                     <tr>
-                      <td colSpan={isAdmin ? 8 : 7} className="px-4 py-8 text-center text-text-muted">Loading...</td>
+                      <td colSpan={isAdmin ? 9 : 8} className="px-4 py-8 text-center text-text-muted">Loading...</td>
                     </tr>
                   ) : reportData.length === 0 ? (
                     <tr>
-                      <td colSpan={isAdmin ? 8 : 7} className="px-4 py-8 text-center text-text-muted">No entries found</td>
+                      <td colSpan={isAdmin ? 9 : 8} className="px-4 py-8 text-center text-text-muted">No entries found</td>
                     </tr>
                   ) : (
                     reportData.slice(0, 100).map(entry => (
@@ -1463,6 +1529,7 @@ export default function TimeTracking() {
                             </span>
                           ) : '-'}
                         </td>
+                        <td className="px-4 py-3 text-sm text-text-muted">{entry.service_task?.name || '-'}</td>
                         <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{entry.client?.name || '-'}</td>
                         <td className="px-4 py-3 text-sm text-primary font-semibold text-right">{entry.hours.toFixed(1)}</td>
                         <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[200px]">{entry.description || '-'}</td>
