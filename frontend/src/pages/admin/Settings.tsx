@@ -41,7 +41,7 @@ export default function Settings() {
   useEffect(() => { document.title = 'Settings | Cornerstone Admin' }, [])
 
   // Active tab
-  const [activeTab, setActiveTab] = useState<'workflow' | 'time' | 'schedule' | 'system'>('workflow')
+  const [activeTab, setActiveTab] = useState<'workflow' | 'time' | 'schedule' | 'services' | 'system'>('workflow')
   
   // System Settings state
   const [_systemSettings, setSystemSettings] = useState<Record<string, string>>({})
@@ -90,6 +90,48 @@ export default function Settings() {
   const [savingPreset, setSavingPreset] = useState(false)
   const [presetError, setPresetError] = useState('')
 
+  // Service Types state
+  interface ServiceTypeLocal {
+    id: number
+    name: string
+    description: string | null
+    color: string | null
+    is_active: boolean
+    position: number
+    tasks: Array<{
+      id: number
+      name: string
+      description: string | null
+      is_active: boolean
+      position: number
+    }>
+  }
+  
+  interface ServiceTaskLocal {
+    id: number
+    name: string
+    description: string | null
+    is_active: boolean
+    position: number
+  }
+  const [serviceTypes, setServiceTypes] = useState<ServiceTypeLocal[]>([])
+  const [loadingServiceTypes, setLoadingServiceTypes] = useState(true)
+  const [editingServiceType, setEditingServiceType] = useState<ServiceTypeLocal | null>(null)
+  const [isAddingNewServiceType, setIsAddingNewServiceType] = useState(false)
+  const [serviceTypeFormData, setServiceTypeFormData] = useState({
+    name: '',
+    description: '',
+    color: '#3B82F6',
+  })
+  const [savingServiceType, setSavingServiceType] = useState(false)
+  const [serviceTypeError, setServiceTypeError] = useState('')
+  const [expandedServiceType, setExpandedServiceType] = useState<number | null>(null)
+  const [editingTask, setEditingTask] = useState<{ serviceTypeId: number; task: ServiceTypeLocal['tasks'][0] } | null>(null)
+  const [isAddingNewTask, setIsAddingNewTask] = useState<number | null>(null)
+  const [taskFormData, setTaskFormData] = useState({ name: '', description: '' })
+  const [savingTask, setSavingTask] = useState(false)
+  const [taskError, setTaskError] = useState('')
+
   const colorOptions = [
     { value: 'blue', label: 'Blue', hex: '#3B82F6' },
     { value: 'yellow', label: 'Yellow', hex: '#F59E0B' },
@@ -105,6 +147,7 @@ export default function Settings() {
     fetchStages()
     fetchCategories()
     fetchPresets()
+    fetchServiceTypes()
     fetchSystemSettings()
   }, [])
 
@@ -163,6 +206,31 @@ export default function Settings() {
       setPresets(response.data.presets as unknown as ScheduleTimePresetLocal[])
     }
     setLoadingPresets(false)
+  }
+
+  const fetchServiceTypes = async () => {
+    setLoadingServiceTypes(true)
+    const response = await api.getAdminServiceTypes()
+    if (response.data) {
+      // Transform API response to local types with defaults for optional fields
+      const transformed: ServiceTypeLocal[] = response.data.service_types.map(st => ({
+        id: st.id,
+        name: st.name,
+        description: st.description,
+        color: st.color,
+        is_active: st.is_active ?? true,
+        position: st.position ?? 0,
+        tasks: (st.tasks || []).map(t => ({
+          id: t.id,
+          name: t.name,
+          description: t.description,
+          is_active: t.is_active ?? true,
+          position: t.position ?? 0,
+        })),
+      }))
+      setServiceTypes(transformed)
+    }
+    setLoadingServiceTypes(false)
   }
 
   const generateSlug = (name: string) => {
@@ -388,6 +456,159 @@ export default function Settings() {
     setPresetError('')
   }
 
+  // Service Type handlers
+  const handleSaveServiceType = async () => {
+    if (!serviceTypeFormData.name.trim()) {
+      setServiceTypeError('Name is required')
+      return
+    }
+
+    setSavingServiceType(true)
+    setServiceTypeError('')
+
+    try {
+      if (editingServiceType) {
+        const response = await api.updateServiceType(editingServiceType.id, serviceTypeFormData)
+        if (response.data) {
+          setServiceTypes(prev => prev.map(st => 
+            st.id === editingServiceType.id 
+              ? { ...st, ...response.data!.service_type, tasks: st.tasks } 
+              : st
+          ))
+          setEditingServiceType(null)
+        } else if (response.error) {
+          setServiceTypeError(response.error)
+        }
+      } else {
+        const response = await api.createServiceType(serviceTypeFormData)
+        if (response.data) {
+          setServiceTypes(prev => [...prev, { ...response.data!.service_type, tasks: [] } as ServiceTypeLocal])
+          setIsAddingNewServiceType(false)
+          setServiceTypeFormData({ name: '', description: '', color: '#3B82F6' })
+        } else if (response.error) {
+          setServiceTypeError(response.error)
+        }
+      }
+    } finally {
+      setSavingServiceType(false)
+    }
+  }
+
+  const handleDeleteServiceType = async (serviceType: ServiceTypeLocal) => {
+    if (!confirm(`Are you sure you want to deactivate "${serviceType.name}"?`)) {
+      return
+    }
+
+    const response = await api.deleteServiceType(serviceType.id)
+    if (!response.error) {
+      setServiceTypes(prev => prev.filter(st => st.id !== serviceType.id))
+    }
+  }
+
+  const startEditServiceType = (serviceType: ServiceTypeLocal) => {
+    setEditingServiceType(serviceType)
+    setServiceTypeFormData({
+      name: serviceType.name,
+      description: serviceType.description || '',
+      color: serviceType.color || '#3B82F6',
+    })
+    setIsAddingNewServiceType(false)
+  }
+
+  const cancelEditServiceType = () => {
+    setEditingServiceType(null)
+    setIsAddingNewServiceType(false)
+    setServiceTypeFormData({ name: '', description: '', color: '#3B82F6' })
+    setServiceTypeError('')
+  }
+
+  // Service Task handlers
+  const handleSaveTask = async (serviceTypeId: number) => {
+    if (!taskFormData.name.trim()) {
+      setTaskError('Name is required')
+      return
+    }
+
+    setSavingTask(true)
+    setTaskError('')
+
+    try {
+      if (editingTask) {
+        const response = await api.updateServiceTask(serviceTypeId, editingTask.task.id, taskFormData)
+        if (response.data) {
+          const updatedTask: ServiceTaskLocal = {
+            id: response.data.task.id,
+            name: response.data.task.name,
+            description: response.data.task.description,
+            is_active: response.data.task.is_active ?? true,
+            position: response.data.task.position ?? 0,
+          }
+          setServiceTypes(prev => prev.map(st => 
+            st.id === serviceTypeId 
+              ? { ...st, tasks: st.tasks.map(t => t.id === editingTask.task.id ? updatedTask : t) }
+              : st
+          ))
+          setEditingTask(null)
+        } else if (response.error) {
+          setTaskError(response.error)
+        }
+      } else {
+        const response = await api.createServiceTask(serviceTypeId, taskFormData)
+        if (response.data) {
+          const newTask: ServiceTaskLocal = {
+            id: response.data.task.id,
+            name: response.data.task.name,
+            description: response.data.task.description,
+            is_active: response.data.task.is_active ?? true,
+            position: response.data.task.position ?? 0,
+          }
+          setServiceTypes(prev => prev.map(st => 
+            st.id === serviceTypeId 
+              ? { ...st, tasks: [...st.tasks, newTask] }
+              : st
+          ))
+          setIsAddingNewTask(null)
+          setTaskFormData({ name: '', description: '' })
+        } else if (response.error) {
+          setTaskError(response.error)
+        }
+      }
+    } finally {
+      setSavingTask(false)
+    }
+  }
+
+  const handleDeleteTask = async (serviceTypeId: number, task: ServiceTypeLocal['tasks'][0]) => {
+    if (!confirm(`Are you sure you want to deactivate "${task.name}"?`)) {
+      return
+    }
+
+    const response = await api.deleteServiceTask(serviceTypeId, task.id)
+    if (!response.error) {
+      setServiceTypes(prev => prev.map(st => 
+        st.id === serviceTypeId 
+          ? { ...st, tasks: st.tasks.filter(t => t.id !== task.id) }
+          : st
+      ))
+    }
+  }
+
+  const startEditTask = (serviceTypeId: number, task: ServiceTypeLocal['tasks'][0]) => {
+    setEditingTask({ serviceTypeId, task })
+    setTaskFormData({
+      name: task.name,
+      description: task.description || '',
+    })
+    setIsAddingNewTask(null)
+  }
+
+  const cancelEditTask = () => {
+    setEditingTask(null)
+    setIsAddingNewTask(null)
+    setTaskFormData({ name: '', description: '' })
+    setTaskError('')
+  }
+
   const getColorHex = (color: string | null) => {
     const colorOption = colorOptions.find(c => c.value === color) || colorOptions[0]
     return colorOption.hex
@@ -440,6 +661,16 @@ export default function Settings() {
             }`}
           >
             Schedule Presets
+          </button>
+          <button
+            onClick={() => setActiveTab('services')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'services'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-muted hover:text-primary-dark'
+            }`}
+          >
+            Services
           </button>
           <button
             onClick={() => setActiveTab('system')}
@@ -846,6 +1077,246 @@ export default function Settings() {
                 </div>
               ))
             )}
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* Services Tab */}
+      {activeTab === 'services' && (
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
+        <div className="px-6 py-5 border-b border-neutral-warm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-primary-dark">Service Types</h2>
+            <p className="text-sm text-text-muted mt-0.5">Configure the services offered and their tasks</p>
+          </div>
+          {!isAddingNewServiceType && !editingServiceType && (
+            <button
+              onClick={() => setIsAddingNewServiceType(true)}
+              className="inline-flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-dark hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-md hover:shadow-lg"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Service Type
+            </button>
+          )}
+        </div>
+
+        {/* Add/Edit Service Type Form */}
+        {(isAddingNewServiceType || editingServiceType) && (
+          <div className="p-6 bg-secondary/30 border-b border-neutral-warm">
+            <h3 className="font-medium text-primary-dark mb-4">
+              {editingServiceType ? 'Edit Service Type' : 'Add New Service Type'}
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={serviceTypeFormData.name}
+                  onChange={(e) => setServiceTypeFormData(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-4 py-2 border border-neutral-warm rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                  placeholder="e.g., Payroll Services"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
+                <input
+                  type="color"
+                  value={serviceTypeFormData.color}
+                  onChange={(e) => setServiceTypeFormData(prev => ({ ...prev, color: e.target.value }))}
+                  className="w-full h-10 px-1 py-1 border border-neutral-warm rounded-lg cursor-pointer"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <input
+                  type="text"
+                  value={serviceTypeFormData.description}
+                  onChange={(e) => setServiceTypeFormData(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-4 py-2 border border-neutral-warm rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                  placeholder="Brief description of this service"
+                />
+              </div>
+            </div>
+            {serviceTypeError && <p className="text-red-600 text-sm mt-2">{serviceTypeError}</p>}
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={handleSaveServiceType}
+                disabled={savingServiceType}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50"
+              >
+                {savingServiceType ? 'Saving...' : editingServiceType ? 'Update' : 'Create'}
+              </button>
+              <button
+                onClick={cancelEditServiceType}
+                className="px-4 py-2 border border-neutral-warm rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Service Types List */}
+        {loadingServiceTypes ? (
+          <div className="flex items-center justify-center py-12">
+            <svg className="animate-spin h-8 w-8 text-primary" fill="none" aria-hidden="true" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          </div>
+        ) : serviceTypes.length === 0 ? (
+          <div className="p-6 text-center text-text-muted">
+            No service types configured yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-neutral-warm">
+            {serviceTypes.filter(st => st.is_active).map((serviceType) => (
+              <div key={serviceType.id} className="p-4">
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => setExpandedServiceType(expandedServiceType === serviceType.id ? null : serviceType.id)}
+                    className="flex items-center gap-3 text-left flex-1"
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: serviceType.color || '#6B7280' }}
+                    />
+                    <div className="flex-1">
+                      <span className="font-medium text-gray-900">{serviceType.name}</span>
+                      {serviceType.description && (
+                        <p className="text-sm text-gray-500 mt-0.5">{serviceType.description}</p>
+                      )}
+                      <span className="text-xs text-gray-400">{serviceType.tasks.filter(t => t.is_active).length} tasks</span>
+                    </div>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${expandedServiceType === serviceType.id ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  <div className="flex items-center gap-2 ml-4">
+                    <button
+                      onClick={() => startEditServiceType(serviceType)}
+                      className="p-2 text-gray-400 hover:text-primary rounded-lg hover:bg-gray-50"
+                      title="Edit"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteServiceType(serviceType)}
+                      className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-gray-50"
+                      title="Deactivate"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Expanded Tasks Section */}
+                {expandedServiceType === serviceType.id && (
+                  <div className="mt-4 ml-7 pl-4 border-l-2 border-gray-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium text-gray-700">Tasks</h4>
+                      {isAddingNewTask !== serviceType.id && !editingTask && (
+                        <button
+                          onClick={() => {
+                            setIsAddingNewTask(serviceType.id)
+                            setTaskFormData({ name: '', description: '' })
+                          }}
+                          className="text-xs text-primary hover:text-primary-dark font-medium"
+                        >
+                          + Add Task
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Add/Edit Task Form */}
+                    {(isAddingNewTask === serviceType.id || editingTask?.serviceTypeId === serviceType.id) && (
+                      <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={taskFormData.name}
+                            onChange={(e) => setTaskFormData(prev => ({ ...prev, name: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                            placeholder="Task name"
+                          />
+                          <input
+                            type="text"
+                            value={taskFormData.description}
+                            onChange={(e) => setTaskFormData(prev => ({ ...prev, description: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                            placeholder="Description (optional)"
+                          />
+                        </div>
+                        {taskError && <p className="text-red-600 text-xs mt-1">{taskError}</p>}
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => handleSaveTask(serviceType.id)}
+                            disabled={savingTask}
+                            className="px-3 py-1.5 text-xs bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50"
+                          >
+                            {savingTask ? 'Saving...' : editingTask ? 'Update' : 'Add'}
+                          </button>
+                          <button
+                            onClick={cancelEditTask}
+                            className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-100"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tasks List */}
+                    {serviceType.tasks.filter(t => t.is_active).length === 0 ? (
+                      <p className="text-sm text-gray-400 italic">No tasks defined</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {serviceType.tasks.filter(t => t.is_active).map((task) => (
+                          <div key={task.id} className="flex items-center justify-between py-1.5 px-2 bg-gray-50 rounded-lg">
+                            <div>
+                              <span className="text-sm text-gray-800">{task.name}</span>
+                              {task.description && (
+                                <p className="text-xs text-gray-500">{task.description}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => startEditTask(serviceType.id, task)}
+                                className="p-1 text-gray-400 hover:text-primary rounded"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTask(serviceType.id, task)}
+                                className="p-1 text-gray-400 hover:text-red-600 rounded"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

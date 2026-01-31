@@ -510,6 +510,34 @@ export interface DownloadResponse {
   expires_in: number;
 }
 
+// Service Types and Tasks
+export interface ServiceTask {
+  id: number;
+  service_type_id?: number;
+  name: string;
+  description: string | null;
+  is_active?: boolean;
+  position?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ServiceType {
+  id: number;
+  name: string;
+  description: string | null;
+  color: string | null;
+  is_active?: boolean;
+  position?: number;
+  tasks?: ServiceTask[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ServiceTypesResponse {
+  service_types: ServiceType[];
+}
+
 // API functions
 export const api = {
   // Auth
@@ -772,6 +800,64 @@ export const api = {
   deleteTimeCategory: (id: number) =>
     fetchApi<void>(`/api/v1/admin/time_categories/${id}`, {
       method: 'DELETE',
+    }),
+
+  // Service Types (for dropdowns)
+  getServiceTypes: () =>
+    fetchApi<ServiceTypesResponse>('/api/v1/service_types'),
+
+  // Admin: Service Types
+  getAdminServiceTypes: () =>
+    fetchApi<ServiceTypesResponse>('/api/v1/admin/service_types'),
+
+  createServiceType: (data: { name: string; description?: string; color?: string }) =>
+    fetchApi<{ service_type: ServiceType }>('/api/v1/admin/service_types', {
+      method: 'POST',
+      body: JSON.stringify({ service_type: data }),
+    }),
+
+  updateServiceType: (id: number, data: Partial<{ name: string; description: string; color: string; is_active: boolean }>) =>
+    fetchApi<{ service_type: ServiceType }>(`/api/v1/admin/service_types/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ service_type: data }),
+    }),
+
+  deleteServiceType: (id: number) =>
+    fetchApi<void>(`/api/v1/admin/service_types/${id}`, {
+      method: 'DELETE',
+    }),
+
+  reorderServiceTypes: (positions: Array<{ id: number; position: number }>) =>
+    fetchApi<void>('/api/v1/admin/service_types/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ positions }),
+    }),
+
+  // Admin: Service Tasks
+  getServiceTasks: (serviceTypeId: number) =>
+    fetchApi<{ tasks: ServiceTask[] }>(`/api/v1/admin/service_types/${serviceTypeId}/tasks`),
+
+  createServiceTask: (serviceTypeId: number, data: { name: string; description?: string }) =>
+    fetchApi<{ task: ServiceTask }>(`/api/v1/admin/service_types/${serviceTypeId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify({ service_task: data }),
+    }),
+
+  updateServiceTask: (serviceTypeId: number, taskId: number, data: Partial<{ name: string; description: string; is_active: boolean }>) =>
+    fetchApi<{ task: ServiceTask }>(`/api/v1/admin/service_types/${serviceTypeId}/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ service_task: data }),
+    }),
+
+  deleteServiceTask: (serviceTypeId: number, taskId: number) =>
+    fetchApi<void>(`/api/v1/admin/service_types/${serviceTypeId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    }),
+
+  reorderServiceTasks: (serviceTypeId: number, positions: Array<{ id: number; position: number }>) =>
+    fetchApi<void>(`/api/v1/admin/service_types/${serviceTypeId}/tasks/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ positions }),
     }),
 
   // Admin: System Settings
