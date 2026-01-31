@@ -269,7 +269,7 @@ export default function Dashboard() {
                 <p className="text-sm text-gray-500">What everyone's working on</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <button
                 onClick={() => {
                   const currentDate = new Date(activityDate + 'T12:00:00')
@@ -315,6 +315,29 @@ export default function Dashboard() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </button>
+              <div className="relative ml-1">
+                <input
+                  type="date"
+                  value={activityDate}
+                  max={getLocalDateString()}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setActivityDate(e.target.value)
+                      loadTeamActivity(e.target.value)
+                    }
+                  }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  title="Pick a date"
+                />
+                <button
+                  className="p-2 text-gray-500 hover:text-primary hover:bg-secondary rounded-lg transition-colors"
+                  title="Pick a date"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
           {activityDate !== getLocalDateString() && (
