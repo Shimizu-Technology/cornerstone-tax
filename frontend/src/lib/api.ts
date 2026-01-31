@@ -104,6 +104,13 @@ export interface WorkflowStage {
   notify_client: boolean;
 }
 
+export interface ClientServiceType {
+  id: number;
+  name: string;
+  color: string | null;
+  description?: string;
+}
+
 export interface ClientSummary {
   id: number;
   first_name: string;
@@ -112,6 +119,10 @@ export interface ClientSummary {
   email: string;
   phone: string;
   is_new_client: boolean;
+  client_type: 'individual' | 'business';
+  business_name: string | null;
+  is_service_only: boolean;
+  service_types: ClientServiceType[];
   created_at: string;
   tax_return: {
     id: number;
@@ -153,6 +164,10 @@ export interface ClientDetailResponse {
     denied_eic_actc_year: number | null;
     has_crypto_transactions: boolean;
     wants_direct_deposit: boolean;
+    client_type: 'individual' | 'business';
+    business_name: string | null;
+    is_service_only: boolean;
+    service_types: ClientServiceType[];
     created_at: string;
     updated_at: string;
     dependents: Array<{
@@ -566,12 +581,23 @@ export const api = {
     fetchApiPublic<{ workflow_stages: WorkflowStage[] }>('/api/v1/workflow_stages'),
 
   // Clients
-  getClients: (params?: { page?: number; search?: string; per_page?: number; stage?: string }) => {
+  getClients: (params?: { 
+    page?: number; 
+    search?: string; 
+    per_page?: number; 
+    stage?: string;
+    service_type_id?: number;
+    client_type?: 'individual' | 'business';
+    service_only?: boolean;
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
     if (params?.search) searchParams.set('search', params.search);
     if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
     if (params?.stage) searchParams.set('stage', params.stage);
+    if (params?.service_type_id) searchParams.set('service_type_id', params.service_type_id.toString());
+    if (params?.client_type) searchParams.set('client_type', params.client_type);
+    if (params?.service_only !== undefined) searchParams.set('service_only', params.service_only.toString());
     const query = searchParams.toString();
     return fetchApi<ClientsResponse>(`/api/v1/clients${query ? `?${query}` : ''}`);
   },
@@ -579,7 +605,20 @@ export const api = {
   getClient: (id: number) =>
     fetchApi<ClientDetailResponse>(`/api/v1/clients/${id}`),
 
-  createClient: (data: Record<string, unknown>) =>
+  createClient: (data: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    date_of_birth?: string | null;
+    filing_status?: string;
+    is_new_client?: boolean;
+    client_type?: 'individual' | 'business';
+    business_name?: string;
+    is_service_only?: boolean;
+    service_type_ids?: number[];
+    tax_year?: number;
+  }) =>
     fetchApi<{ client: ClientSummary }>('/api/v1/clients', {
       method: 'POST',
       body: JSON.stringify({ client: data }),

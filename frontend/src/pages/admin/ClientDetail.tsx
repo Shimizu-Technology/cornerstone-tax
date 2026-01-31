@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../../lib/api'
+import type { ServiceType, ClientServiceType } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
 import { getFilingStatusLabel } from '../../lib/constants'
 import NotFound from '../../components/common/NotFound'
@@ -58,6 +59,10 @@ interface ClientDetail {
   denied_eic_actc_year: number | null
   has_crypto_transactions: boolean
   wants_direct_deposit: boolean
+  client_type: 'individual' | 'business'
+  business_name: string | null
+  is_service_only: boolean
+  service_types: ClientServiceType[]
   created_at: string
   updated_at: string
   dependents: Dependent[]
@@ -81,6 +86,10 @@ interface EditFormData {
   wants_direct_deposit: boolean
   denied_eic_actc: boolean
   denied_eic_actc_year: string
+  client_type: 'individual' | 'business'
+  business_name: string
+  is_service_only: boolean
+  service_type_ids: number[]
 }
 
 // Icons
@@ -108,6 +117,24 @@ export default function ClientDetailPage() {
   const [editingNotesId, setEditingNotesId] = useState<number | null>(null)
   const [editingNotes, setEditingNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
+
+  // Service types for editing
+  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
+
+  // Load service types
+  useEffect(() => {
+    const loadServiceTypes = async () => {
+      try {
+        const result = await api.getServiceTypes()
+        if (result.data) {
+          setServiceTypes(result.data.service_types)
+        }
+      } catch (err) {
+        console.error('Failed to load service types:', err)
+      }
+    }
+    loadServiceTypes()
+  }, [])
 
   const loadClient = async () => {
     if (!id) return
@@ -202,6 +229,10 @@ export default function ClientDetailPage() {
       wants_direct_deposit: client.wants_direct_deposit,
       denied_eic_actc: client.denied_eic_actc,
       denied_eic_actc_year: client.denied_eic_actc_year?.toString() || '',
+      client_type: client.client_type || 'individual',
+      business_name: client.business_name || '',
+      is_service_only: client.is_service_only || false,
+      service_type_ids: client.service_types?.map(st => st.id) || [],
     })
     setSaveError(null)
     setShowEditModal(true)
@@ -264,10 +295,31 @@ export default function ClientDetailPage() {
           <Link to="/admin/clients" className="text-gray-500 hover:text-gray-700 text-sm mb-2 inline-block">
             ← Back to Clients
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{client.full_name}</h1>
-          <p className="text-gray-500">{client.email}</p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+              {client.client_type === 'business' && client.business_name 
+                ? client.business_name 
+                : client.full_name}
+            </h1>
+            {client.client_type === 'business' && (
+              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                Business
+              </span>
+            )}
+            {client.is_service_only && (
+              <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded">
+                Service Only
+              </span>
+            )}
+          </div>
+          <p className="text-gray-500">
+            {client.client_type === 'business' && client.business_name && (
+              <span className="mr-2">{client.full_name} •</span>
+            )}
+            {client.email}
+          </p>
         </div>
-        <div className="flex items-center gap-3 self-start">
+        <div className="flex items-center gap-3 self-start flex-wrap">
           <button
             onClick={openEditModal}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-secondary-dark rounded-xl text-primary-dark font-medium hover:bg-secondary transition-colors"
@@ -501,6 +553,34 @@ export default function ClientDetailPage() {
             </dl>
           </div>
 
+          {/* Services */}
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Services</h2>
+              <button
+                onClick={openEditModal}
+                className="text-xs text-primary hover:text-primary-dark font-medium"
+              >
+                Edit
+              </button>
+            </div>
+            {client.service_types && client.service_types.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {client.service_types.map(st => (
+                  <span
+                    key={st.id}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-white"
+                    style={{ backgroundColor: st.color || '#8B7355' }}
+                  >
+                    {st.name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-400 text-sm italic">No services assigned</p>
+            )}
+          </div>
+
           {/* Activity (CST-7: includes workflow events + client audit logs) */}
           {(latestReturn?.workflow_events?.length > 0 || auditLogs.length > 0) && (
             <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
@@ -574,6 +654,99 @@ export default function ClientDetailPage() {
                   {saveError}
                 </div>
               )}
+
+              {/* Client Type & Services */}
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-3">Client Type & Services</h3>
+                <div className="space-y-4">
+                  {/* Client Type Toggle */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Client Type</label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditForm({ ...editForm, client_type: 'individual' })}
+                        className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                          editForm.client_type === 'individual'
+                            ? 'bg-primary text-white'
+                            : 'bg-secondary text-gray-700 hover:bg-secondary-dark'
+                        }`}
+                      >
+                        Individual
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditForm({ ...editForm, client_type: 'business' })}
+                        className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                          editForm.client_type === 'business'
+                            ? 'bg-primary text-white'
+                            : 'bg-secondary text-gray-700 hover:bg-secondary-dark'
+                        }`}
+                      >
+                        Business
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Business Name */}
+                  {editForm.client_type === 'business' && (
+                    <div>
+                      <label htmlFor="client-business-name" className="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
+                      <input
+                        id="client-business-name"
+                        type="text"
+                        value={editForm.business_name}
+                        onChange={e => setEditForm({ ...editForm, business_name: e.target.value })}
+                        className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                  )}
+
+                  {/* Service-Only Toggle */}
+                  <label className="flex items-start gap-3 p-3 border border-secondary-dark rounded-lg cursor-pointer hover:bg-secondary/50">
+                    <input
+                      type="checkbox"
+                      checked={editForm.is_service_only}
+                      onChange={e => setEditForm({ ...editForm, is_service_only: e.target.checked })}
+                      className="mt-0.5 w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">Service Client Only</span>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        This client receives ongoing services without a tax return.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Service Types */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Services</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {serviceTypes.map((st) => (
+                        <button
+                          key={st.id}
+                          type="button"
+                          onClick={() => {
+                            const current = editForm.service_type_ids
+                            if (current.includes(st.id)) {
+                              setEditForm({ ...editForm, service_type_ids: current.filter(id => id !== st.id) })
+                            } else {
+                              setEditForm({ ...editForm, service_type_ids: [...current, st.id] })
+                            }
+                          }}
+                          className={`px-3 py-2 rounded-lg text-sm text-left transition-all ${
+                            editForm.service_type_ids.includes(st.id)
+                              ? 'bg-primary text-white'
+                              : 'bg-secondary text-gray-700 hover:bg-secondary-dark'
+                          }`}
+                        >
+                          {st.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               {/* Basic Info */}
               <div>

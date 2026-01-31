@@ -9,15 +9,15 @@ module Api
 
       # GET /api/v1/clients
       def index
-        clients = Client.includes(:tax_returns, tax_returns: [:workflow_stage, :assigned_to])
+        clients = Client.includes(:tax_returns, :service_types, tax_returns: [:workflow_stage, :assigned_to])
                         .order(created_at: :desc)
 
         # Search
         if params[:search].present?
           search_term = "%#{params[:search].downcase}%"
           clients = clients.where(
-            "LOWER(first_name) LIKE ? OR LOWER(last_name) LIKE ? OR LOWER(email) LIKE ?",
-            search_term, search_term, search_term
+            "LOWER(first_name) LIKE ? OR LOWER(last_name) LIKE ? OR LOWER(email) LIKE ? OR LOWER(business_name) LIKE ?",
+            search_term, search_term, search_term, search_term
           )
         end
 
@@ -25,6 +25,23 @@ module Api
         if params[:stage].present?
           clients = clients.joins(tax_returns: :workflow_stage)
                            .where(workflow_stages: { slug: params[:stage] })
+        end
+
+        # Filter by service type
+        if params[:service_type_id].present?
+          clients = clients.joins(:service_types)
+                           .where(service_types: { id: params[:service_type_id] })
+                           .distinct
+        end
+
+        # Filter by client type (individual/business)
+        if params[:client_type].present?
+          clients = clients.where(client_type: params[:client_type])
+        end
+
+        # Filter by service-only clients
+        if params[:service_only].present?
+          clients = clients.where(is_service_only: params[:service_only] == 'true')
         end
 
         # Pagination
@@ -48,6 +65,7 @@ module Api
       def show
         client = Client.includes(
           :dependents,
+          :service_types,
           tax_returns: [:workflow_stage, :income_sources, :workflow_events, :assigned_to]
         ).find(params[:id])
 
@@ -60,22 +78,32 @@ module Api
 
         ActiveRecord::Base.transaction do
           if client.save
-            # Always create a tax return for quick create
-            initial_stage = WorkflowStage.find_by(slug: "intake_received") ||
-                            WorkflowStage.active.ordered.first
-            tax_year = (params.dig(:client, :tax_year) || Date.current.year).to_i
-            
-            tax_return = client.tax_returns.create!(
-              tax_year: tax_year,
-              workflow_stage: initial_stage
-            )
+            # Assign service types if provided
+            if params.dig(:client, :service_type_ids).present?
+              service_type_ids = params[:client][:service_type_ids].map(&:to_i)
+              service_type_ids.each do |st_id|
+                client.client_service_types.create!(service_type_id: st_id)
+              end
+            end
 
-            # Log workflow event
-            tax_return.workflow_events.create!(
-              event_type: "status_change",
-              new_value: initial_stage&.name,
-              description: "Client created via quick create"
-            )
+            # Only create a tax return if NOT a service-only client
+            unless client.is_service_only
+              initial_stage = WorkflowStage.find_by(slug: "intake_received") ||
+                              WorkflowStage.active.ordered.first
+              tax_year = (params.dig(:client, :tax_year) || Date.current.year).to_i
+              
+              tax_return = client.tax_returns.create!(
+                tax_year: tax_year,
+                workflow_stage: initial_stage
+              )
+
+              # Log workflow event
+              tax_return.workflow_events.create!(
+                event_type: "status_change",
+                new_value: initial_stage&.name,
+                description: "Client created via quick create"
+              )
+            end
 
             render json: { 
               message: "Client created successfully",
@@ -91,14 +119,14 @@ module Api
 
       # PATCH /api/v1/clients/:id
       def update
-        client = Client.find(params[:id])
+        client = Client.includes(:service_types).find(params[:id])
 
         # Safe attributes to track for audit (excludes encrypted bank fields)
         safe_audit_attrs = %w[
           first_name last_name date_of_birth email phone mailing_address
           filing_status is_new_client has_prior_year_return changes_from_prior_year
           spouse_name spouse_dob denied_eic_actc denied_eic_actc_year
-          has_crypto_transactions wants_direct_deposit
+          has_crypto_transactions wants_direct_deposit client_type business_name is_service_only
         ]
 
         # Get only the safe attributes that are being updated
@@ -110,30 +138,60 @@ module Api
           old_values[attr] = client.send(attr) rescue nil
         end
 
-        if client.update(client_params)
-          # Calculate what actually changed
-          changes = {}
-          attrs_to_track.each do |attr|
-            old_val = old_values[attr]
-            new_val = client.send(attr) rescue nil
-            changes[attr] = { from: old_val, to: new_val } if old_val != new_val
-          end
+        # Capture old service type ids for audit
+        old_service_type_ids = client.service_types.pluck(:id)
 
-          # Log audit event if there were changes
-          if changes.any?
-            AuditLog.log(
-              auditable: client,
-              action: "updated",
-              user: current_user,
-              changes_made: changes,
-              metadata: "Updated #{changes.keys.join(', ')}"
-            )
-          end
+        ActiveRecord::Base.transaction do
+          if client.update(client_params)
+            # Update service types if provided
+            if params[:client].key?(:service_type_ids)
+              new_service_type_ids = (params[:client][:service_type_ids] || []).map(&:to_i)
+              
+              # Remove old associations
+              client.client_service_types.destroy_all
+              
+              # Add new associations
+              new_service_type_ids.each do |st_id|
+                client.client_service_types.create!(service_type_id: st_id)
+              end
+            end
 
-          render json: { client: client_detail(client) }
-        else
-          render json: { errors: client.errors.full_messages }, status: :unprocessable_entity
+            # Calculate what actually changed
+            changes = {}
+            attrs_to_track.each do |attr|
+              old_val = old_values[attr]
+              new_val = client.send(attr) rescue nil
+              changes[attr] = { from: old_val, to: new_val } if old_val != new_val
+            end
+
+            # Track service type changes
+            if params[:client].key?(:service_type_ids)
+              new_service_type_ids = (params[:client][:service_type_ids] || []).map(&:to_i)
+              if old_service_type_ids.sort != new_service_type_ids.sort
+                old_names = ServiceType.where(id: old_service_type_ids).pluck(:name)
+                new_names = ServiceType.where(id: new_service_type_ids).pluck(:name)
+                changes['service_types'] = { from: old_names.join(', '), to: new_names.join(', ') }
+              end
+            end
+
+            # Log audit event if there were changes
+            if changes.any?
+              AuditLog.log(
+                auditable: client,
+                action: "updated",
+                user: current_user,
+                changes_made: changes,
+                metadata: "Updated #{changes.keys.join(', ')}"
+              )
+            end
+
+            render json: { client: client_detail(client.reload) }
+          else
+            render json: { errors: client.errors.full_messages }, status: :unprocessable_entity
+          end
         end
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { errors: [e.message] }, status: :unprocessable_entity
       end
 
       private
@@ -144,17 +202,18 @@ module Api
           :filing_status, :is_new_client, :has_prior_year_return, :changes_from_prior_year,
           :spouse_name, :spouse_dob, :denied_eic_actc, :denied_eic_actc_year,
           :has_crypto_transactions, :wants_direct_deposit, :bank_routing_number,
-          :bank_account_number, :bank_account_type
+          :bank_account_number, :bank_account_type, :client_type, :business_name, :is_service_only
         )
       end
 
       def quick_create_client_params
         params.require(:client).permit(
           :first_name, :last_name, :date_of_birth, :email, :phone,
-          :filing_status, :is_new_client
+          :filing_status, :is_new_client, :client_type, :business_name, :is_service_only
         ).tap do |p|
           # Set defaults for quick create
           p[:is_new_client] = true if p[:is_new_client].nil?
+          p[:client_type] ||= 'individual'
         end
       end
 
@@ -169,7 +228,13 @@ module Api
           email: client.email,
           phone: client.phone,
           is_new_client: client.is_new_client,
+          client_type: client.client_type,
+          business_name: client.business_name,
+          is_service_only: client.is_service_only,
           created_at: client.created_at,
+          service_types: client.service_types.map do |st|
+            { id: st.id, name: st.name, color: st.color }
+          end,
           tax_return: latest_return ? {
             id: latest_return.id,
             tax_year: latest_return.tax_year,
@@ -201,6 +266,12 @@ module Api
           denied_eic_actc_year: client.denied_eic_actc_year,
           has_crypto_transactions: client.has_crypto_transactions,
           wants_direct_deposit: client.wants_direct_deposit,
+          client_type: client.client_type,
+          business_name: client.business_name,
+          is_service_only: client.is_service_only,
+          service_types: client.service_types.map do |st|
+            { id: st.id, name: st.name, color: st.color, description: st.description }
+          end,
           created_at: client.created_at,
           updated_at: client.updated_at,
           dependents: client.dependents.map do |dep|
