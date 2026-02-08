@@ -5,7 +5,7 @@ module Api
     class SchedulesController < BaseController
       before_action :authenticate_user!
       before_action :require_staff!
-      before_action :require_admin!, only: [:create, :update, :destroy, :bulk_create]
+      before_action :require_admin!, only: [:create, :update, :destroy, :bulk_create, :clear_week]
       before_action :set_schedule, only: [:show, :update, :destroy]
 
       # GET /api/v1/schedules
@@ -123,7 +123,8 @@ module Api
       end
 
       # DELETE /api/v1/schedules/clear
-      # Clear all schedules for a specific week (admin only)
+      # Clear all schedules for a specific week
+      # SECURITY: Admin only - protected by require_admin! before_action
       def clear_week
         week_start = Date.parse(params[:week])
         week_end = week_start + 6.days

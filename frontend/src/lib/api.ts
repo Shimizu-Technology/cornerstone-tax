@@ -56,6 +56,13 @@ async function fetchApi<T>(
           errors: data.errors || ['Please sign in to continue'],
         };
       }
+      // CST-28: Handle 403 Forbidden properly
+      if (response.status === 403) {
+        return {
+          error: data.error || 'Access denied',
+          errors: data.errors || ['You do not have permission to perform this action'],
+        };
+      }
       return {
         error: data.error || 'Something went wrong',
         errors: data.errors || [],
@@ -104,6 +111,13 @@ export interface WorkflowStage {
   notify_client: boolean;
 }
 
+export interface ClientServiceType {
+  id: number;
+  name: string;
+  color: string | null;
+  description?: string;
+}
+
 export interface ClientSummary {
   id: number;
   first_name: string;
@@ -112,6 +126,10 @@ export interface ClientSummary {
   email: string;
   phone: string;
   is_new_client: boolean;
+  client_type: 'individual' | 'business';
+  business_name: string | null;
+  is_service_only: boolean;
+  service_types: ClientServiceType[];
   created_at: string;
   tax_return: {
     id: number;
@@ -153,6 +171,10 @@ export interface ClientDetailResponse {
     denied_eic_actc_year: number | null;
     has_crypto_transactions: boolean;
     wants_direct_deposit: boolean;
+    client_type: 'individual' | 'business';
+    business_name: string | null;
+    is_service_only: boolean;
+    service_types: ClientServiceType[];
     created_at: string;
     updated_at: string;
     dependents: Array<{
@@ -510,6 +532,34 @@ export interface DownloadResponse {
   expires_in: number;
 }
 
+// Service Types and Tasks
+export interface ServiceTask {
+  id: number;
+  service_type_id?: number;
+  name: string;
+  description: string | null;
+  is_active?: boolean;
+  position?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ServiceType {
+  id: number;
+  name: string;
+  description: string | null;
+  color: string | null;
+  is_active?: boolean;
+  position?: number;
+  tasks?: ServiceTask[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ServiceTypesResponse {
+  service_types: ServiceType[];
+}
+
 // API functions
 export const api = {
   // Auth
@@ -538,12 +588,23 @@ export const api = {
     fetchApiPublic<{ workflow_stages: WorkflowStage[] }>('/api/v1/workflow_stages'),
 
   // Clients
-  getClients: (params?: { page?: number; search?: string; per_page?: number; stage?: string }) => {
+  getClients: (params?: { 
+    page?: number; 
+    search?: string; 
+    per_page?: number; 
+    stage?: string;
+    service_type_id?: number;
+    client_type?: 'individual' | 'business';
+    service_only?: boolean;
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
     if (params?.search) searchParams.set('search', params.search);
     if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
     if (params?.stage) searchParams.set('stage', params.stage);
+    if (params?.service_type_id) searchParams.set('service_type_id', params.service_type_id.toString());
+    if (params?.client_type) searchParams.set('client_type', params.client_type);
+    if (params?.service_only !== undefined) searchParams.set('service_only', params.service_only.toString());
     const query = searchParams.toString();
     return fetchApi<ClientsResponse>(`/api/v1/clients${query ? `?${query}` : ''}`);
   },
@@ -551,7 +612,20 @@ export const api = {
   getClient: (id: number) =>
     fetchApi<ClientDetailResponse>(`/api/v1/clients/${id}`),
 
-  createClient: (data: Record<string, unknown>) =>
+  createClient: (data: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    date_of_birth?: string | null;
+    filing_status?: string;
+    is_new_client?: boolean;
+    client_type?: 'individual' | 'business';
+    business_name?: string;
+    is_service_only?: boolean;
+    service_type_ids?: number[];
+    tax_year?: number;
+  }) =>
     fetchApi<{ client: ClientSummary }>('/api/v1/clients', {
       method: 'POST',
       body: JSON.stringify({ client: data }),
@@ -651,6 +725,7 @@ export const api = {
   // Audit Logs
   getAuditLogs: (params?: {
     page?: number;
+    per_page?: number;
     auditable_type?: string;
     action_type?: string;
     user_id?: number;
@@ -660,6 +735,7 @@ export const api = {
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
     if (params?.auditable_type) searchParams.set('auditable_type', params.auditable_type);
     if (params?.action_type) searchParams.set('action_type', params.action_type);
     if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
@@ -772,6 +848,64 @@ export const api = {
   deleteTimeCategory: (id: number) =>
     fetchApi<void>(`/api/v1/admin/time_categories/${id}`, {
       method: 'DELETE',
+    }),
+
+  // Service Types (for dropdowns)
+  getServiceTypes: () =>
+    fetchApi<ServiceTypesResponse>('/api/v1/service_types'),
+
+  // Admin: Service Types
+  getAdminServiceTypes: () =>
+    fetchApi<ServiceTypesResponse>('/api/v1/admin/service_types'),
+
+  createServiceType: (data: { name: string; description?: string; color?: string }) =>
+    fetchApi<{ service_type: ServiceType }>('/api/v1/admin/service_types', {
+      method: 'POST',
+      body: JSON.stringify({ service_type: data }),
+    }),
+
+  updateServiceType: (id: number, data: Partial<{ name: string; description: string; color: string; is_active: boolean }>) =>
+    fetchApi<{ service_type: ServiceType }>(`/api/v1/admin/service_types/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ service_type: data }),
+    }),
+
+  deleteServiceType: (id: number) =>
+    fetchApi<void>(`/api/v1/admin/service_types/${id}`, {
+      method: 'DELETE',
+    }),
+
+  reorderServiceTypes: (positions: Array<{ id: number; position: number }>) =>
+    fetchApi<void>('/api/v1/admin/service_types/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ positions }),
+    }),
+
+  // Admin: Service Tasks
+  getServiceTasks: (serviceTypeId: number) =>
+    fetchApi<{ tasks: ServiceTask[] }>(`/api/v1/admin/service_types/${serviceTypeId}/tasks`),
+
+  createServiceTask: (serviceTypeId: number, data: { name: string; description?: string }) =>
+    fetchApi<{ task: ServiceTask }>(`/api/v1/admin/service_types/${serviceTypeId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify({ service_task: data }),
+    }),
+
+  updateServiceTask: (serviceTypeId: number, taskId: number, data: Partial<{ name: string; description: string; is_active: boolean }>) =>
+    fetchApi<{ task: ServiceTask }>(`/api/v1/admin/service_types/${serviceTypeId}/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ service_task: data }),
+    }),
+
+  deleteServiceTask: (serviceTypeId: number, taskId: number) =>
+    fetchApi<void>(`/api/v1/admin/service_types/${serviceTypeId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    }),
+
+  reorderServiceTasks: (serviceTypeId: number, positions: Array<{ id: number; position: number }>) =>
+    fetchApi<void>(`/api/v1/admin/service_types/${serviceTypeId}/tasks/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ positions }),
     }),
 
   // Admin: System Settings

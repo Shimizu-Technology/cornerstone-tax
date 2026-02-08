@@ -10,23 +10,27 @@ module Api
       # GET /api/v1/time_entries
       def index
         @time_entries = current_user.admin? ? TimeEntry.all : TimeEntry.for_user(current_user)
-        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category)
+        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :service_type, :service_task)
 
         # Filter by user (admin only)
         if params[:user_id].present? && current_user.admin?
           @time_entries = @time_entries.where(user_id: params[:user_id])
         end
 
-        # Filter by date
-        if params[:date].present?
-          @time_entries = @time_entries.for_date(Date.parse(params[:date]))
-        elsif params[:week].present?
-          # Week starts on Sunday (frontend convention)
-          week_start = Date.parse(params[:week])
-          week_end = week_start + 6.days
-          @time_entries = @time_entries.where(work_date: week_start..week_end)
-        elsif params[:start_date].present? && params[:end_date].present?
-          @time_entries = @time_entries.where(work_date: Date.parse(params[:start_date])..Date.parse(params[:end_date]))
+        # Filter by date (with error handling for malformed dates)
+        begin
+          if params[:date].present?
+            @time_entries = @time_entries.for_date(Date.parse(params[:date]))
+          elsif params[:week].present?
+            # Week starts on Sunday (frontend convention)
+            week_start = Date.parse(params[:week])
+            week_end = week_start + 6.days
+            @time_entries = @time_entries.where(work_date: week_start..week_end)
+          elsif params[:start_date].present? && params[:end_date].present?
+            @time_entries = @time_entries.where(work_date: Date.parse(params[:start_date])..Date.parse(params[:end_date]))
+          end
+        rescue Date::Error, ArgumentError => e
+          return render json: { error: "Invalid date format: #{e.message}" }, status: :bad_request
         end
 
         # Filter by category
@@ -39,11 +43,17 @@ module Api
           @time_entries = @time_entries.where(client_id: params[:client_id])
         end
 
+        # Filter by service type
+        if params[:service_type_id].present?
+          @time_entries = @time_entries.where(service_type_id: params[:service_type_id])
+        end
+
         @time_entries = @time_entries.order(work_date: :desc, created_at: :desc)
 
         # Pagination
         page = (params[:page] || 1).to_i
-        per_page = (params[:per_page] || 50).to_i.clamp(1, 100)
+        # Allow up to 1000 for reports, default 50 for regular pagination
+        per_page = (params[:per_page] || 50).to_i.clamp(1, 1000)
         total_count = @time_entries.count
         @time_entries = @time_entries.offset((page - 1) * per_page).limit(per_page)
 
@@ -169,7 +179,9 @@ module Api
           :time_category_id,
           :client_id,
           :tax_return_id,
-          :break_minutes
+          :break_minutes,
+          :service_type_id,
+          :service_task_id
         )
       end
 
@@ -201,6 +213,15 @@ module Api
           tax_return: entry.tax_return ? {
             id: entry.tax_return.id,
             tax_year: entry.tax_return.tax_year
+          } : nil,
+          service_type: entry.service_type ? {
+            id: entry.service_type.id,
+            name: entry.service_type.name,
+            color: entry.service_type.color
+          } : nil,
+          service_task: entry.service_task ? {
+            id: entry.service_task.id,
+            name: entry.service_task.name
           } : nil,
           created_at: entry.created_at.iso8601,
           updated_at: entry.updated_at.iso8601

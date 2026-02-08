@@ -152,7 +152,7 @@ export default function Users() {
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-secondary/50 border-b border-secondary-dark">
                 <tr>
@@ -231,7 +231,7 @@ export default function Users() {
       </div>
 
       {/* Mobile Card View */}
-      <div className="sm:hidden space-y-4">
+      <div className="md:hidden space-y-4">
         {!loading && users.map((user) => (
           <div key={user.id} className="bg-white rounded-2xl border border-secondary-dark p-4">
             <div className="flex items-start justify-between gap-4">

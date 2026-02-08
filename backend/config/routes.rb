@@ -61,6 +61,9 @@ Rails.application.routes.draw do
       # Schedule time presets (active only, for schedule form)
       resources :schedule_time_presets, only: [:index]
 
+      # Service types (active only, for dropdowns)
+      resources :service_types, only: [:index]
+
       # Admin-only routes
       namespace :admin do
         resources :workflow_stages do
@@ -82,6 +85,18 @@ Rails.application.routes.draw do
         resources :schedule_time_presets, only: [:index, :show, :create, :update, :destroy] do
           collection do
             post :reorder
+          end
+        end
+
+        # Service types and tasks management
+        resources :service_types, only: [:index, :show, :create, :update, :destroy] do
+          collection do
+            post :reorder
+          end
+          resources :tasks, controller: 'service_tasks', only: [:index, :show, :create, :update, :destroy] do
+            collection do
+              post :reorder
+            end
           end
         end
 

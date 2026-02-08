@@ -4,7 +4,8 @@ module Api
   module V1
     class AuditLogsController < BaseController
       before_action :authenticate_user!
-      before_action :require_staff!
+      # CST-28: Restrict audit logs to admins only (was require_staff! which included employees)
+      before_action :require_admin!
 
       # GET /api/v1/audit_logs
       def index
