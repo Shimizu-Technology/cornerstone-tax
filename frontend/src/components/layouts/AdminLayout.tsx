@@ -108,6 +108,23 @@ function XIcon({ className }: { className?: string }) {
   )
 }
 
+// Loading skeleton for nav items to prevent flash during permission check
+function NavSkeleton() {
+  return (
+    <>
+      {[...Array(6)].map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3 px-4 py-3 rounded-xl animate-pulse"
+        >
+          <div className="w-5 h-5 bg-gray-200 rounded" />
+          <div className="h-4 bg-gray-200 rounded w-24" />
+        </div>
+      ))}
+    </>
+  )
+}
+
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -181,21 +198,25 @@ export default function AdminLayout() {
           </button>
         </div>
         <nav className="mt-4 px-3 space-y-1">
-          {filteredNavigation.map((item) => (
-            <Link
-              key={item.name}
-              to={item.href}
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                isActive(item.href)
-                  ? 'bg-primary text-white shadow-md'
-                  : 'text-gray-700 hover:bg-secondary-dark'
-              }`}
-            >
-              <item.icon className="w-5 h-5" />
-              {item.name}
-            </Link>
-          ))}
+          {isLoadingUser ? (
+            <NavSkeleton />
+          ) : (
+            filteredNavigation.map((item) => (
+              <Link
+                key={item.name}
+                to={item.href}
+                onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                  isActive(item.href)
+                    ? 'bg-primary text-white shadow-md'
+                    : 'text-gray-700 hover:bg-secondary-dark'
+                }`}
+              >
+                <item.icon className="w-5 h-5" />
+                {item.name}
+              </Link>
+            ))
+          )}
         </nav>
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-secondary-dark">
           <Link
@@ -223,20 +244,24 @@ export default function AdminLayout() {
             </Link>
           </div>
           <nav className="mt-8 flex-1 px-3 space-y-1">
-            {filteredNavigation.map((item) => (
-              <Link
-                key={item.name}
-                to={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                  isActive(item.href)
-                    ? 'bg-primary text-white shadow-md'
-                    : 'text-gray-700 hover:bg-secondary-dark'
-                }`}
-              >
-                <item.icon className="w-5 h-5" />
-                {item.name}
-              </Link>
-            ))}
+            {isLoadingUser ? (
+              <NavSkeleton />
+            ) : (
+              filteredNavigation.map((item) => (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                    isActive(item.href)
+                      ? 'bg-primary text-white shadow-md'
+                      : 'text-gray-700 hover:bg-secondary-dark'
+                  }`}
+                >
+                  <item.icon className="w-5 h-5" />
+                  {item.name}
+                </Link>
+              ))
+            )}
           </nav>
           <div className="px-4 py-4 border-t border-secondary-dark mx-3">
             <Link
