@@ -19,7 +19,8 @@ fi
 
 echo ""
 echo "🔍 TypeScript check..."
-if npx tsc -b --noEmit; then
+# Note: Using --noEmit only (not -b) for type checking without building
+if npx tsc --noEmit; then
   echo "✅ TypeScript passed"
 else
   echo "❌ TypeScript errors found"

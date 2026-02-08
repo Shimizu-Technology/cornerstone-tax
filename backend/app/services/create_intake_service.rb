@@ -21,11 +21,13 @@ class CreateIntakeService
       create_tax_return
       create_income_sources
       log_intake_event
-      # CST-37: Notify admin about new intake submission
-      notify_admin
-
-      Result.new(success?: true, client: @client, tax_return: @tax_return, errors: [])
     end
+
+    # CST-37: Notify admin about new intake submission
+    # Moved outside transaction to avoid HTTP call blocking DB commit
+    notify_admin
+
+    Result.new(success?: true, client: @client, tax_return: @tax_return, errors: [])
   rescue ActiveRecord::RecordInvalid => e
     @errors << e.message
     Result.new(success?: false, client: nil, tax_return: nil, errors: @errors)

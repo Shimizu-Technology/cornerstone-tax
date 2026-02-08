@@ -42,6 +42,7 @@ export default function ClientList() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')  // Only updates on form submit
   const [page, setPage] = useState(1)
   const [showCreateModal, setShowCreateModal] = useState(false)
   
@@ -68,14 +69,14 @@ export default function ClientList() {
 
   useEffect(() => {
     loadClients()
-  }, [page, search, selectedServiceTypeId, showServiceOnly])
+  }, [page, appliedSearch, selectedServiceTypeId, showServiceOnly])
 
   async function loadClients() {
     setLoading(true)
     try {
       const result = await api.getClients({ 
         page, 
-        search, 
+        search: appliedSearch, 
         per_page: 20,
         service_type_id: selectedServiceTypeId,
         service_only: showServiceOnly,
@@ -94,17 +95,18 @@ export default function ClientList() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     setPage(1)
-    loadClients()
+    setAppliedSearch(search)  // Triggers useEffect to fetch
   }
 
   const clearFilters = () => {
     setSearch('')
+    setAppliedSearch('')  // Clear applied search too
     setSelectedServiceTypeId(undefined)
     setShowServiceOnly(undefined)
     setPage(1)
   }
 
-  const hasActiveFilters = search || selectedServiceTypeId !== undefined || showServiceOnly !== undefined
+  const hasActiveFilters = appliedSearch || selectedServiceTypeId !== undefined || showServiceOnly !== undefined
 
   return (
     <FadeUp>
