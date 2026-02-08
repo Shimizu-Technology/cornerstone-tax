@@ -21,6 +21,8 @@ class CreateIntakeService
       create_tax_return
       create_income_sources
       log_intake_event
+      # CST-37: Notify admin about new intake submission
+      notify_admin
 
       Result.new(success?: true, client: @client, tax_return: @tax_return, errors: [])
     end
@@ -108,5 +110,13 @@ class CreateIntakeService
       new_value: @tax_return.workflow_stage&.name,
       description: "Client intake form submitted"
     )
+  end
+
+  # CST-37: Send email notification to admin about new intake
+  def notify_admin
+    IntakeMailer.intake_submitted_email(client: @client, tax_return: @tax_return)
+  rescue StandardError => e
+    # Don't fail the intake if email fails - just log it
+    Rails.logger.error "Failed to send intake notification email: #{e.message}"
   end
 end
