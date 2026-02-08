@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAuthContext } from '../../contexts/AuthContext'
 import { AnimatePresence } from 'framer-motion'
@@ -7,8 +7,16 @@ import {
   SignedIn,
   UserButton,
 } from '@clerk/clerk-react'
+import { api } from '../../lib/api'
 
-const navigation = [
+interface NavItem {
+  name: string
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  adminOnly?: boolean
+}
+
+const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/admin', icon: HomeIcon },
   { name: 'Clients', href: '/admin/clients', icon: UsersIcon },
   { name: 'Tax Returns', href: '/admin/returns', icon: DocumentIcon },
@@ -102,8 +110,30 @@ function XIcon({ className }: { className?: string }) {
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [isLoadingUser, setIsLoadingUser] = useState(true)
   const location = useLocation()
   const { isClerkEnabled } = useAuthContext()
+
+  // Fetch current user to check admin status
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await api.getCurrentUser()
+        if (response.data?.user) {
+          setIsAdmin(response.data.user.is_admin)
+        }
+      } catch (error) {
+        console.error('Failed to fetch current user:', error)
+      } finally {
+        setIsLoadingUser(false)
+      }
+    }
+    fetchCurrentUser()
+  }, [])
+
+  // Filter navigation based on admin status (CST-26: enforce adminOnly flag)
+  const filteredNavigation = navigation.filter(item => !item.adminOnly || isAdmin)
 
   const isActive = (path: string) => {
     if (path === '/admin') {
@@ -151,7 +181,7 @@ export default function AdminLayout() {
           </button>
         </div>
         <nav className="mt-4 px-3 space-y-1">
-          {navigation.map((item) => (
+          {filteredNavigation.map((item) => (
             <Link
               key={item.name}
               to={item.href}
@@ -193,7 +223,7 @@ export default function AdminLayout() {
             </Link>
           </div>
           <nav className="mt-8 flex-1 px-3 space-y-1">
-            {navigation.map((item) => (
+            {filteredNavigation.map((item) => (
               <Link
                 key={item.name}
                 to={item.href}
