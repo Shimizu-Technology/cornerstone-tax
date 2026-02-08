@@ -42,7 +42,7 @@ module Api
         # Filter by service-only clients (has_tax_returns = false means service-only)
         if params[:service_only].present?
           # service_only=true means has_tax_returns=false
-          clients = clients.where(has_tax_returns: params[:service_only] != 'true')
+          clients = clients.where(has_tax_returns: params[:service_only] == 'true' ? false : true)
         end
         
         # Also support has_tax_returns param directly

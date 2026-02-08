@@ -2,13 +2,9 @@
 
 class AddForeignKeysAndIndexesForServices < ActiveRecord::Migration[8.1]
   def change
-    # Add composite unique index on client_service_types
-    # (the model has uniqueness validation, this adds DB-level enforcement)
-    unless index_exists?(:client_service_types, [:client_id, :service_type_id], name: 'index_client_service_types_unique')
-      add_index :client_service_types, [:client_id, :service_type_id], 
-                unique: true, 
-                name: 'index_client_service_types_unique'
-    end
+    # Composite unique index on client_service_types
+    # NOTE: index_client_service_types_on_client_id_and_service_type_id already exists from migration 20260131004912
+    # We just need to ensure it's unique (it already is), so skip adding duplicate index
 
     # Add foreign key constraints for data integrity (skip if already exists)
     unless foreign_key_exists?(:service_tasks, :service_types)

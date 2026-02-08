@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_08_010001) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_08_010002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -35,7 +35,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_08_010001) do
     t.bigint "service_type_id", null: false
     t.datetime "updated_at", null: false
     t.index ["client_id", "service_type_id"], name: "index_client_service_types_on_client_id_and_service_type_id", unique: true
-    t.index ["client_id", "service_type_id"], name: "index_client_service_types_unique", unique: true
     t.index ["client_id"], name: "index_client_service_types_on_client_id"
     t.index ["service_type_id"], name: "index_client_service_types_on_service_type_id"
   end
