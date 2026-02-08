@@ -92,6 +92,15 @@ interface EditFormData {
   service_type_ids: number[]
 }
 
+interface AuditLogEntry {
+  id: number
+  action: string
+  description: string
+  changes_made: Record<string, { from: unknown; to: unknown }> | null
+  created_at: string
+  user: { id: number; email: string; name?: string } | null
+}
+
 // Icons
 const EditIcon = () => (
   <svg className="h-4 w-4" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
@@ -154,14 +163,6 @@ export default function ClientDetailPage() {
   }
 
   // Audit logs for this client (CST-7)
-  interface AuditLogEntry {
-    id: number
-    action: string
-    description: string
-    changes_made: Record<string, { from: unknown; to: unknown }> | null
-    created_at: string
-    user: { id: number; email: string; name?: string } | null
-  }
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
 
   const loadAuditLogs = async () => {
@@ -734,7 +735,7 @@ export default function ClientDetailPage() {
                               setEditForm({ ...editForm, service_type_ids: [...current, st.id] })
                             }
                           }}
-                          className={`px-3 py-2 rounded-lg text-sm text-left transition-all ${
+                          className={`px-3 py-2 min-h-11 rounded-lg text-sm text-left transition-all ${
                             editForm.service_type_ids.includes(st.id)
                               ? 'bg-primary text-white'
                               : 'bg-secondary text-gray-700 hover:bg-secondary-dark'

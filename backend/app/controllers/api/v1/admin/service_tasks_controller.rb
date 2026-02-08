@@ -60,6 +60,10 @@ module Api
         def reorder
           positions = params[:positions] # Array of { id: X, position: Y }
 
+          if positions.blank?
+            return render json: { error: "positions parameter is required" }, status: :bad_request
+          end
+
           ActiveRecord::Base.transaction do
             positions.each do |pos|
               @service_type.service_tasks.where(id: pos[:id]).update_all(position: pos[:position])

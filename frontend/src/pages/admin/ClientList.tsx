@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { ServiceType, ClientServiceType } from '../../lib/api'
@@ -42,6 +42,7 @@ export default function ClientList() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')  // Only updates on form submit
   const [page, setPage] = useState(1)
   const [showCreateModal, setShowCreateModal] = useState(false)
   
@@ -66,16 +67,12 @@ export default function ClientList() {
     }
   }
 
-  useEffect(() => {
-    loadClients()
-  }, [page, search, selectedServiceTypeId, showServiceOnly])
-
-  async function loadClients() {
+  const loadClients = useCallback(async () => {
     setLoading(true)
     try {
       const result = await api.getClients({ 
         page, 
-        search, 
+        search: appliedSearch, 
         per_page: 20,
         service_type_id: selectedServiceTypeId,
         service_only: showServiceOnly,
@@ -89,22 +86,27 @@ export default function ClientList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, appliedSearch, selectedServiceTypeId, showServiceOnly])
+
+  useEffect(() => {
+    loadClients()
+  }, [loadClients])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     setPage(1)
-    loadClients()
+    setAppliedSearch(search)  // Triggers useEffect to fetch
   }
 
   const clearFilters = () => {
     setSearch('')
+    setAppliedSearch('')  // Clear applied search too
     setSelectedServiceTypeId(undefined)
     setShowServiceOnly(undefined)
     setPage(1)
   }
 
-  const hasActiveFilters = search || selectedServiceTypeId !== undefined || showServiceOnly !== undefined
+  const hasActiveFilters = appliedSearch || selectedServiceTypeId !== undefined || showServiceOnly !== undefined
 
   return (
     <FadeUp>
@@ -186,7 +188,7 @@ export default function ClientList() {
             <button
               type="button"
               onClick={() => { setShowServiceOnly(undefined); setPage(1) }}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
+              className={`px-4 py-2 min-h-11 text-sm font-medium transition-colors ${
                 showServiceOnly === undefined ? 'bg-primary text-white' : 'bg-white text-gray-700 hover:bg-secondary'
               }`}
             >
@@ -195,7 +197,7 @@ export default function ClientList() {
             <button
               type="button"
               onClick={() => { setShowServiceOnly(false); setPage(1) }}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-l border-secondary-dark ${
+              className={`px-4 py-2 min-h-11 text-sm font-medium transition-colors border-l border-secondary-dark ${
                 showServiceOnly === false ? 'bg-primary text-white' : 'bg-white text-gray-700 hover:bg-secondary'
               }`}
             >
@@ -204,7 +206,7 @@ export default function ClientList() {
             <button
               type="button"
               onClick={() => { setShowServiceOnly(true); setPage(1) }}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-l border-secondary-dark ${
+              className={`px-4 py-2 min-h-11 text-sm font-medium transition-colors border-l border-secondary-dark ${
                 showServiceOnly === true ? 'bg-primary text-white' : 'bg-white text-gray-700 hover:bg-secondary'
               }`}
             >

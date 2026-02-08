@@ -17,16 +17,20 @@ module Api
           @time_entries = @time_entries.where(user_id: params[:user_id])
         end
 
-        # Filter by date
-        if params[:date].present?
-          @time_entries = @time_entries.for_date(Date.parse(params[:date]))
-        elsif params[:week].present?
-          # Week starts on Sunday (frontend convention)
-          week_start = Date.parse(params[:week])
-          week_end = week_start + 6.days
-          @time_entries = @time_entries.where(work_date: week_start..week_end)
-        elsif params[:start_date].present? && params[:end_date].present?
-          @time_entries = @time_entries.where(work_date: Date.parse(params[:start_date])..Date.parse(params[:end_date]))
+        # Filter by date (with error handling for malformed dates)
+        begin
+          if params[:date].present?
+            @time_entries = @time_entries.for_date(Date.parse(params[:date]))
+          elsif params[:week].present?
+            # Week starts on Sunday (frontend convention)
+            week_start = Date.parse(params[:week])
+            week_end = week_start + 6.days
+            @time_entries = @time_entries.where(work_date: week_start..week_end)
+          elsif params[:start_date].present? && params[:end_date].present?
+            @time_entries = @time_entries.where(work_date: Date.parse(params[:start_date])..Date.parse(params[:end_date]))
+          end
+        rescue Date::Error, ArgumentError => e
+          return render json: { error: "Invalid date format: #{e.message}" }, status: :bad_request
         end
 
         # Filter by category
@@ -48,7 +52,8 @@ module Api
 
         # Pagination
         page = (params[:page] || 1).to_i
-        per_page = (params[:per_page] || 50).to_i.clamp(1, 100)
+        # Allow up to 1000 for reports, default 50 for regular pagination
+        per_page = (params[:per_page] || 50).to_i.clamp(1, 1000)
         total_count = @time_entries.count
         @time_entries = @time_entries.offset((page - 1) * per_page).limit(per_page)
 
