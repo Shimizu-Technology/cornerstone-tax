@@ -23,15 +23,16 @@ class CreateIntakeService
       log_intake_event
     end
 
-    # CST-37: Notify admin about new intake submission
-    # Moved outside transaction to avoid HTTP call blocking DB commit
+    # Transaction succeeded - notify admin (non-blocking, outside transaction)
     notify_admin
 
     Result.new(success?: true, client: @client, tax_return: @tax_return, errors: [])
   rescue ActiveRecord::RecordInvalid => e
+    # Transaction rolled back - don't notify admin
     @errors << e.message
     Result.new(success?: false, client: nil, tax_return: nil, errors: @errors)
   rescue StandardError => e
+    # Transaction rolled back - don't notify admin
     @errors << "Unexpected error: #{e.message}"
     Result.new(success?: false, client: nil, tax_return: nil, errors: @errors)
   end
