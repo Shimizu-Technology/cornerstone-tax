@@ -152,7 +152,7 @@ export default function Users() {
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-secondary/50 border-b border-secondary-dark">
                 <tr>
