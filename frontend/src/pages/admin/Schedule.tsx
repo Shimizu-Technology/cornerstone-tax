@@ -64,6 +64,8 @@ export default function Schedule() {
   const [loading, setLoading] = useState(true)
   const [currentWeekStart, setCurrentWeekStart] = useState(() => getWeekStart(new Date()))
   const [viewMode, setViewMode] = useState<ViewMode>('list')
+  // CST-28: Track admin status to hide admin-only controls from employees
+  const [isAdmin, setIsAdmin] = useState(false)
   
   // Modal state
   const [showModal, setShowModal] = useState(false)
@@ -120,6 +122,21 @@ export default function Schedule() {
   useEffect(() => {
     loadPresets()
   }, [loadPresets])
+
+  // CST-28: Load current user to check admin status
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const response = await api.getCurrentUser()
+        if (response.data) {
+          setIsAdmin(response.data.user.is_admin)
+        }
+      } catch (err) {
+        console.error('Failed to load current user:', err)
+      }
+    }
+    loadCurrentUser()
+  }, [])
 
   // Navigation
   const goToPrevWeek = () => {
@@ -440,15 +457,18 @@ export default function Schedule() {
                                 </svg>
                                 <span>Log Time</span>
                               </button>
-                              <button
-                                onClick={() => openEditModal(schedule)}
-                                className="inline-flex items-center justify-center p-2.5 sm:p-2 text-text-muted hover:text-primary-dark hover:bg-neutral-warm rounded-lg transition-colors min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0"
-                                title="Edit shift"
-                              >
-                                <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                </svg>
-                              </button>
+                              {/* CST-28: Only show edit button to admins */}
+                              {isAdmin && (
+                                <button
+                                  onClick={() => openEditModal(schedule)}
+                                  className="inline-flex items-center justify-center p-2.5 sm:p-2 text-text-muted hover:text-primary-dark hover:bg-neutral-warm rounded-lg transition-colors min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0"
+                                  title="Edit shift"
+                                >
+                                  <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                  </svg>
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -516,25 +536,36 @@ export default function Schedule() {
                             }`}
                           >
                             <div className="space-y-1">
-                              {/* Existing shifts */}
+                              {/* Existing shifts - CST-28: Only admins can click to edit */}
                               {cellSchedules.map(schedule => (
-                                <button
-                                  key={schedule.id}
-                                  onClick={() => openEditModal(schedule)}
-                                  className="w-full px-2 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary text-xs font-medium rounded transition-colors"
-                                >
-                                  {schedule.formatted_time_range.replace(' AM', 'a').replace(' PM', 'p').replace(' - ', '-')}
-                                </button>
+                                isAdmin ? (
+                                  <button
+                                    key={schedule.id}
+                                    onClick={() => openEditModal(schedule)}
+                                    className="w-full px-2 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary text-xs font-medium rounded transition-colors"
+                                  >
+                                    {schedule.formatted_time_range.replace(' AM', 'a').replace(' PM', 'p').replace(' - ', '-')}
+                                  </button>
+                                ) : (
+                                  <div
+                                    key={schedule.id}
+                                    className="w-full px-2 py-1.5 bg-primary/20 text-primary text-xs font-medium rounded"
+                                  >
+                                    {schedule.formatted_time_range.replace(' AM', 'a').replace(' PM', 'p').replace(' - ', '-')}
+                                  </div>
+                                )
                               ))}
-                              {/* Always show Add button */}
-                              <button
-                                onClick={() => openAddModal(user.id, dateStr)}
-                                className={`w-full px-2 py-1.5 border-2 border-dashed border-neutral-warm hover:border-primary hover:bg-primary/5 text-text-muted hover:text-primary text-xs rounded transition-colors ${
-                                  cellSchedules.length > 0 ? 'opacity-60 hover:opacity-100' : ''
-                                }`}
-                              >
-                                + Add
-                              </button>
+                              {/* CST-28: Only show Add button to admins */}
+                              {isAdmin && (
+                                <button
+                                  onClick={() => openAddModal(user.id, dateStr)}
+                                  className={`w-full px-2 py-1.5 border-2 border-dashed border-neutral-warm hover:border-primary hover:bg-primary/5 text-text-muted hover:text-primary text-xs rounded transition-colors ${
+                                    cellSchedules.length > 0 ? 'opacity-60 hover:opacity-100' : ''
+                                  }`}
+                                >
+                                  + Add
+                                </button>
+                              )}
                             </div>
                           </td>
                         )

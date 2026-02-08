@@ -56,6 +56,13 @@ async function fetchApi<T>(
           errors: data.errors || ['Please sign in to continue'],
         };
       }
+      // CST-28: Handle 403 Forbidden properly
+      if (response.status === 403) {
+        return {
+          error: data.error || 'Access denied',
+          errors: data.errors || ['You do not have permission to perform this action'],
+        };
+      }
       return {
         error: data.error || 'Something went wrong',
         errors: data.errors || [],

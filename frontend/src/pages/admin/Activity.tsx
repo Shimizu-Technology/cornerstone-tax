@@ -532,9 +532,10 @@ export default function Activity() {
               className="w-full px-3 py-2 bg-secondary border border-secondary-dark rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               <option value="">All users</option>
+              {/* CST-36: Use first name instead of email */}
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
-                  {user.email}
+                  {user.first_name || user.last_name ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : user.email}
                 </option>
               ))}
             </select>

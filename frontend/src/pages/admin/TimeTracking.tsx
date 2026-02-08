@@ -171,6 +171,8 @@ export default function TimeTracking() {
   const [users, setUsers] = useState<UserOption[]>([])
   const [serviceTypes, setServiceTypes] = useState<ServiceTypeOption[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
+  // CST-30: Track current user ID for delete permission check
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
@@ -311,6 +313,8 @@ export default function TimeTracking() {
 
       if (currentUserResponse.data) {
         setIsAdmin(currentUserResponse.data.user.is_admin)
+        // CST-30: Store current user ID for permission checks
+        setCurrentUserId(currentUserResponse.data.user.id)
       }
 
       if (serviceTypeResponse.data) {
@@ -493,6 +497,18 @@ export default function TimeTracking() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // CST-30: Check if current user can delete this entry (admins can delete any, employees only their own)
+  const canDeleteEntry = (entry: TimeEntryItem): boolean => {
+    if (isAdmin) return true
+    return currentUserId !== null && entry.user.id === currentUserId
+  }
+
+  // CST-30: Check if current user can edit this entry (same logic as delete)
+  const canEditEntry = (entry: TimeEntryItem): boolean => {
+    if (isAdmin) return true
+    return currentUserId !== null && entry.user.id === currentUserId
   }
 
   const handleDelete = async (entry: TimeEntryItem) => {
@@ -1005,20 +1021,24 @@ export default function TimeTracking() {
                         </span>
                       )}
                     </div>
-                    {/* Actions */}
+                    {/* Actions - CST-30: Show edit/delete based on permissions */}
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => openEditEntry(entry)}
-                        className="p-2 text-primary-dark hover:text-primary hover:bg-neutral-warm rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-                      >
-                        <EditIcon />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(entry)}
-                        className="p-2 text-primary-dark hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-                      >
-                        <TrashIcon />
-                      </button>
+                      {canEditEntry(entry) && (
+                        <button
+                          onClick={() => openEditEntry(entry)}
+                          className="p-2 text-primary-dark hover:text-primary hover:bg-neutral-warm rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        >
+                          <EditIcon />
+                        </button>
+                      )}
+                      {canDeleteEntry(entry) && (
+                        <button
+                          onClick={() => handleDelete(entry)}
+                          className="p-2 text-primary-dark hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        >
+                          <TrashIcon />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1275,6 +1295,66 @@ export default function TimeTracking() {
           {/* Report Filters */}
           <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
             <h3 className="text-sm font-medium text-primary-dark mb-4">Filter Report</h3>
+            
+            {/* CST-35: Quick date range presets for easier admin access */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const startOfWeek = new Date(today)
+                  startOfWeek.setDate(today.getDate() - today.getDay())
+                  setReportFilters(f => ({ ...f, start_date: formatDateISO(startOfWeek), end_date: formatDateISO(today) }))
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-warm hover:bg-primary/10 text-primary-dark transition-colors"
+              >
+                This Week
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const startOfLastWeek = new Date(today)
+                  startOfLastWeek.setDate(today.getDate() - today.getDay() - 7)
+                  const endOfLastWeek = new Date(startOfLastWeek)
+                  endOfLastWeek.setDate(startOfLastWeek.getDate() + 6)
+                  setReportFilters(f => ({ ...f, start_date: formatDateISO(startOfLastWeek), end_date: formatDateISO(endOfLastWeek) }))
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-warm hover:bg-primary/10 text-primary-dark transition-colors"
+              >
+                Last Week
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+                  setReportFilters(f => ({ ...f, start_date: formatDateISO(startOfMonth), end_date: formatDateISO(today) }))
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-warm hover:bg-primary/10 text-primary-dark transition-colors"
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+                  const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0)
+                  setReportFilters(f => ({ ...f, start_date: formatDateISO(startOfLastMonth), end_date: formatDateISO(endOfLastMonth) }))
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-warm hover:bg-primary/10 text-primary-dark transition-colors"
+              >
+                Last Month
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const startOfYear = new Date(today.getFullYear(), 0, 1)
+                  setReportFilters(f => ({ ...f, start_date: formatDateISO(startOfYear), end_date: formatDateISO(today) }))
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-warm hover:bg-primary/10 text-primary-dark transition-colors"
+              >
+                This Year
+              </button>
+            </div>
+            
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm text-text-muted mb-1">Start Date</label>
