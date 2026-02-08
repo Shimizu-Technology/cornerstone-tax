@@ -105,7 +105,7 @@ module Api
 
               # Log workflow event
               tax_return.workflow_events.create!(
-                event_type: "status_change",
+                event_type: "status_changed",
                 new_value: initial_stage&.name,
                 description: "Client created via quick create"
               )
