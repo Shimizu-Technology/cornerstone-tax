@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { ServiceType, ClientServiceType } from '../../lib/api'
@@ -67,11 +67,7 @@ export default function ClientList() {
     }
   }
 
-  useEffect(() => {
-    loadClients()
-  }, [page, appliedSearch, selectedServiceTypeId, showServiceOnly])
-
-  async function loadClients() {
+  const loadClients = useCallback(async () => {
     setLoading(true)
     try {
       const result = await api.getClients({ 
@@ -90,7 +86,11 @@ export default function ClientList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, appliedSearch, selectedServiceTypeId, showServiceOnly])
+
+  useEffect(() => {
+    loadClients()
+  }, [loadClients])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -188,7 +188,7 @@ export default function ClientList() {
             <button
               type="button"
               onClick={() => { setShowServiceOnly(undefined); setPage(1) }}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
+              className={`px-4 py-2 min-h-11 text-sm font-medium transition-colors ${
                 showServiceOnly === undefined ? 'bg-primary text-white' : 'bg-white text-gray-700 hover:bg-secondary'
               }`}
             >
@@ -197,7 +197,7 @@ export default function ClientList() {
             <button
               type="button"
               onClick={() => { setShowServiceOnly(false); setPage(1) }}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-l border-secondary-dark ${
+              className={`px-4 py-2 min-h-11 text-sm font-medium transition-colors border-l border-secondary-dark ${
                 showServiceOnly === false ? 'bg-primary text-white' : 'bg-white text-gray-700 hover:bg-secondary'
               }`}
             >
@@ -206,7 +206,7 @@ export default function ClientList() {
             <button
               type="button"
               onClick={() => { setShowServiceOnly(true); setPage(1) }}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-l border-secondary-dark ${
+              className={`px-4 py-2 min-h-11 text-sm font-medium transition-colors border-l border-secondary-dark ${
                 showServiceOnly === true ? 'bg-primary text-white' : 'bg-white text-gray-700 hover:bg-secondary'
               }`}
             >
