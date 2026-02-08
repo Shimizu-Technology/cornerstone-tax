@@ -10,7 +10,7 @@ module Api
       # GET /api/v1/time_entries
       def index
         @time_entries = current_user.admin? ? TimeEntry.all : TimeEntry.for_user(current_user)
-        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category)
+        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :service_type, :service_task)
 
         # Filter by user (admin only)
         if params[:user_id].present? && current_user.admin?
@@ -37,6 +37,11 @@ module Api
         # Filter by client
         if params[:client_id].present?
           @time_entries = @time_entries.where(client_id: params[:client_id])
+        end
+
+        # Filter by service type
+        if params[:service_type_id].present?
+          @time_entries = @time_entries.where(service_type_id: params[:service_type_id])
         end
 
         @time_entries = @time_entries.order(work_date: :desc, created_at: :desc)
@@ -169,7 +174,9 @@ module Api
           :time_category_id,
           :client_id,
           :tax_return_id,
-          :break_minutes
+          :break_minutes,
+          :service_type_id,
+          :service_task_id
         )
       end
 
@@ -201,6 +208,15 @@ module Api
           tax_return: entry.tax_return ? {
             id: entry.tax_return.id,
             tax_year: entry.tax_return.tax_year
+          } : nil,
+          service_type: entry.service_type ? {
+            id: entry.service_type.id,
+            name: entry.service_type.name,
+            color: entry.service_type.color
+          } : nil,
+          service_task: entry.service_task ? {
+            id: entry.service_task.id,
+            name: entry.service_task.name
           } : nil,
           created_at: entry.created_at.iso8601,
           updated_at: entry.updated_at.iso8601
