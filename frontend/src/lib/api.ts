@@ -718,6 +718,7 @@ export const api = {
   // Audit Logs
   getAuditLogs: (params?: {
     page?: number;
+    per_page?: number;
     auditable_type?: string;
     action_type?: string;
     user_id?: number;
@@ -727,6 +728,7 @@ export const api = {
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
     if (params?.auditable_type) searchParams.set('auditable_type', params.auditable_type);
     if (params?.action_type) searchParams.set('action_type', params.action_type);
     if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
