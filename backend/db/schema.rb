@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_01_31_010653) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_08_010001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -35,6 +35,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_31_010653) do
     t.bigint "service_type_id", null: false
     t.datetime "updated_at", null: false
     t.index ["client_id", "service_type_id"], name: "index_client_service_types_on_client_id_and_service_type_id", unique: true
+    t.index ["client_id", "service_type_id"], name: "index_client_service_types_unique", unique: true
     t.index ["client_id"], name: "index_client_service_types_on_client_id"
     t.index ["service_type_id"], name: "index_client_service_types_on_service_type_id"
   end
@@ -55,8 +56,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_31_010653) do
     t.string "first_name", null: false
     t.boolean "has_crypto_transactions", default: false
     t.boolean "has_prior_year_return", default: false
+    t.boolean "has_tax_returns", default: true, null: false
     t.boolean "is_new_client", default: true
-    t.boolean "is_service_only", default: false, null: false
     t.string "last_name", null: false
     t.text "mailing_address"
     t.string "phone"
@@ -66,7 +67,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_31_010653) do
     t.boolean "wants_direct_deposit", default: false
     t.index ["client_type"], name: "index_clients_on_client_type"
     t.index ["email"], name: "index_clients_on_email"
-    t.index ["is_service_only"], name: "index_clients_on_is_service_only"
+    t.index ["has_tax_returns"], name: "index_clients_on_has_tax_returns"
     t.index ["last_name", "first_name"], name: "index_clients_on_last_name_and_first_name"
   end
 

@@ -16,8 +16,10 @@ class Client < ApplicationRecord
 
   scope :individuals, -> { where(client_type: 'individual') }
   scope :businesses, -> { where(client_type: 'business') }
-  scope :service_only, -> { where(is_service_only: true) }
-  scope :tax_clients, -> { where(is_service_only: false) }
+  scope :with_tax_returns, -> { where(has_tax_returns: true) }
+  scope :service_only, -> { where(has_tax_returns: false) }
+  # Legacy alias for backward compatibility
+  scope :tax_clients, -> { with_tax_returns }
 
   # Encrypt sensitive bank information at rest
   # Requires ACTIVE_RECORD_ENCRYPTION_* environment variables to be set

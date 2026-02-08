@@ -39,9 +39,15 @@ module Api
           clients = clients.where(client_type: params[:client_type])
         end
 
-        # Filter by service-only clients
+        # Filter by service-only clients (has_tax_returns = false means service-only)
         if params[:service_only].present?
-          clients = clients.where(is_service_only: params[:service_only] == 'true')
+          # service_only=true means has_tax_returns=false
+          clients = clients.where(has_tax_returns: params[:service_only] != 'true')
+        end
+        
+        # Also support has_tax_returns param directly
+        if params[:has_tax_returns].present?
+          clients = clients.where(has_tax_returns: params[:has_tax_returns] == 'true')
         end
 
         # Pagination
@@ -86,8 +92,8 @@ module Api
               end
             end
 
-            # Only create a tax return if NOT a service-only client
-            unless client.is_service_only
+            # Only create a tax return if client has tax returns
+            if client.has_tax_returns
               initial_stage = WorkflowStage.find_by(slug: "intake_received") ||
                               WorkflowStage.active.ordered.first
               tax_year = (params.dig(:client, :tax_year) || Date.current.year).to_i
@@ -126,7 +132,7 @@ module Api
           first_name last_name date_of_birth email phone mailing_address
           filing_status is_new_client has_prior_year_return changes_from_prior_year
           spouse_name spouse_dob denied_eic_actc denied_eic_actc_year
-          has_crypto_transactions wants_direct_deposit client_type business_name is_service_only
+          has_crypto_transactions wants_direct_deposit client_type business_name has_tax_returns
         ]
 
         # Get only the safe attributes that are being updated
@@ -197,23 +203,36 @@ module Api
       private
 
       def client_params
-        params.require(:client).permit(
+        permitted = params.require(:client).permit(
           :first_name, :last_name, :date_of_birth, :email, :phone, :mailing_address,
           :filing_status, :is_new_client, :has_prior_year_return, :changes_from_prior_year,
           :spouse_name, :spouse_dob, :denied_eic_actc, :denied_eic_actc_year,
           :has_crypto_transactions, :wants_direct_deposit, :bank_routing_number,
-          :bank_account_number, :bank_account_type, :client_type, :business_name, :is_service_only
+          :bank_account_number, :bank_account_type, :client_type, :business_name, 
+          :has_tax_returns, :is_service_only  # Accept both for backward compatibility
         )
+        # Map is_service_only to has_tax_returns if provided (inverted logic)
+        if permitted.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
+          permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(permitted.delete(:is_service_only))
+        end
+        permitted.except(:is_service_only)
       end
 
       def quick_create_client_params
-        params.require(:client).permit(
+        permitted = params.require(:client).permit(
           :first_name, :last_name, :date_of_birth, :email, :phone,
-          :filing_status, :is_new_client, :client_type, :business_name, :is_service_only
-        ).tap do |p|
+          :filing_status, :is_new_client, :client_type, :business_name, 
+          :has_tax_returns, :is_service_only  # Accept both for backward compatibility
+        )
+        # Map is_service_only to has_tax_returns if provided (inverted logic)
+        if permitted.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
+          permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(permitted.delete(:is_service_only))
+        end
+        permitted.except(:is_service_only).tap do |p|
           # Set defaults for quick create
           p[:is_new_client] = true if p[:is_new_client].nil?
           p[:client_type] ||= 'individual'
+          p[:has_tax_returns] = true if p[:has_tax_returns].nil?  # Default to tax client
         end
       end
 
@@ -230,7 +249,8 @@ module Api
           is_new_client: client.is_new_client,
           client_type: client.client_type,
           business_name: client.business_name,
-          is_service_only: client.is_service_only,
+          has_tax_returns: client.has_tax_returns,
+          is_service_only: !client.has_tax_returns,  # Backward compatibility
           created_at: client.created_at,
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color }
@@ -268,7 +288,8 @@ module Api
           wants_direct_deposit: client.wants_direct_deposit,
           client_type: client.client_type,
           business_name: client.business_name,
-          is_service_only: client.is_service_only,
+          has_tax_returns: client.has_tax_returns,
+          is_service_only: !client.has_tax_returns,  # Backward compatibility
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color, description: st.description }
           end,

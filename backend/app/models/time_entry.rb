@@ -13,7 +13,10 @@ class TimeEntry < ApplicationRecord
   validates :end_time, presence: true
   validates :hours, presence: true, numericality: { greater_than: 0, less_than_or_equal_to: 24 }
   validate :end_time_after_start_time
-  validate :service_type_required_if_client
+  # NOTE: service_type is intentionally optional when a client is selected.
+  # This allows flexibility for internal meetings or general client work.
+  # If stricter tracking is needed later, uncomment the validation below:
+  # validate :service_type_required_if_client
   validate :service_task_matches_service_type
 
   before_validation :calculate_hours_from_times
@@ -65,12 +68,13 @@ class TimeEntry < ApplicationRecord
     end
   end
 
-  # If a client is selected, service_type is required
-  def service_type_required_if_client
-    if client_id.present? && service_type_id.blank?
-      errors.add(:service_type, "is required when a client is selected")
-    end
-  end
+  # NOTE: Validation commented out - service_type is optional even with client selected.
+  # Uncomment if stricter tracking is needed:
+  # def service_type_required_if_client
+  #   if client_id.present? && service_type_id.blank?
+  #     errors.add(:service_type, "is required when a client is selected")
+  #   end
+  # end
 
   # If service_task is selected, it must belong to the selected service_type
   def service_task_matches_service_type
