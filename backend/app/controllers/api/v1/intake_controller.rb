@@ -40,7 +40,7 @@ module Api
           # Bank info
           :wants_direct_deposit, :bank_routing_number, :bank_account_number, :bank_account_type,
           # Authorization
-          :signature, :signature_date,
+          :signature, :signature_date, :authorization_confirmed,
           # Tax return info
           :tax_year,
           # Nested arrays

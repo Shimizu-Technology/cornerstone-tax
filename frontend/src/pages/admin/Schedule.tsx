@@ -219,6 +219,10 @@ export default function Schedule() {
     setError(null)
 
     try {
+      if (!formData.work_date) {
+        setError('Please select a date for this shift')
+        return
+      }
       if (editingSchedule) {
         const response = await api.updateSchedule(editingSchedule.id, formData)
         if (response.error) {
@@ -232,8 +236,15 @@ export default function Schedule() {
           return
         }
       }
+      const targetWeekStart = getWeekStart(new Date(`${formData.work_date}T00:00:00`))
+      const targetWeekKey = formatDateISO(targetWeekStart)
+      const currentWeekKey = formatDateISO(currentWeekStart)
       setShowModal(false)
-      loadSchedules()
+      if (targetWeekKey !== currentWeekKey) {
+        setCurrentWeekStart(targetWeekStart)
+      } else {
+        loadSchedules()
+      }
     } catch (err) {
       console.error('Failed to save schedule:', err)
       setError('Failed to save schedule')
@@ -646,6 +657,7 @@ export default function Schedule() {
                     value={formData.work_date}
                     onChange={(e) => setFormData({ ...formData, work_date: e.target.value })}
                     className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    required
                   />
                 </div>
 

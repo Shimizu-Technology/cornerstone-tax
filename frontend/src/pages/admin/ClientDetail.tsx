@@ -27,6 +27,17 @@ interface WorkflowEvent {
   created_at: string
 }
 
+interface ClientContact {
+  id: number
+  first_name: string
+  last_name: string
+  full_name: string
+  email: string | null
+  phone: string | null
+  role: string | null
+  is_primary: boolean
+}
+
 interface TaxReturn {
   id: number
   tax_year: number
@@ -63,6 +74,7 @@ interface ClientDetail {
   business_name: string | null
   is_service_only: boolean
   service_types: ClientServiceType[]
+  contacts: ClientContact[]
   created_at: string
   updated_at: string
   dependents: Dependent[]
@@ -166,6 +178,20 @@ export default function ClientDetailPage() {
   // Audit logs for this client (CST-7)
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
 
+  // Contacts
+  const [showContactModal, setShowContactModal] = useState(false)
+  const [editingContact, setEditingContact] = useState<ClientContact | null>(null)
+  const [contactSaving, setContactSaving] = useState(false)
+  const [contactError, setContactError] = useState<string | null>(null)
+  const [contactForm, setContactForm] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    role: '',
+    is_primary: false,
+  })
+
   const loadAuditLogs = useCallback(async () => {
     if (!id) return
     try {
@@ -177,6 +203,103 @@ export default function ClientDetailPage() {
       console.error('Failed to load audit logs:', err)
     }
   }, [id])
+
+  const resetContactForm = () => {
+    setContactForm({
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      role: '',
+      is_primary: false,
+    })
+  }
+
+  const openAddContact = () => {
+    if (!client) return
+    setEditingContact(null)
+    setContactError(null)
+    setContactForm({
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      role: '',
+      is_primary: client.contacts.length === 0,
+    })
+    setShowContactModal(true)
+  }
+
+  const openEditContact = (contact: ClientContact) => {
+    setEditingContact(contact)
+    setContactError(null)
+    setContactForm({
+      first_name: contact.first_name,
+      last_name: contact.last_name,
+      email: contact.email || '',
+      phone: contact.phone || '',
+      role: contact.role || '',
+      is_primary: contact.is_primary,
+    })
+    setShowContactModal(true)
+  }
+
+  const handleSaveContact = async () => {
+    if (!client) return
+    setContactSaving(true)
+    setContactError(null)
+
+    try {
+      const payload = {
+        first_name: contactForm.first_name.trim(),
+        last_name: contactForm.last_name.trim(),
+        email: contactForm.email.trim() || undefined,
+        phone: contactForm.phone.trim() || undefined,
+        role: contactForm.role.trim() || undefined,
+        is_primary: contactForm.is_primary,
+      }
+
+      if (editingContact) {
+        const result = await api.updateClientContact(client.id, editingContact.id, payload)
+        if (result.error) {
+          setContactError(result.error)
+          return
+        }
+      } else {
+        const result = await api.createClientContact(client.id, payload)
+        if (result.error) {
+          setContactError(result.error)
+          return
+        }
+      }
+
+      await loadClient()
+      resetContactForm()
+      setShowContactModal(false)
+    } catch (err) {
+      console.error('Failed to save contact:', err)
+      setContactError('Failed to save contact')
+    } finally {
+      setContactSaving(false)
+    }
+  }
+
+  const handleDeleteContact = async (contact: ClientContact) => {
+    if (!client) return
+    if (!confirm(`Delete ${contact.full_name}?`)) return
+
+    try {
+      const result = await api.deleteClientContact(client.id, contact.id)
+      if (result?.error) {
+        alert(result.error)
+        return
+      }
+      await loadClient()
+    } catch (err) {
+      console.error('Failed to delete contact:', err)
+      alert('Failed to delete contact')
+    }
+  }
 
   useEffect(() => {
     loadClient()
@@ -585,6 +708,64 @@ export default function ClientDetailPage() {
             )}
           </div>
 
+          {/* Contacts */}
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Contacts</h2>
+              <button
+                onClick={openAddContact}
+                className="text-xs text-primary hover:text-primary-dark font-medium"
+              >
+                Add
+              </button>
+            </div>
+            {client.contacts && client.contacts.length > 0 ? (
+              <div className="space-y-3">
+                {client.contacts.map(contact => (
+                  <div key={contact.id} className="p-3 border border-secondary-dark rounded-lg">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900">{contact.full_name}</p>
+                          {contact.is_primary && (
+                            <span className="px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary rounded">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        {contact.role && (
+                          <p className="text-xs text-gray-500 mt-0.5">{contact.role}</p>
+                        )}
+                        {contact.email && (
+                          <p className="text-xs text-gray-600 mt-1">{contact.email}</p>
+                        )}
+                        {contact.phone && (
+                          <p className="text-xs text-gray-600">{contact.phone}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openEditContact(contact)}
+                          className="text-xs text-primary hover:text-primary-dark font-medium"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteContact(contact)}
+                          className="text-xs text-red-500 hover:text-red-700 font-medium"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-400 text-sm italic">No contacts added</p>
+            )}
+          </div>
+
           {/* Activity (CST-7: includes workflow events + client audit logs) */}
           {(latestReturn?.workflow_events?.length > 0 || auditLogs.length > 0) && (
             <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
@@ -636,6 +817,107 @@ export default function ClientDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Contact Modal */}
+      {showContactModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowContactModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-secondary-dark">
+              <h2 className="text-xl font-bold text-primary-dark">
+                {editingContact ? 'Edit Contact' : 'Add Contact'}
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">Manage client contact information</p>
+            </div>
+            <div className="p-6 space-y-4">
+              {contactError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {contactError}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                  <input
+                    type="text"
+                    value={contactForm.first_name}
+                    onChange={(e) => setContactForm(prev => ({ ...prev, first_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                  <input
+                    type="text"
+                    value={contactForm.last_name}
+                    onChange={(e) => setContactForm(prev => ({ ...prev, last_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={contactForm.email}
+                  onChange={(e) => setContactForm(prev => ({ ...prev, email: e.target.value }))}
+                  className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <input
+                  type="tel"
+                  value={contactForm.phone}
+                  onChange={(e) => setContactForm(prev => ({ ...prev, phone: e.target.value }))}
+                  className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <input
+                  type="text"
+                  value={contactForm.role}
+                  onChange={(e) => setContactForm(prev => ({ ...prev, role: e.target.value }))}
+                  className="w-full px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="Owner, HR, Bookkeeper, etc."
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={contactForm.is_primary}
+                  onChange={(e) => setContactForm(prev => ({ ...prev, is_primary: e.target.checked }))}
+                  disabled={client?.client_type === 'business' && client.contacts.length === 1 && editingContact?.is_primary}
+                />
+                Primary contact
+              </label>
+            </div>
+            <div className="p-6 border-t border-secondary-dark flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowContactModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveContact}
+                disabled={contactSaving || !contactForm.first_name.trim() || !contactForm.last_name.trim()}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-dark disabled:opacity-50"
+              >
+                {contactSaving ? 'Saving...' : 'Save Contact'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Modal */}
       {showEditModal && editForm && (

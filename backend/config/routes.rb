@@ -19,7 +19,9 @@ Rails.application.routes.draw do
       resources :workflow_stages, only: [:index]
 
       # Admin/Employee routes (requires authentication)
-      resources :clients, only: [:index, :show, :create, :update]
+      resources :clients, only: [:index, :show, :create, :update] do
+        resources :contacts, controller: "client_contacts", only: [:index, :create, :update, :destroy]
+      end
       resources :tax_returns, only: [:index, :show, :update] do
         member do
           post :assign

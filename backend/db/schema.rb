@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_08_024507) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_09_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -27,6 +27,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_08_024507) do
     t.index ["auditable_type", "auditable_id"], name: "index_audit_logs_on_auditable_type_and_auditable_id"
     t.index ["created_at"], name: "index_audit_logs_on_created_at"
     t.index ["user_id"], name: "index_audit_logs_on_user_id"
+  end
+
+  create_table "client_contacts", force: :cascade do |t|
+    t.bigint "client_id", null: false
+    t.datetime "created_at", null: false
+    t.string "email"
+    t.string "first_name", null: false
+    t.boolean "is_primary", default: false, null: false
+    t.string "last_name", null: false
+    t.string "phone"
+    t.string "role"
+    t.datetime "updated_at", null: false
+    t.index ["client_id", "is_primary"], name: "index_client_contacts_primary_unique", unique: true, where: "is_primary"
+    t.index ["client_id"], name: "index_client_contacts_on_client_id"
   end
 
   create_table "client_service_types", force: :cascade do |t|
@@ -296,6 +310,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_08_024507) do
   end
 
   add_foreign_key "audit_logs", "users"
+  add_foreign_key "client_contacts", "clients"
   add_foreign_key "client_service_types", "clients"
   add_foreign_key "client_service_types", "service_types"
   add_foreign_key "dependents", "clients"

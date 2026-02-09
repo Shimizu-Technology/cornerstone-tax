@@ -118,6 +118,17 @@ export interface ClientServiceType {
   description?: string;
 }
 
+export interface ClientContact {
+  id: number;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  role: string | null;
+  is_primary: boolean;
+}
+
 export interface ClientSummary {
   id: number;
   first_name: string;
@@ -130,6 +141,7 @@ export interface ClientSummary {
   business_name: string | null;
   is_service_only: boolean;
   service_types: ClientServiceType[];
+  contacts: ClientContact[];
   created_at: string;
   tax_return: {
     id: number;
@@ -175,6 +187,7 @@ export interface ClientDetailResponse {
     business_name: string | null;
     is_service_only: boolean;
     service_types: ClientServiceType[];
+    contacts: ClientContact[];
     created_at: string;
     updated_at: string;
     dependents: Array<{
@@ -625,6 +638,14 @@ export const api = {
     is_service_only?: boolean;
     service_type_ids?: number[];
     tax_year?: number;
+    contacts?: Array<{
+      first_name: string;
+      last_name: string;
+      email?: string;
+      phone?: string;
+      role?: string;
+      is_primary?: boolean;
+    }>;
   }) =>
     fetchApi<{ client: ClientSummary }>('/api/v1/clients', {
       method: 'POST',
@@ -635,6 +656,38 @@ export const api = {
     fetchApi<{ client: ClientDetailResponse['client'] }>(`/api/v1/clients/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ client: data }),
+    }),
+
+  // Client Contacts
+  getClientContacts: (clientId: number) =>
+    fetchApi<{ contacts: ClientContact[] }>(`/api/v1/clients/${clientId}/contacts`),
+  createClientContact: (clientId: number, data: {
+    first_name: string;
+    last_name: string;
+    email?: string;
+    phone?: string;
+    role?: string;
+    is_primary?: boolean;
+  }) =>
+    fetchApi<{ contact: ClientContact }>(`/api/v1/clients/${clientId}/contacts`, {
+      method: 'POST',
+      body: JSON.stringify({ contact: data }),
+    }),
+  updateClientContact: (clientId: number, contactId: number, data: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+    role?: string;
+    is_primary?: boolean;
+  }) =>
+    fetchApi<{ contact: ClientContact }>(`/api/v1/clients/${clientId}/contacts/${contactId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ contact: data }),
+    }),
+  deleteClientContact: (clientId: number, contactId: number) =>
+    fetchApi<void>(`/api/v1/clients/${clientId}/contacts/${contactId}`, {
+      method: 'DELETE',
     }),
 
   // Tax Returns

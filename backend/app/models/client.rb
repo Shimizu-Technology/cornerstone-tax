@@ -9,6 +9,7 @@ class Client < ApplicationRecord
   has_one :user, dependent: :nullify
   has_many :client_service_types, dependent: :destroy
   has_many :service_types, through: :client_service_types
+  has_many :client_contacts, dependent: :destroy
 
   validates :first_name, presence: true
   validates :last_name, presence: true

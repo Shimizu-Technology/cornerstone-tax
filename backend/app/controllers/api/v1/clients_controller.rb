@@ -9,7 +9,7 @@ module Api
 
       # GET /api/v1/clients
       def index
-        clients = Client.includes(:tax_returns, :service_types, tax_returns: [:workflow_stage, :assigned_to])
+        clients = Client.includes(:tax_returns, :service_types, :client_contacts, tax_returns: [:workflow_stage, :assigned_to])
                         .order(created_at: :desc)
 
         # Search
@@ -72,6 +72,7 @@ module Api
         client = Client.includes(
           :dependents,
           :service_types,
+          :client_contacts,
           tax_returns: [:workflow_stage, :income_sources, :workflow_events, :assigned_to]
         ).find(params[:id])
 
@@ -91,6 +92,8 @@ module Api
                 client.client_service_types.create!(service_type_id: st_id)
               end
             end
+
+            create_contacts_for_client(client)
 
             # Only create a tax return if client has tax returns
             if client.has_tax_returns
@@ -149,6 +152,8 @@ module Api
 
         ActiveRecord::Base.transaction do
           if client.update(client_params)
+            create_contacts_for_client(client) if client.client_type == "business" && client.client_contacts.empty?
+
             # Update service types if provided
             if params[:client].key?(:service_type_ids)
               new_service_type_ids = (params[:client][:service_type_ids] || []).map(&:to_i)
@@ -255,6 +260,7 @@ module Api
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color }
           end,
+          contacts: client.client_contacts.order(is_primary: :desc, created_at: :asc).map { |contact| contact_summary(contact) },
           tax_return: latest_return ? {
             id: latest_return.id,
             tax_year: latest_return.tax_year,
@@ -293,6 +299,7 @@ module Api
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color, description: st.description }
           end,
+          contacts: client.client_contacts.order(is_primary: :desc, created_at: :asc).map { |contact| contact_summary(contact) },
           created_at: client.created_at,
           updated_at: client.updated_at,
           dependents: client.dependents.map do |dep|
@@ -335,6 +342,57 @@ module Api
               end
             }
           end
+        }
+      end
+
+      def create_contacts_for_client(client)
+        return unless client.client_type == "business"
+
+        contacts = contacts_payload
+        if contacts.any?
+          contacts.each_with_index do |contact, index|
+            contact[:is_primary] = true if index.zero? && contacts.none? { |c| c[:is_primary] }
+            client.client_contacts.create!(contact)
+          end
+        else
+          client.client_contacts.create!(
+            first_name: client.first_name,
+            last_name: client.last_name,
+            email: client.email,
+            phone: client.phone,
+            role: "Primary",
+            is_primary: true
+          )
+        end
+      end
+
+      def contacts_payload
+        raw = params.dig(:client, :contacts)
+        return [] unless raw.is_a?(Array)
+
+        raw.map do |contact|
+          permitted = if contact.is_a?(ActionController::Parameters)
+            contact.permit(:first_name, :last_name, :email, :phone, :role, :is_primary)
+          else
+            ActionController::Parameters
+              .new(contact)
+              .permit(:first_name, :last_name, :email, :phone, :role, :is_primary)
+          end
+
+          permitted.to_h
+        end
+      end
+
+      def contact_summary(contact)
+        {
+          id: contact.id,
+          first_name: contact.first_name,
+          last_name: contact.last_name,
+          full_name: contact.full_name,
+          email: contact.email,
+          phone: contact.phone,
+          role: contact.role,
+          is_primary: contact.is_primary
         }
       end
     end

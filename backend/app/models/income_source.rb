@@ -10,5 +10,11 @@ class IncomeSource < ApplicationRecord
   ].freeze
 
   validates :source_type, inclusion: { in: VALID_TYPES }, allow_blank: true
-  validates :payer_name, presence: true
+  validates :payer_name, presence: true, unless: :payer_name_optional?
+
+  private
+
+  def payer_name_optional?
+    source_type.blank? || source_type.start_with?("1099")
+  end
 end

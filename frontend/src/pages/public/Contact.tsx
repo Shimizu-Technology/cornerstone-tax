@@ -9,21 +9,23 @@ const EASE = [0.22, 1, 0.36, 1] as const
 function FloatingInput({
   label,
   required,
+  error,
   ...props
-}: { label: string; required?: boolean } & React.InputHTMLAttributes<HTMLInputElement>) {
+}: { label: string; required?: boolean; error?: string } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <div className="relative">
       <input
         {...props}
         placeholder=" "
-        className="
+        aria-invalid={!!error}
+        className={`
           peer w-full px-4 pt-6 pb-2 bg-gray-50
-          border border-gray-200 rounded-xl
+          border rounded-xl
           text-gray-900
           transition-colors duration-200
-          focus:border-primary focus:ring-1 focus:ring-primary
-          focus:outline-none
-        "
+          focus:ring-1 focus:outline-none
+          ${error ? 'border-red-300 focus:border-red-400 focus:ring-red-300' : 'border-gray-200 focus:border-primary focus:ring-primary'}
+        `}
       />
       <label className="
         absolute left-4 top-4 text-gray-400
@@ -41,22 +43,24 @@ function FloatingInput({
 function FloatingSelect({
   label,
   required,
+  error,
   children,
   value,
   ...props
-}: { label: string; required?: boolean; children: React.ReactNode; value: string } & Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'children'>) {
+}: { label: string; required?: boolean; error?: string; children: React.ReactNode; value: string } & Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'children'>) {
   return (
     <div className="relative">
       <select
         {...props}
         value={value}
+        aria-invalid={!!error}
         className={`
           peer w-full px-4 pt-6 pb-2 bg-gray-50
-          border border-gray-200 rounded-xl
+          border rounded-xl
           transition-colors duration-200
-          focus:border-primary focus:ring-1 focus:ring-primary
-          focus:outline-none appearance-none
+          focus:ring-1 focus:outline-none appearance-none
           ${value ? 'text-gray-900' : 'text-transparent'}
+          ${error ? 'border-red-300 focus:border-red-400 focus:ring-red-300' : 'border-gray-200 focus:border-primary focus:ring-primary'}
         `}
       >
         {children}
@@ -81,21 +85,23 @@ function FloatingSelect({
 function FloatingTextarea({
   label,
   required,
+  error,
   ...props
-}: { label: string; required?: boolean } & React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+}: { label: string; required?: boolean; error?: string } & React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <div className="relative">
       <textarea
         {...props}
         placeholder=" "
-        className="
+        aria-invalid={!!error}
+        className={`
           peer w-full px-4 pt-6 pb-2 bg-gray-50
-          border border-gray-200 rounded-xl
+          border rounded-xl
           text-gray-900
           transition-colors duration-200
-          focus:border-primary focus:ring-1 focus:ring-primary
-          focus:outline-none resize-none
-        "
+          focus:ring-1 focus:outline-none resize-none
+          ${error ? 'border-red-300 focus:border-red-400 focus:ring-red-300' : 'border-gray-200 focus:border-primary focus:ring-primary'}
+        `}
       />
       <label className="
         absolute left-4 top-4 text-gray-400
@@ -138,7 +144,7 @@ function ContactItem({ icon, title, children, delay = 0 }: { icon: React.ReactNo
       transition={{ duration: 0.5, delay, ease: EASE }}
       className="flex gap-5"
     >
-      <div className="w-12 h-12 bg-secondary rounded-xl flex items-center justify-center flex-shrink-0">
+      <div className="w-12 h-12 bg-secondary rounded-xl flex items-center justify-center shrink-0">
         {icon}
       </div>
       <div>
@@ -162,16 +168,41 @@ export default function Contact() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev }
+        delete next[name]
+        return next
+      })
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsSubmitting(true)
     setError(null)
+    const nextErrors: Record<string, string> = {}
+    if (!formData.name.trim()) nextErrors.name = 'Name is required'
+    if (!formData.email.trim()) {
+      nextErrors.email = 'Email is required'
+    } else if (!/^\S+@\S+\.\S+$/.test(formData.email)) {
+      nextErrors.email = 'Enter a valid email address'
+    }
+    if (!formData.subject) nextErrors.subject = 'Select a subject'
+    if (!formData.message.trim()) nextErrors.message = 'Message is required'
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors)
+      const firstError = Object.values(nextErrors)[0]
+      setError(firstError || 'Please fix the highlighted fields.')
+      return
+    }
+
+    setIsSubmitting(true)
 
     const result = await api.submitContact({
       name: formData.name,
@@ -187,6 +218,7 @@ export default function Contact() {
       setError(result.error)
     } else {
       setSubmitted(true)
+      setFieldErrors({})
     }
   }
 
@@ -255,7 +287,7 @@ export default function Contact() {
   return (
     <div>
       {/* ─── Hero ─── */}
-      <section className="relative bg-gradient-to-br from-secondary via-secondary to-white py-24 md:py-32 overflow-hidden">
+      <section className="relative bg-linear-to-br from-secondary via-secondary to-white py-24 md:py-32 overflow-hidden">
         <div className="absolute inset-0 dot-pattern opacity-40 pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -323,6 +355,7 @@ export default function Contact() {
 
               <motion.form
                 onSubmit={handleSubmit}
+                noValidate
                 className="space-y-5"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -336,26 +369,38 @@ export default function Contact() {
                   name="name"
                   value={formData.name}
                   onChange={handleChange}
+                  error={fieldErrors.name}
                 />
+                {fieldErrors.name && (
+                  <p className="text-xs text-red-600 -mt-3">{fieldErrors.name}</p>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <FloatingInput
-                    label="Email"
-                    required
-                    type="email"
-                    id="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                  />
-                  <FloatingInput
-                    label="Phone"
-                    type="tel"
-                    id="phone"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleChange}
-                  />
+                  <div>
+                    <FloatingInput
+                      label="Email"
+                      required
+                      type="email"
+                      id="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      error={fieldErrors.email}
+                    />
+                    {fieldErrors.email && (
+                      <p className="text-xs text-red-600 mt-1">{fieldErrors.email}</p>
+                    )}
+                  </div>
+                  <div>
+                    <FloatingInput
+                      label="Phone"
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                    />
+                  </div>
                 </div>
 
                 <FloatingSelect
@@ -365,6 +410,7 @@ export default function Contact() {
                   name="subject"
                   value={formData.subject}
                   onChange={handleChange}
+                  error={fieldErrors.subject}
                 >
                   <option value="">Select a subject</option>
                   <option value="tax-preparation">Tax Preparation</option>
@@ -373,6 +419,9 @@ export default function Contact() {
                   <option value="consulting">Business Consulting</option>
                   <option value="other">Other</option>
                 </FloatingSelect>
+                {fieldErrors.subject && (
+                  <p className="text-xs text-red-600 -mt-3">{fieldErrors.subject}</p>
+                )}
 
                 <FloatingTextarea
                   label="Message"
@@ -382,7 +431,11 @@ export default function Contact() {
                   value={formData.message}
                   onChange={handleChange}
                   rows={5}
+                  error={fieldErrors.message}
                 />
+                {fieldErrors.message && (
+                  <p className="text-xs text-red-600 -mt-3">{fieldErrors.message}</p>
+                )}
 
                 <motion.button
                   type="submit"

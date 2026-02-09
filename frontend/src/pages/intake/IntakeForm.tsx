@@ -132,6 +132,7 @@ export default function IntakeForm() {
         if (!formData.authorization_confirmed)
           newErrors.authorization_confirmed = 'You must confirm the information is accurate';
         if (!formData.signature.trim()) newErrors.signature = 'Electronic signature is required';
+        if (!formData.signature_date) newErrors.signature_date = 'Signature date is required';
         break;
     }
 
@@ -190,6 +191,22 @@ export default function IntakeForm() {
     setIsSubmitting(false);
 
     if (result.error) {
+      if (result.errors && result.errors.length > 0) {
+        const serverFieldErrors: Record<string, string> = {};
+        result.errors.forEach((message) => {
+          const normalized = message.toLowerCase();
+          if (normalized.includes('signature date')) {
+            serverFieldErrors.signature_date = message;
+          } else if (normalized.includes('signature')) {
+            serverFieldErrors.signature = message;
+          } else if (normalized.includes('authorization')) {
+            serverFieldErrors.authorization_confirmed = message;
+          }
+        });
+        if (Object.keys(serverFieldErrors).length > 0) {
+          setErrors((prev) => ({ ...prev, ...serverFieldErrors }));
+        }
+      }
       setSubmitError(result.error);
       if (result.errors && result.errors.length > 0) {
         setSubmitError(result.errors.join(', '));
@@ -1428,6 +1445,7 @@ function StepAuthorization({ formData, updateField, errors = {}, isKioskMode }: 
         type="date"
         value={formData.signature_date}
         onChange={(v) => updateField('signature_date', v)}
+        error={errors.signature_date}
         required
         isKioskMode={isKioskMode}
       />

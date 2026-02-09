@@ -15,6 +15,9 @@ class CreateIntakeService
   end
 
   def call
+    validate_authorization!
+    return Result.new(success?: false, client: nil, tax_return: nil, errors: @errors) if @errors.any?
+
     ActiveRecord::Base.transaction do
       create_client
       create_dependents
@@ -113,6 +116,20 @@ class CreateIntakeService
       new_value: @tax_return.workflow_stage&.name,
       description: "Client intake form submitted"
     )
+  end
+
+  def validate_authorization!
+    if @params[:signature].blank?
+      @errors << "Signature is required"
+    end
+
+    if @params[:signature_date].blank?
+      @errors << "Signature date is required"
+    end
+
+    unless ActiveModel::Type::Boolean.new.cast(@params[:authorization_confirmed])
+      @errors << "Authorization confirmation is required"
+    end
   end
 
   # CST-37: Send email notification to admin about new intake

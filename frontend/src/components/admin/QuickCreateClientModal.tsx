@@ -113,8 +113,25 @@ export default function QuickCreateClientModal({
     })
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (
+    e?: React.FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>
+  ) => {
+    e?.preventDefault?.()
+
+    const validationErrors: string[] = []
+    if (formData.client_type === 'business' && !formData.business_name.trim()) {
+      validationErrors.push('Business name is required')
+    }
+    if (!formData.first_name.trim()) validationErrors.push('First name is required')
+    if (!formData.last_name.trim()) validationErrors.push('Last name is required')
+    if (!formData.email.trim()) validationErrors.push('Email is required')
+    if (!formData.phone.trim()) validationErrors.push('Phone is required')
+
+    if (validationErrors.length > 0) {
+      setErrors(validationErrors)
+      return
+    }
+
     setLoading(true)
     setErrors([])
 
@@ -132,6 +149,14 @@ export default function QuickCreateClientModal({
         business_name: formData.client_type === 'business' ? formData.business_name : undefined,
         is_service_only: formData.is_service_only,
         service_type_ids: formData.service_type_ids,
+        contacts: formData.client_type === 'business' ? [{
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          email: formData.email,
+          phone: formData.phone,
+          role: 'Primary',
+          is_primary: true,
+        }] : undefined,
       })
 
       if (result.error || result.errors?.length) {
@@ -140,7 +165,7 @@ export default function QuickCreateClientModal({
       }
 
       if (result.data) {
-        onSuccess(result.data.client.id)
+          onSuccess(result.data.client.id)
         // Reset form
         setFormData({
           first_name: '',
@@ -211,7 +236,7 @@ export default function QuickCreateClientModal({
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <form onSubmit={handleSubmit} noValidate className="p-6 space-y-5">
             {errors.length > 0 && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-xl" role="alert">
                 <ul className="text-sm text-red-600 space-y-1">
@@ -269,11 +294,11 @@ export default function QuickCreateClientModal({
               </div>
             )}
 
-            {/* Contact Person Name */}
+            {/* Primary Contact Name */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="qc-first-name" className="block text-sm font-medium text-gray-700 mb-1">
-                  {formData.client_type === 'business' ? 'Contact First Name *' : 'First Name *'}
+                  {formData.client_type === 'business' ? 'Primary Contact First Name *' : 'First Name *'}
                 </label>
                 <input
                   id="qc-first-name"
@@ -287,7 +312,7 @@ export default function QuickCreateClientModal({
               </div>
               <div>
                 <label htmlFor="qc-last-name" className="block text-sm font-medium text-gray-700 mb-1">
-                  {formData.client_type === 'business' ? 'Contact Last Name *' : 'Last Name *'}
+                  {formData.client_type === 'business' ? 'Primary Contact Last Name *' : 'Last Name *'}
                 </label>
                 <input
                   id="qc-last-name"
@@ -303,7 +328,7 @@ export default function QuickCreateClientModal({
 
             <div>
               <label htmlFor="qc-email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email *
+                {formData.client_type === 'business' ? 'Primary Contact Email *' : 'Email *'}
               </label>
               <input
                 id="qc-email"
@@ -318,7 +343,7 @@ export default function QuickCreateClientModal({
 
             <div>
               <label htmlFor="qc-phone" className="block text-sm font-medium text-gray-700 mb-1">
-                Phone *
+                {formData.client_type === 'business' ? 'Primary Contact Phone *' : 'Phone *'}
               </label>
               <input
                 id="qc-phone"
@@ -453,7 +478,8 @@ export default function QuickCreateClientModal({
                 Cancel
               </button>
               <button
-                type="submit"
+                type="button"
+                onClick={handleSubmit}
                 disabled={loading}
                 className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >

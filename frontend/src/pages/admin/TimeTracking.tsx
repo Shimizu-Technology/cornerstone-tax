@@ -511,18 +511,20 @@ export default function TimeTracking() {
     return currentUserId !== null && entry.user.id === currentUserId
   }
 
-  const handleDelete = async (entry: TimeEntryItem) => {
-    if (!confirm('Are you sure you want to delete this time entry?')) return
+  const handleDelete = async (entry: TimeEntryItem): Promise<boolean> => {
+    if (!confirm('Are you sure you want to delete this time entry?')) return false
 
     try {
       const response = await api.deleteTimeEntry(entry.id)
       if (response.error) {
         setError(response.error)
-        return
+        return false
       }
       loadEntries()
+      return true
     } catch {
       setError('Failed to delete time entry')
+      return false
     }
   }
 
@@ -1264,21 +1266,35 @@ export default function TimeTracking() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex justify-end gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="px-4 py-2 text-primary-dark font-medium hover:bg-neutral-warm rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
-                  >
-                    {saving ? 'Saving...' : (editingEntry ? 'Update' : 'Save')}
-                  </button>
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-4">
+                  {editingEntry && canDeleteEntry(editingEntry) && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const deleted = await handleDelete(editingEntry)
+                        if (deleted) setShowModal(false)
+                      }}
+                      className="px-4 py-2 text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
+                  <div className="flex items-center gap-3 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => setShowModal(false)}
+                      className="px-4 py-2 text-primary-dark font-medium hover:bg-neutral-warm rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                    >
+                      {saving ? 'Saving...' : (editingEntry ? 'Update' : 'Save')}
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
