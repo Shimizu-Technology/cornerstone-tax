@@ -124,6 +124,7 @@ Add the generated keys to your `.env` file.
 
 ### Protected (Requires Auth)
 - `GET /api/v1/auth/me` - Get current user
+- `POST /api/v1/auth/me` - Get current user (alternate for Clerk email payload)
 - `GET /api/v1/clients` - List clients
 - `GET /api/v1/clients/:id` - Get client detail
 - `POST /api/v1/clients` - Create client (quick create)

@@ -112,7 +112,6 @@ test.describe('Workflow Stages Management', () => {
 
   test('can reorder workflow stages', async ({ page }) => {
     // Look for drag handles or reorder buttons
-    const dragHandle = page.locator('[aria-label*="drag"], [data-testid="drag-handle"], .drag-handle');
     const moveUpButton = page.locator('button:has-text("Up"), button[aria-label*="up"]').first();
     const moveDownButton = page.locator('button:has-text("Down"), button[aria-label*="down"]').first();
     
@@ -237,13 +236,11 @@ test.describe('Time Categories Management', () => {
     const toggle = page.locator('input[type="checkbox"], button[role="switch"]').first();
     
     if (await toggle.isVisible()) {
-      const wasBefore = await toggle.isChecked().catch(() => null);
       await toggle.click();
       await page.waitForLoadState('networkidle');
       
       // Toggle state should change
-      const isAfter = await toggle.isChecked().catch(() => null);
-      // State might have changed (or API call was made)
+      await toggle.isChecked().catch(() => null);
     }
   });
 
@@ -396,7 +393,6 @@ test.describe('User Management', () => {
     const editButton = page.locator('button:has-text("Edit"), button[aria-label*="edit"]').first();
     
     if (await roleSelect.isVisible()) {
-      const currentValue = await roleSelect.inputValue();
       await roleSelect.selectOption({ index: 1 });
       await page.waitForLoadState('networkidle');
     } else if (await editButton.isVisible()) {
@@ -432,7 +428,7 @@ test.describe('Activity / Audit Log', () => {
     // Should show activity entries
     const activityEntries = page.locator('table tbody tr, [data-testid="activity-row"]');
     // Don't fail if no entries exist yet
-    const count = await activityEntries.count();
+    await activityEntries.count();
     // Just verify page loaded correctly
   });
 
@@ -455,7 +451,7 @@ test.describe('Activity / Audit Log', () => {
     // Should show timestamps
     const timestamps = page.locator('text=/\\d{1,2}[:\\/]\\d{2}|ago|AM|PM/i');
     // Only check if entries exist
-    const count = await timestamps.count();
+    await timestamps.count();
     // Informational only
   });
 });

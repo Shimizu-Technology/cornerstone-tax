@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { FadeUp } from '../../components/ui/MotionComponents'
 import { api } from '../../lib/api'
 
@@ -44,7 +44,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState<'workflow' | 'time' | 'schedule' | 'services' | 'system'>('workflow')
   
   // System Settings state
-  const [_systemSettings, setSystemSettings] = useState<Record<string, string>>({})
+  const [, setSystemSettings] = useState<Record<string, string>>({})
   const [loadingSystemSettings, setLoadingSystemSettings] = useState(true)
   const [contactEmail, setContactEmail] = useState('')
   const [savingSystemSettings, setSavingSystemSettings] = useState(false)
@@ -149,9 +149,9 @@ export default function Settings() {
     fetchPresets()
     fetchServiceTypes()
     fetchSystemSettings()
-  }, [])
+  }, [fetchCategories, fetchPresets, fetchServiceTypes, fetchStages, fetchSystemSettings])
 
-  const fetchSystemSettings = async () => {
+  const fetchSystemSettings = useCallback(async () => {
     setLoadingSystemSettings(true)
     const response = await api.getSystemSettings()
     if (response.data) {
@@ -159,7 +159,7 @@ export default function Settings() {
       setContactEmail(response.data.contact_email || 'dmshimizucpa@gmail.com')
     }
     setLoadingSystemSettings(false)
-  }
+  }, [])
 
   const handleSaveSystemSettings = async () => {
     setSavingSystemSettings(true)
@@ -181,34 +181,34 @@ export default function Settings() {
     setSavingSystemSettings(false)
   }
 
-  const fetchStages = async () => {
+  const fetchStages = useCallback(async () => {
     setLoadingStages(true)
     const response = await api.getAdminWorkflowStages()
     if (response.data) {
       setStages(response.data.workflow_stages)
     }
     setLoadingStages(false)
-  }
+  }, [])
   
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     setLoadingCategories(true)
     const response = await api.getAdminTimeCategories()
     if (response.data) {
       setCategories(response.data.time_categories as unknown as AdminTimeCategoryLocal[])
     }
     setLoadingCategories(false)
-  }
+  }, [])
 
-  const fetchPresets = async () => {
+  const fetchPresets = useCallback(async () => {
     setLoadingPresets(true)
     const response = await api.getAdminScheduleTimePresets()
     if (response.data) {
       setPresets(response.data.presets as unknown as ScheduleTimePresetLocal[])
     }
     setLoadingPresets(false)
-  }
+  }, [])
 
-  const fetchServiceTypes = async () => {
+  const fetchServiceTypes = useCallback(async () => {
     setLoadingServiceTypes(true)
     const response = await api.getAdminServiceTypes()
     if (response.data) {
@@ -231,7 +231,7 @@ export default function Settings() {
       setServiceTypes(transformed)
     }
     setLoadingServiceTypes(false)
-  }
+  }, [])
 
   const generateSlug = (name: string) => {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
@@ -746,7 +746,7 @@ export default function Settings() {
                 ) : (
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-neutral-warm flex items-center justify-center flex-shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-neutral-warm flex items-center justify-center shrink-0">
                         <span className="text-text-muted font-semibold text-sm">{index + 1}</span>
                       </div>
                       <div className="min-w-0">
@@ -769,7 +769,7 @@ export default function Settings() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => startEditStage(stage)}
                         className="text-sm text-text-muted hover:text-primary px-3 py-2 rounded-lg hover:bg-neutral-warm transition-colors font-medium"
@@ -798,7 +798,7 @@ export default function Settings() {
                   <div key={stage.id} className="p-5 sm:p-6 bg-neutral-warm/20">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-4 min-w-0 opacity-60">
-                        <div className="w-8 h-8 rounded-lg bg-neutral-warm flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-neutral-warm flex items-center justify-center shrink-0">
                           <span className="text-text-muted/50 text-sm">—</span>
                         </div>
                         <div className="min-w-0">
@@ -908,7 +908,7 @@ export default function Settings() {
                         <p className="text-sm text-text-muted mt-1">{category.description}</p>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => startEditCategory(category)}
                         className="text-sm text-text-muted hover:text-primary px-3 py-2 rounded-lg hover:bg-neutral-warm transition-colors font-medium"
@@ -1181,7 +1181,7 @@ export default function Settings() {
                     className="flex items-center gap-3 text-left flex-1"
                   >
                     <div
-                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      className="w-4 h-4 rounded-full shrink-0"
                       style={{ backgroundColor: serviceType.color || '#6B7280' }}
                     />
                     <div className="flex-1">

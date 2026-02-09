@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { ServiceType, ClientServiceType } from '../../lib/api'
@@ -145,7 +145,7 @@ export default function ClientDetailPage() {
     loadServiceTypes()
   }, [])
 
-  const loadClient = async () => {
+  const loadClient = useCallback(async () => {
     if (!id) return
     setLoading(true)
     try {
@@ -156,16 +156,17 @@ export default function ClientDetailPage() {
         setError(result.error)
       }
     } catch (err) {
+      console.error('Failed to load client:', err)
       setError('Failed to load client')
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
 
   // Audit logs for this client (CST-7)
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
 
-  const loadAuditLogs = async () => {
+  const loadAuditLogs = useCallback(async () => {
     if (!id) return
     try {
       const result = await api.getAuditLogs({ client_id: parseInt(id), page: 1 })
@@ -175,12 +176,12 @@ export default function ClientDetailPage() {
     } catch (err) {
       console.error('Failed to load audit logs:', err)
     }
-  }
+  }, [id])
 
   useEffect(() => {
     loadClient()
     loadAuditLogs()
-  }, [id])
+  }, [loadAuditLogs, loadClient])
 
   const startEditingNotes = (tr: TaxReturn) => {
     setEditingNotesId(tr.id)
@@ -205,6 +206,7 @@ export default function ClientDetailPage() {
         alert('Failed to save notes: ' + result.error)
       }
     } catch (err) {
+      console.error('Failed to save notes:', err)
       alert('Failed to save notes')
     } finally {
       setSavingNotes(false)
@@ -260,6 +262,7 @@ export default function ClientDetailPage() {
         setSaveError(result.errors.join(', '))
       }
     } catch (err) {
+      console.error('Failed to save client changes:', err)
       setSaveError('Failed to save changes')
     } finally {
       setSaving(false)

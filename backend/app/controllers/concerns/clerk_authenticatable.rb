@@ -24,18 +24,11 @@ module ClerkAuthenticatable
       return
     end
 
-    # Extract user info from the token
-    clerk_id = decoded["sub"]
-    email = decoded["email"] || decoded["primary_email_address"]
-    first_name = decoded["first_name"]
-    last_name = decoded["last_name"]
-
-    # Find or create user
     @current_user = find_or_create_user(
-      clerk_id: clerk_id,
-      email: email,
-      first_name: first_name,
-      last_name: last_name
+      clerk_id: decoded["sub"],
+      email: decoded["email"] || decoded["primary_email_address"],
+      first_name: decoded["first_name"],
+      last_name: decoded["last_name"]
     )
 
     unless @current_user
@@ -112,16 +105,18 @@ module ClerkAuthenticatable
 
     # INVITE-ONLY: If user not found by clerk_id or email, they haven't been invited
     # Only exception: if there are NO users yet, create the first admin
-    if User.count.zero?
-      user_email = email.presence || "#{clerk_id}@placeholder.local"
-      new_user = User.create(
-        clerk_id: clerk_id,
-        email: user_email,
-        first_name: first_name,
-        last_name: last_name,
-        role: "admin"
-      )
-      return new_user if new_user.persisted?
+    User.transaction do
+      if User.lock.count.zero?
+        user_email = email.presence || "#{clerk_id}@placeholder.local"
+        new_user = User.create(
+          clerk_id: clerk_id,
+          email: user_email,
+          first_name: first_name,
+          last_name: last_name,
+          role: "admin"
+        )
+        return new_user if new_user.persisted?
+      end
     end
 
     # User not invited - return nil (will trigger access denied)

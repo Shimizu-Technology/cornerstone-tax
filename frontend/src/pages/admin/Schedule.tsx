@@ -235,6 +235,7 @@ export default function Schedule() {
       setShowModal(false)
       loadSchedules()
     } catch (err) {
+      console.error('Failed to save schedule:', err)
       setError('Failed to save schedule')
     } finally {
       setSaving(false)
@@ -251,6 +252,7 @@ export default function Schedule() {
       setShowModal(false)
       loadSchedules()
     } catch (err) {
+      console.error('Failed to delete schedule:', err)
       setError('Failed to delete schedule')
     }
   }
@@ -425,7 +427,7 @@ export default function Schedule() {
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                             {/* Employee info */}
                             <div className="flex items-center gap-3 sm:gap-4">
-                              <div className="w-10 h-10 sm:w-10 sm:h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+                              <div className="w-10 h-10 sm:w-10 sm:h-10 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
                                 <span className="font-semibold text-primary text-sm sm:text-base">
                                   {getUserDisplayName(user).charAt(0).toUpperCase()}
                                 </span>

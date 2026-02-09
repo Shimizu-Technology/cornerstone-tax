@@ -6,6 +6,7 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       # Authentication
+      get "auth/me", to: "auth#me"
       post "auth/me", to: "auth#me"
 
       # Intake form submission (public, no auth required)

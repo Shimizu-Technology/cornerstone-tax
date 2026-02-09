@@ -77,6 +77,7 @@ export default function Users() {
         fetchUsers()
       }
     } catch (err) {
+      console.error('Failed to invite user:', err)
       setError('Failed to invite user')
     } finally {
       setInviting(false)
@@ -92,6 +93,7 @@ export default function Users() {
         fetchUsers()
       }
     } catch (err) {
+      console.error('Failed to update role:', err)
       alert('Failed to update role')
     }
   }
@@ -109,6 +111,7 @@ export default function Users() {
         fetchUsers()
       }
     } catch (err) {
+      console.error('Failed to delete user:', err)
       alert('Failed to delete user')
     }
   }
