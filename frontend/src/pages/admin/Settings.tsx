@@ -143,14 +143,6 @@ export default function Settings() {
     { value: 'green', label: 'Green', hex: '#22C55E' },
   ]
 
-  useEffect(() => {
-    fetchStages()
-    fetchCategories()
-    fetchPresets()
-    fetchServiceTypes()
-    fetchSystemSettings()
-  }, [fetchCategories, fetchPresets, fetchServiceTypes, fetchStages, fetchSystemSettings])
-
   const fetchSystemSettings = useCallback(async () => {
     setLoadingSystemSettings(true)
     const response = await api.getSystemSettings()
@@ -232,6 +224,14 @@ export default function Settings() {
     }
     setLoadingServiceTypes(false)
   }, [])
+
+  useEffect(() => {
+    fetchStages()
+    fetchCategories()
+    fetchPresets()
+    fetchServiceTypes()
+    fetchSystemSettings()
+  }, [fetchCategories, fetchPresets, fetchServiceTypes, fetchStages, fetchSystemSettings])
 
   const generateSlug = (name: string) => {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
