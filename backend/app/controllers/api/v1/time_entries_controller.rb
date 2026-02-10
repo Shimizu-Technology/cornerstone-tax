@@ -151,8 +151,11 @@ module Api
         entry_info = "#{@time_entry.hours}h on #{@time_entry.work_date}"
         entry_id = @time_entry.id
 
-        OperationTask.where(linked_time_entry_id: @time_entry.id).update_all(linked_time_entry_id: nil)
-        @time_entry.destroy
+        # Wrap in transaction so unlink + destroy are atomic
+        ActiveRecord::Base.transaction do
+          OperationTask.where(linked_time_entry_id: @time_entry.id).update_all(linked_time_entry_id: nil)
+          @time_entry.destroy!
+        end
 
         # Log the audit event (use entry_id since record is deleted)
         AuditLog.create!(
