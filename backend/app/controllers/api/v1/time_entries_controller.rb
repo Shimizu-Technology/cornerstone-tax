@@ -259,6 +259,10 @@ module Api
           task.lock!
           task.update!(linked_time_entry_id: time_entry.id)
         end
+      rescue ActiveRecord::RecordNotUnique
+        # Another task is already linked to this time entry (unique index violation)
+        # This is a race condition - silently ignore as the link already exists
+        Rails.logger.warn("Unique constraint violation linking task #{task.id} to time_entry #{time_entry.id}")
       end
 
       def calculate_summary(entries)

@@ -78,7 +78,12 @@ module Api
       end
 
       def set_task
-        @task = OperationTemplateTask.find(params[:id])
+        # Admin-only controller (require_admin!), so admin can access any task
+        # Join through template to ensure task belongs to a valid, active template
+        @task = OperationTemplateTask
+          .joins(:operation_template)
+          .where(operation_templates: { is_active: true })
+          .find(params[:id])
       end
 
       def include_inactive?
