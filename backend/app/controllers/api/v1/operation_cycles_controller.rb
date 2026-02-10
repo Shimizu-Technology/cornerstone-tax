@@ -62,7 +62,9 @@ module Api
       end
 
       def set_cycle
-        # Join client to ensure cycle belongs to a valid client (defense in depth)
+        # Authorization: All staff can access all clients in this system (by design).
+        # Join through client ensures the cycle belongs to a valid, existing client.
+        # For tenant isolation in the future, add client-level permissions here.
         @cycle = OperationCycle
           .joins(:client)
           .includes(
