@@ -90,7 +90,7 @@ module Api
           :client,
           :operation_template_task,
           { linked_time_entry: :user },
-          operation_cycle: [ :operation_template ]
+          { operation_cycle: [:operation_template, { operation_tasks: :operation_template_task }] }
         ).ordered
 
         tasks = tasks.where(status: params[:status]) if params[:status].present?

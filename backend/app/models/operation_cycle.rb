@@ -9,7 +9,7 @@ class OperationCycle < ApplicationRecord
   belongs_to :client_operation_assignment, optional: true
   belongs_to :generated_by, class_name: "User", optional: true
 
-  has_many :operation_tasks, dependent: :destroy
+  has_many :operation_tasks, dependent: :destroy, inverse_of: :operation_cycle
 
   validates :period_start, :period_end, :cycle_label, presence: true
   validates :status, inclusion: { in: STATUSES }

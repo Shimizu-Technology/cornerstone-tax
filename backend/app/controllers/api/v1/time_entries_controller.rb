@@ -249,9 +249,13 @@ module Api
           return
         end
 
-        old_task = OperationTask.find_by(linked_time_entry_id: time_entry.id)
-        old_task.update(linked_time_entry_id: nil) if old_task && old_task.id != task.id
-        task.update(linked_time_entry_id: time_entry.id)
+        # Wrap in transaction with row locking to prevent race conditions
+        ActiveRecord::Base.transaction do
+          old_task = OperationTask.lock.find_by(linked_time_entry_id: time_entry.id)
+          old_task.update!(linked_time_entry_id: nil) if old_task && old_task.id != task.id
+          task.lock!
+          task.update!(linked_time_entry_id: time_entry.id)
+        end
       end
 
       def calculate_summary(entries)

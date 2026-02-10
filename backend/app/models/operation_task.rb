@@ -3,7 +3,7 @@
 class OperationTask < ApplicationRecord
   STATUSES = %w[not_started in_progress blocked done].freeze
 
-  belongs_to :operation_cycle
+  belongs_to :operation_cycle, inverse_of: :operation_tasks
   belongs_to :operation_template_task
   belongs_to :client
   belongs_to :assigned_to, class_name: "User", optional: true
