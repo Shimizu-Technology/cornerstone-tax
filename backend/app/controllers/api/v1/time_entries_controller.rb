@@ -3,9 +3,15 @@
 module Api
   module V1
     class TimeEntriesController < BaseController
+      class LinkConflictError < StandardError; end
+
       before_action :authenticate_user!
       before_action :require_staff!
       before_action :set_time_entry, only: [ :show, :update, :destroy ]
+
+      rescue_from LinkConflictError do |e|
+        render json: { error: e.message }, status: :conflict
+      end
 
       # GET /api/v1/time_entries
       def index
@@ -259,10 +265,10 @@ module Api
           task.lock!
           task.update!(linked_time_entry_id: time_entry.id)
         end
-      rescue ActiveRecord::RecordNotUnique
+      rescue ActiveRecord::RecordNotUnique => e
         # Another task is already linked to this time entry (unique index violation)
-        # This is a race condition - silently ignore as the link already exists
         Rails.logger.warn("Unique constraint violation linking task #{task.id} to time_entry #{time_entry.id}")
+        raise LinkConflictError, "This time entry is already linked to another task"
       end
 
       def calculate_summary(entries)

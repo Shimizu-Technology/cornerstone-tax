@@ -151,6 +151,9 @@ export default function AdminLayout() {
         }
       } catch (error) {
         console.error('Failed to fetch current user:', error)
+        // On API failure, show all nav items (route guards will enforce access)
+        // This prevents hiding admin items due to transient network issues
+        setIsAdmin(true)
       } finally {
         setIsLoadingUser(false)
       }

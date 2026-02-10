@@ -7,6 +7,9 @@ module Api
       # Returns the current authenticated user
       # Used by frontend to verify authentication and get user info
       # Handles linking invited users via email from Clerk
+      #
+      # Note: find_or_create_user is inherited from BaseController via ClerkAuthenticatable concern
+      # Note: Email can be passed via query param (GET ?email=) or body (POST {email: ...})
       
       # Skip the standard authenticate_user! - we handle it custom here
       skip_before_action :authenticate_user!, only: [:me], raise: false
