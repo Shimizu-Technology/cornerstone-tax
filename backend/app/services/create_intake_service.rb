@@ -134,7 +134,7 @@ class CreateIntakeService
 
   # CST-37: Send email notification to admin about new intake
   def notify_admin
-    IntakeMailer.intake_submitted_email(client: @client, tax_return: @tax_return)
+    IntakeMailer.intake_submitted_email(client: @client, tax_return: @tax_return).deliver_later
   rescue StandardError => e
     # Don't fail the intake if email fails - just log it
     Rails.logger.error "Failed to send intake notification email: #{e.message}"

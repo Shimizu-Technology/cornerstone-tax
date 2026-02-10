@@ -80,6 +80,7 @@ class TimeEntry < ApplicationRecord
   # If service_task is selected, it must belong to the selected service_type
   def service_task_matches_service_type
     return unless service_task_id.present? && service_type_id.present?
+    return unless service_task # Guard against invalid service_task_id
 
     unless service_task.service_type_id == service_type_id
       errors.add(:service_task, "must belong to the selected service type")

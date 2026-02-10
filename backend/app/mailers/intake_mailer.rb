@@ -32,7 +32,7 @@ class IntakeMailer < ApplicationMailer
           <td style="padding: 10px 0; border-bottom: 1px solid #e5e5e5;">
             <strong style="color: #888888; font-size: 14px;">Dependents:</strong>
             <p style="color: #2d2a26; font-size: 16px; margin: 5px 0 0 0;">
-              #{@client.dependents.map(&:name).join(", ")}
+              #{@client.dependents.map { |d| CGI.escapeHTML(d.name.to_s) }.join(", ")}
             </p>
           </td>
         </tr>
@@ -151,7 +151,7 @@ class IntakeMailer < ApplicationMailer
         <td style="padding: 10px 0; border-bottom: 1px solid #e5e5e5;">
           <strong style="color: #888888; font-size: 14px;">Phone:</strong>
           <p style="color: #2d2a26; font-size: 16px; margin: 5px 0 0 0;">
-            <a href="tel:#{@client.phone}" style="color: #8b7355; text-decoration: none;">#{CGI.escapeHTML(@client.phone)}</a>
+            <a href="tel:#{CGI.escapeHTML(@client.phone.to_s)}" style="color: #8b7355; text-decoration: none;">#{CGI.escapeHTML(@client.phone.to_s)}</a>
           </p>
         </td>
       </tr>

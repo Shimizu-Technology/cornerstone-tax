@@ -65,7 +65,7 @@ module Api
         @cycle = OperationCycle.includes(
           :operation_template,
           :generated_by,
-          operation_tasks: [ :assigned_to, :completed_by, :client, { linked_time_entry: :user } ]
+          operation_tasks: [ :assigned_to, :completed_by, :client, :operation_template_task, { linked_time_entry: :user } ]
         ).find(params[:id])
       end
 
