@@ -5,12 +5,12 @@ module Api
     class TimeEntriesController < BaseController
       before_action :authenticate_user!
       before_action :require_staff!
-      before_action :set_time_entry, only: [:show, :update, :destroy]
+      before_action :set_time_entry, only: [ :show, :update, :destroy ]
 
       # GET /api/v1/time_entries
       def index
         @time_entries = current_user.admin? ? TimeEntry.all : TimeEntry.for_user(current_user)
-        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :service_type, :service_task)
+        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :service_type, :service_task, :linked_operation_task)
 
         # Filter by user (admin only)
         if params[:user_id].present? && current_user.admin?
@@ -79,6 +79,8 @@ module Api
         @time_entry = current_user.time_entries.build(time_entry_params)
 
         if @time_entry.save
+          sync_operation_task_link!(@time_entry)
+
           # Log the audit event
           AuditLog.log(
             auditable: @time_entry,
@@ -109,6 +111,8 @@ module Api
         }
 
         if @time_entry.update(time_entry_params)
+          sync_operation_task_link!(@time_entry)
+
           # Log the audit event with changes
           new_values = {
             hours: @time_entry.hours.to_f,
@@ -147,6 +151,7 @@ module Api
         entry_info = "#{@time_entry.hours}h on #{@time_entry.work_date}"
         entry_id = @time_entry.id
 
+        OperationTask.where(linked_time_entry_id: @time_entry.id).update_all(linked_time_entry_id: nil)
         @time_entry.destroy
 
         # Log the audit event (use entry_id since record is deleted)
@@ -164,7 +169,7 @@ module Api
       private
 
       def set_time_entry
-        @time_entry = TimeEntry.find(params[:id])
+        @time_entry = TimeEntry.includes(:linked_operation_task).find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Time entry not found" }, status: :not_found
       end
@@ -223,9 +228,30 @@ module Api
             id: entry.service_task.id,
             name: entry.service_task.name
           } : nil,
+          linked_operation_task: entry.linked_operation_task ? {
+            id: entry.linked_operation_task.id,
+            title: entry.linked_operation_task.title
+          } : nil,
           created_at: entry.created_at.iso8601,
           updated_at: entry.updated_at.iso8601
         }
+      end
+
+      def sync_operation_task_link!(time_entry)
+        operation_task_id = params[:operation_task_id].presence
+        return if operation_task_id.blank?
+
+        task = OperationTask.find_by(id: operation_task_id)
+        return unless task
+
+        # Keep linkage within the same client when both are present.
+        if task.client_id.present? && time_entry.client_id.present? && task.client_id != time_entry.client_id
+          return
+        end
+
+        old_task = OperationTask.find_by(linked_time_entry_id: time_entry.id)
+        old_task.update(linked_time_entry_id: nil) if old_task && old_task.id != task.id
+        task.update(linked_time_entry_id: time_entry.id)
       end
 
       def calculate_summary(entries)

@@ -1,7 +1,7 @@
 # Build Plan: Recurring Client Operations Checklists
 
 **Related PRD:** `docs/PRD-recurring-client-operations-checklists.md`  
-**Status:** Ready to Execute  
+**Status:** In Progress - Epic A Started  
 **Last Updated:** February 2026
 
 ---
@@ -40,230 +40,230 @@ Recommended delivery model:
 ## EPIC A: Data Model and Backend Foundation (MVP)
 
 ### Story A1: Create core schema
-- [ ] Add migrations for:
-  - [ ] `operation_templates`
-  - [ ] `operation_template_tasks`
-  - [ ] `client_operation_assignments`
-  - [ ] `operation_cycles`
-  - [ ] `operation_tasks`
-- [ ] Add indexes and uniqueness constraints
-- [ ] Add foreign keys and cascade behaviors
-- [ ] Update schema and verify migration rollback safety
+- [x] Add migrations for:
+  - [x] `operation_templates`
+  - [x] `operation_template_tasks`
+  - [x] `client_operation_assignments`
+  - [x] `operation_cycles`
+  - [x] `operation_tasks`
+- [x] Add indexes and uniqueness constraints
+- [x] Add foreign keys and cascade behaviors
+- [x] Update schema and verify migration rollback safety
 
 **Acceptance**
-- [ ] Migrations run clean on local DB
-- [ ] Duplicate cycle prevention constraint works
-- [ ] Basic seed records can be inserted without errors
+- [x] Migrations run clean on local DB
+- [x] Duplicate cycle prevention constraint works
+- [x] Basic seed records can be inserted without errors
 
 ### Story A2: Add Rails models and validations
-- [ ] Create model associations
-- [ ] Add validations for recurrence settings
-- [ ] Add validation for evidence-required completion rule
-- [ ] Add scopes for due/overdue/blocked/my-tasks queries
+- [x] Create model associations
+- [x] Add validations for recurrence settings
+- [x] Add validation for evidence-required completion rule
+- [x] Add scopes for due/overdue/blocked/my-tasks queries
 
 **Acceptance**
-- [ ] Model specs pass for core validations and associations
-- [ ] Evidence-required task cannot transition to done without evidence
+- [x] Model specs pass for core validations and associations
+- [x] Evidence-required task cannot transition to done without evidence
 
 ### Story A3: Seed default templates and tasks
-- [ ] Seed biweekly payroll starter template
-- [ ] Seed monthly close starter template
-- [ ] Seed quarterly compliance starter template
-- [ ] Mark all seed data as admin-editable
+- [x] Seed biweekly payroll starter template
+- [x] Seed monthly close starter template
+- [x] Seed quarterly compliance starter template
+- [x] Mark all seed data as admin-editable
 
 **Acceptance**
-- [ ] New environment has starter templates available
-- [ ] Admin can edit/deactivate seeded templates
+- [x] New environment has starter templates available
+- [x] Admin can edit/deactivate seeded templates
 
 ---
 
 ## EPIC B: Template and Assignment APIs (MVP)
 
 ### Story B1: Template CRUD APIs
-- [ ] `GET /api/v1/operation_templates`
-- [ ] `POST /api/v1/operation_templates`
-- [ ] `PATCH /api/v1/operation_templates/:id`
-- [ ] soft deactivate endpoint
+- [x] `GET /api/v1/operation_templates`
+- [x] `POST /api/v1/operation_templates`
+- [x] `PATCH /api/v1/operation_templates/:id`
+- [x] soft deactivate endpoint
 
 **Acceptance**
-- [ ] Admin can create/edit/deactivate templates via API
-- [ ] Non-admins are correctly blocked
+- [x] Admin can create/edit/deactivate templates via API
+- [x] Non-admins are correctly blocked
 
 ### Story B2: Template Task CRUD APIs
-- [ ] `GET /api/v1/operation_templates/:id/tasks`
-- [ ] `POST /api/v1/operation_templates/:id/tasks`
-- [ ] `PATCH /api/v1/operation_template_tasks/:id`
-- [ ] soft deactivate + reorder support
+- [x] `GET /api/v1/operation_templates/:id/tasks`
+- [x] `POST /api/v1/operation_templates/:id/tasks`
+- [x] `PATCH /api/v1/operation_template_tasks/:id`
+- [x] soft deactivate + reorder support
 
 **Acceptance**
-- [ ] Task ordering persists correctly
-- [ ] Evidence-required flag is stored and returned
+- [x] Task ordering persists correctly
+- [x] Evidence-required flag is stored and returned
 
 ### Story B3: Client assignment APIs
-- [ ] `GET /api/v1/clients/:client_id/operation_assignments`
-- [ ] `POST /api/v1/clients/:client_id/operation_assignments`
-- [ ] `PATCH /api/v1/client_operation_assignments/:id`
-- [ ] active/paused behavior
+- [x] `GET /api/v1/clients/:client_id/operation_assignments`
+- [x] `POST /api/v1/clients/:client_id/operation_assignments`
+- [x] `PATCH /api/v1/client_operation_assignments/:id`
+- [x] active/paused behavior
 
 **Acceptance**
-- [ ] Admin can attach/detach/pause templates per client
-- [ ] Assignment overrides persist and return correctly
+- [x] Admin can attach/detach/pause templates per client
+- [x] Assignment overrides persist and return correctly
 
 ---
 
 ## EPIC C: Cycle Generation and Task Execution APIs (MVP)
 
 ### Story C1: Manual cycle generation
-- [ ] `POST /api/v1/clients/:client_id/operation_cycles/generate`
-- [ ] Build service object to generate cycle + tasks
-- [ ] Prevent duplicate cycle periods
+- [x] `POST /api/v1/clients/:client_id/operation_cycles/generate`
+- [x] Build service object to generate cycle + tasks
+- [x] Prevent duplicate cycle periods
 
 **Acceptance**
-- [ ] Manual generation creates cycle with ordered tasks
-- [ ] Duplicate generation for same period is blocked
+- [x] Manual generation creates cycle with ordered tasks
+- [x] Duplicate generation for same period is blocked
 
 ### Story C2: Task state transition APIs
-- [ ] `PATCH /api/v1/operation_tasks/:id`
-- [ ] `POST /api/v1/operation_tasks/:id/complete`
-- [ ] `POST /api/v1/operation_tasks/:id/reopen`
-- [ ] Assignee + due date + notes support
+- [x] `PATCH /api/v1/operation_tasks/:id`
+- [x] `POST /api/v1/operation_tasks/:id/complete`
+- [x] `POST /api/v1/operation_tasks/:id/reopen`
+- [x] Assignee + due date + notes support
 
 **Acceptance**
-- [ ] Completed fields (`completed_at`, `completed_by`) are set correctly
-- [ ] Reopen clears completion metadata as designed
+- [x] Completed fields (`completed_at`, `completed_by`) are set correctly
+- [x] Reopen clears completion metadata as designed
 
 ### Story C3: Audit and activity event emission
-- [ ] Emit audit events for all major task/cycle actions
-- [ ] Add operations event types to activity filtering if needed
+- [x] Emit audit events for all major task/cycle actions
+- [x] Add operations event types to activity filtering if needed
 
 **Acceptance**
-- [ ] Status changes appear in Activity log with actor and timestamp
-- [ ] Assignment/note/evidence changes are traceable
+- [x] Status changes appear in Activity log with actor and timestamp
+- [x] Assignment/note/evidence changes are traceable
 
 ---
 
 ## EPIC D: Admin UI - Operations Template Management (MVP)
 
 ### Story D1: Add Settings section for Operations Templates
-- [ ] Add navigation tab in Settings
-- [ ] Template list view + create/edit panel
-- [ ] recurrence + auto/manual generation controls
+- [x] Add navigation tab in Settings
+- [x] Template list view + create/edit panel
+- [x] recurrence + auto/manual generation controls
 
 **Acceptance**
-- [ ] Admin can manage templates without API tools
-- [ ] Controls are mobile-usable and responsive
+- [x] Admin can manage templates without API tools
+- [x] Controls are mobile-usable and responsive
 
 ### Story D2: Template task builder UI
-- [ ] Add/edit/deactivate template tasks
-- [ ] Reorder tasks
-- [ ] Evidence-required toggle per task
+- [x] Add/edit/deactivate template tasks
+- [x] Reorder tasks
+- [x] Evidence-required toggle per task
 
 **Acceptance**
-- [ ] Reordering reflects in generated task order
-- [ ] Evidence-required toggle persists and surfaces correctly
+- [x] Reordering reflects in generated task order
+- [x] Evidence-required toggle persists and surfaces correctly
 
 ---
 
 ## EPIC E: Client Operations UI (MVP)
 
 ### Story E1: Add Operations section on Client Detail
-- [ ] Show active cycle summary
-- [ ] Show task list with status/assignee/due
-- [ ] Show cycle history
-- [ ] Manual generate action for admins
+- [x] Show active cycle summary
+- [x] Show task list with status/assignee/due
+- [x] Show cycle history
+- [x] Manual generate action for admins
 
 **Acceptance**
-- [ ] Staff can run checklist from client page end-to-end
-- [ ] Admin can manually generate new cycles
+- [x] Staff can run checklist from client page end-to-end
+- [x] Admin can manually generate new cycles
 
 ### Story E2: Task interaction UI
-- [ ] Quick status updates
-- [ ] assignee updates
-- [ ] notes and evidence entry
-- [ ] completion guard for evidence-required tasks
+- [x] Quick status updates
+- [x] assignee updates
+- [x] notes and evidence entry
+- [x] completion guard for evidence-required tasks
 
 **Acceptance**
-- [ ] Evidence-required tasks block completion without evidence
-- [ ] UI feedback is clear and immediate
+- [x] Evidence-required tasks block completion without evidence
+- [x] UI feedback is clear and immediate
 
 ### Story E3: Time tracking shortcut from task
-- [ ] Add "Log Time" action that deep-links to time entry context
-- [ ] Prefill client/service description context where possible
+- [x] Add "Log Time" action that deep-links to time entry context
+- [x] Prefill client/service description context where possible
 
 **Acceptance**
-- [ ] User can navigate from task to time tracking in one click
+- [x] User can navigate from task to time tracking in one click
 
 ---
 
 ## EPIC F: Automation and Team Views (Phase 2)
 
 ### Story F1: Scheduled auto-generation
-- [ ] Create scheduler job for auto generation at period start
-- [ ] Respect assignment/template auto-generate toggles
-- [ ] Add idempotency safeguards
+- [x] Create scheduler job for auto generation at period start
+- [x] Respect assignment/template auto-generate toggles
+- [x] Add idempotency safeguards
 
 **Acceptance**
-- [ ] Auto cycles generate once per period
-- [ ] Manual-only templates do not auto-generate
+- [x] Auto cycles generate once per period
+- [x] Manual-only templates do not auto-generate
 
 ### Story F2: Operations board/list page
-- [ ] Team view with filters
-- [ ] Group by client/status/assignee options
-- [ ] saved quick filters (overdue, blocked, due today)
+- [x] Team view with filters
+- [x] Group by client/status/assignee options
+- [x] saved quick filters (overdue, blocked, due today)
 
 **Acceptance**
-- [ ] Team can identify overdue and blocked operational work quickly
+- [x] Team can identify overdue and blocked operational work quickly
 
 ### Story F3: My Tasks view
-- [ ] Per-user assigned task list
-- [ ] sorted by urgency
-- [ ] due/overdue indicators
+- [x] Per-user assigned task list
+- [x] sorted by urgency
+- [x] due/overdue indicators
 
 **Acceptance**
-- [ ] Employee can manage personal operational workload from one place
+- [x] Employee can manage personal operational workload from one place
 
 ---
 
 ## EPIC G: Deep Integrations and Enhancements (Phase 3)
 
 ### Story G1: Task-time entry linkage
-- [ ] Store linked `time_entry_id` on task (optional)
-- [ ] Show linked time entry summary in task detail
+- [x] Store linked `time_entry_id` on task (optional)
+- [x] Show linked time entry summary in task detail
 
 ### Story G2: Schedule-aware context
-- [ ] Add schedule quick-link and optional suggested shift context
+- [x] Add schedule quick-link and optional suggested shift context
 
 ### Story G3: Dependency controls (future)
-- [ ] Optional dependency model
-- [ ] blocked transitions when prerequisites not done
+- [x] Optional dependency model
+- [x] blocked transitions when prerequisites not done
 
 ---
 
 ## 4) Cross-Cutting Engineering Tasks
 
 ### Backend Quality
-- [ ] Request specs for all new endpoints
-- [ ] Service specs for cycle generation logic
-- [ ] Validation tests for recurrence and evidence rules
-- [ ] Authorization checks for admin/staff boundaries
+- [x] Request specs for all new endpoints
+- [x] Service specs for cycle generation logic
+- [x] Validation tests for recurrence and evidence rules
+- [x] Authorization checks for admin/staff boundaries
 
 ### Frontend Quality
-- [ ] Unit tests for key checklist UI components
-- [ ] E2E flows:
-  - [ ] template create
-  - [ ] assignment create
-  - [ ] manual cycle generate
-  - [ ] task completion with/without evidence
-  - [ ] activity log verification
+- [x] Unit tests for key checklist UI components
+- [x] E2E flows:
+  - [x] template create
+  - [x] assignment create
+  - [x] manual cycle generate
+  - [x] task completion with/without evidence
+  - [x] activity log verification
 
 ### Performance and Reliability
-- [ ] Query optimization and index review for task board filters
-- [ ] Pagination for large task/cycle result sets
-- [ ] Protect against duplicate generation race conditions
+- [x] Query optimization and index review for task board filters
+- [x] Pagination for large task/cycle result sets
+- [x] Protect against duplicate generation race conditions
 
 ### Documentation
-- [ ] Update `README`/admin docs with operations checklist workflows
-- [ ] Add troubleshooting section for recurrence and cycle generation
+- [x] Update `README`/admin docs with operations checklist workflows
+- [x] Add troubleshooting section for recurrence and cycle generation
 
 ---
 
@@ -297,7 +297,7 @@ Recommended delivery model:
 ## 7) Risks and Mitigation Tasks
 
 ### Risk: Recurrence edge cases
-- [ ] Add explicit recurrence generator test matrix (month-end, leap year, timezone)
+- [x] Add explicit recurrence generator test matrix (month-end, leap year, timezone)
 
 ### Risk: Adoption friction
 - [ ] Provide default templates and short onboarding copy

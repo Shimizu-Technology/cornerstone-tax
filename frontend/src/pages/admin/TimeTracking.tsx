@@ -50,6 +50,10 @@ interface TimeEntryItem {
     id: number
     name: string
   } | null
+  linked_operation_task: {
+    id: number
+    title: string
+  } | null
   created_at: string
   updated_at: string
 }
@@ -207,6 +211,7 @@ export default function TimeTracking() {
   // Modal state
   const [showModal, setShowModal] = useState(false)
   const [editingEntry, setEditingEntry] = useState<TimeEntryItem | null>(null)
+  const [linkedOperationTaskId, setLinkedOperationTaskId] = useState<number | null>(null)
   const [formData, setFormData] = useState({
     work_date: formatDateISO(new Date()),
     start_time: '08:00',
@@ -376,30 +381,50 @@ export default function TimeTracking() {
   // Handle prefill from schedule
   useEffect(() => {
     const prefill = searchParams.get('prefill')
-    if (prefill === 'true') {
+    if (prefill !== 'true') return
+
+    const applyPrefill = async () => {
       const date = searchParams.get('date') || formatDateISO(new Date())
-      const startTime = searchParams.get('start_time') || '08:00'
-      const endTime = searchParams.get('end_time') || '17:00'
+      let startTime = searchParams.get('start_time')
+      let endTime = searchParams.get('end_time')
       const notes = searchParams.get('notes') || ''
-      
-      // Open modal with pre-filled data
+      const clientId = searchParams.get('client_id') || ''
+      const serviceTypeId = searchParams.get('service_type_id') || ''
+      const serviceTaskId = searchParams.get('service_task_id') || ''
+      const operationTaskId = searchParams.get('operation_task_id')
+
+      // If time wasn't provided, optionally suggest from today's schedule.
+      if (!startTime || !endTime) {
+        try {
+          const scheduleResult = await api.getMySchedule()
+          const todaySchedule = scheduleResult.data?.schedules?.find(s => s.work_date === date)
+          if (todaySchedule) {
+            startTime = startTime || todaySchedule.start_time
+            endTime = endTime || todaySchedule.end_time
+          }
+        } catch {
+          // Non-blocking; keep default times if schedule lookup fails.
+        }
+      }
+
       setEditingEntry(null)
+      setLinkedOperationTaskId(operationTaskId ? parseInt(operationTaskId) : null)
       setFormData({
         work_date: date,
-        start_time: startTime,
-        end_time: endTime,
+        start_time: startTime || '08:00',
+        end_time: endTime || '17:00',
         description: notes,
         time_category_id: '',
-        client_id: '',
-        service_type_id: '',
-        service_task_id: '',
+        client_id: clientId,
+        service_type_id: serviceTypeId,
+        service_task_id: serviceTaskId,
         break_minutes: null
       })
       setShowModal(true)
-      
-      // Clear the URL params
       setSearchParams({})
     }
+
+    void applyPrefill()
   }, [searchParams, setSearchParams])
 
   // Navigation
@@ -428,6 +453,7 @@ export default function TimeTracking() {
   // Modal handlers
   const openNewEntry = (date?: Date, prefillStart?: string, prefillEnd?: string, prefillNotes?: string) => {
     setEditingEntry(null)
+    setLinkedOperationTaskId(null)
     setFormData({
       work_date: formatDateISO(date || currentDate),
       start_time: prefillStart || '08:00',
@@ -444,6 +470,7 @@ export default function TimeTracking() {
 
   const openEditEntry = (entry: TimeEntryItem) => {
     setEditingEntry(entry)
+    setLinkedOperationTaskId(entry.linked_operation_task?.id || null)
     setFormData({
       work_date: entry.work_date,
       start_time: entry.start_time || '08:00',
@@ -473,7 +500,8 @@ export default function TimeTracking() {
         client_id: formData.client_id ? parseInt(formData.client_id) : undefined,
         service_type_id: formData.service_type_id ? parseInt(formData.service_type_id) : undefined,
         service_task_id: formData.service_task_id ? parseInt(formData.service_task_id) : undefined,
-        break_minutes: formData.break_minutes
+        break_minutes: formData.break_minutes,
+        operation_task_id: linkedOperationTaskId || undefined
       }
 
       if (editingEntry) {
@@ -912,6 +940,7 @@ export default function TimeTracking() {
                       <div
                         key={entry.id}
                         className="mb-1 sm:mb-2 p-1 sm:p-2 bg-white border border-neutral-warm rounded text-xs cursor-pointer hover:bg-neutral-warm/50 transition-colors shadow-sm"
+                        aria-label={`Edit time entry ${entry.id}`}
                         onClick={() => openEditEntry(entry)}
                       >
                         <div className="font-bold text-primary-dark flex items-center gap-1">
@@ -1028,6 +1057,7 @@ export default function TimeTracking() {
                       {canEditEntry(entry) && (
                         <button
                           onClick={() => openEditEntry(entry)}
+                          aria-label={`Edit time entry ${entry.id}`}
                           className="p-2 text-primary-dark hover:text-primary hover:bg-neutral-warm rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                         >
                           <EditIcon />
@@ -1036,6 +1066,7 @@ export default function TimeTracking() {
                       {canDeleteEntry(entry) && (
                         <button
                           onClick={() => handleDelete(entry)}
+                          aria-label={`Delete time entry ${entry.id}`}
                           className="p-2 text-primary-dark hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                         >
                           <TrashIcon />
@@ -1074,6 +1105,11 @@ export default function TimeTracking() {
               <h2 className="text-xl font-bold text-primary-dark mb-4">
                 {editingEntry ? 'Edit Time Entry' : 'Log Time'}
               </h2>
+              {linkedOperationTaskId && (
+                <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-4">
+                  Linked to operations task #{linkedOperationTaskId}
+                </p>
+              )}
               
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Date */}
@@ -1270,6 +1306,7 @@ export default function TimeTracking() {
                   {editingEntry && canDeleteEntry(editingEntry) && (
                     <button
                       type="button"
+                      aria-label={`Delete time entry ${editingEntry.id}`}
                       onClick={async () => {
                         const deleted = await handleDelete(editingEntry)
                         if (deleted) setShowModal(false)

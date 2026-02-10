@@ -11,6 +11,11 @@ class User < ApplicationRecord
   has_many :created_schedules, class_name: "Schedule", foreign_key: "created_by_id", dependent: :nullify
   has_many :uploaded_documents, class_name: "Document", foreign_key: "uploaded_by_id", dependent: :nullify
   has_many :created_transmittals, class_name: "Transmittal", foreign_key: "created_by_id", dependent: :nullify
+  has_many :created_operation_templates, class_name: "OperationTemplate", foreign_key: "created_by_id", dependent: :nullify
+  has_many :created_client_operation_assignments, class_name: "ClientOperationAssignment", foreign_key: "created_by_id", dependent: :nullify
+  has_many :generated_operation_cycles, class_name: "OperationCycle", foreign_key: "generated_by_id", dependent: :nullify
+  has_many :assigned_operation_tasks, class_name: "OperationTask", foreign_key: "assigned_to_id", dependent: :nullify
+  has_many :completed_operation_tasks, class_name: "OperationTask", foreign_key: "completed_by_id", dependent: :nullify
 
   validates :clerk_id, presence: true, uniqueness: true
   validates :email, presence: true

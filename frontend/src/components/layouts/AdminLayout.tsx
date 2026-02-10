@@ -21,6 +21,7 @@ const navigation: NavItem[] = [
   { name: 'Clients', href: '/admin/clients', icon: UsersIcon },
   { name: 'Tax Returns', href: '/admin/returns', icon: DocumentIcon },
   { name: 'Activity', href: '/admin/activity', icon: ActivityIcon },
+  { name: 'Operations', href: '/admin/operations', icon: ChecklistIcon },
   { name: 'Time Tracking', href: '/admin/time', icon: ClockIcon },
   { name: 'Schedule', href: '/admin/schedule', icon: CalendarIcon },
   { name: 'Users', href: '/admin/users', icon: TeamIcon, adminOnly: true },
@@ -88,6 +89,14 @@ function SettingsIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  )
+}
+
+function ChecklistIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5h11M9 12h11M9 19h11M5 5l1.5 1.5L8 5m-3 7l1.5 1.5L8 12m-3 7l1.5 1.5L8 19" />
     </svg>
   )
 }
@@ -163,7 +172,7 @@ export default function AdminLayout() {
     <div className="min-h-screen bg-secondary">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:shadow-lg focus:rounded focus:outline-none"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-100 focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:shadow-lg focus:rounded focus:outline-none"
       >
         Skip to main content
       </a>
@@ -233,8 +242,8 @@ export default function AdminLayout() {
 
       {/* Desktop sidebar */}
       <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-72 lg:flex-col">
-        <div className="flex flex-col flex-grow bg-white border-r border-secondary-dark pt-4 pb-4 overflow-y-auto">
-          <div className="flex items-center justify-center flex-shrink-0 px-4 pb-4 border-b border-secondary-dark mb-2">
+        <div className="flex flex-col grow bg-white border-r border-secondary-dark pt-4 pb-4 overflow-y-auto">
+          <div className="flex items-center justify-center shrink-0 px-4 pb-4 border-b border-secondary-dark mb-2">
             <Link to="/" className="flex items-center justify-center">
               <img 
                 src="/logo.jpeg" 

@@ -149,7 +149,8 @@ Creates default workflow stages and time categories.
 
 ## Documentation
 
-- `PRD.md` - Full product requirements and specifications
-- `BUILD_PLAN.md` - Development phases with progress tracking
-- `FUTURE_IMPROVEMENTS.md` - Planned features and enhancements
+- `docs/PRD-recurring-client-operations-checklists.md` - Product requirements for recurring operations checklists
+- `docs/BUILD_PLAN-recurring-client-operations-checklists.md` - Build phases and completion tracking
+- `docs/OPERATIONS_CHECKLISTS_ADMIN_GUIDE.md` - Admin workflow + troubleshooting for recurrence and cycle generation
+- `docs/TESTING_GUIDE.md` - Testing and verification guidance
 - `.cursor/rules/` - AI assistant context rules

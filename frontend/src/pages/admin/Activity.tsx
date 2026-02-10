@@ -120,6 +120,11 @@ const AUDITABLE_TYPE_LABELS: Record<string, string> = {
   Client: 'Client',
   TaxReturn: 'Tax Return',
   User: 'User',
+  OperationTemplate: 'Operations Template',
+  OperationTemplateTask: 'Operations Template Task',
+  ClientOperationAssignment: 'Operations Assignment',
+  OperationCycle: 'Operations Cycle',
+  OperationTask: 'Operations Task',
 }
 
 export default function Activity() {
@@ -134,6 +139,7 @@ export default function Activity() {
   type ActivitySource = 'all' | 'workflow' | 'audit'
   const [activitySource, setActivitySource] = useState<ActivitySource>('all')
   const [eventTypeFilter, setEventTypeFilter] = useState('')
+  const [auditTypeFilter, setAuditTypeFilter] = useState('')
   const [userFilter, setUserFilter] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -175,6 +181,7 @@ export default function Activity() {
           // For 'all' mode, always fetch page 1 with more items; for audit-only, paginate normally
           page: activitySource === 'all' ? 1 : currentPage,
           per_page: activitySource === 'all' ? 50 : 25,
+          auditable_type: auditTypeFilter || undefined,
           user_id: userFilter ? parseInt(userFilter) : undefined,
           start_date: startDate || undefined,
           end_date: endDate || undefined,
@@ -212,7 +219,7 @@ export default function Activity() {
     } finally {
       setLoading(false)
     }
-  }, [currentPage, activitySource, eventTypeFilter, userFilter, startDate, endDate])
+  }, [currentPage, activitySource, eventTypeFilter, auditTypeFilter, userFilter, startDate, endDate])
 
   useEffect(() => {
     fetchActivities()
@@ -250,19 +257,20 @@ export default function Activity() {
   const clearFilters = () => {
     setActivitySource('all')
     setEventTypeFilter('')
+    setAuditTypeFilter('')
     setUserFilter('')
     setStartDate('')
     setEndDate('')
     setCurrentPage(1)
   }
 
-  const hasFilters = activitySource !== 'all' || eventTypeFilter || userFilter || startDate || endDate
+  const hasFilters = activitySource !== 'all' || eventTypeFilter || auditTypeFilter || userFilter || startDate || endDate
 
   // Render a workflow event
   const renderWorkflowEvent = (event: WorkflowEventItem) => (
     <div className="flex items-start gap-4">
       {/* Event Icon */}
-      <div className="flex-shrink-0 hidden sm:block">
+      <div className="shrink-0 hidden sm:block">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${EVENT_TYPE_COLORS[event.event_type] || 'bg-gray-100'}`}>
           {EVENT_TYPE_ICONS[event.event_type] || '📌'}
         </div>
@@ -352,7 +360,7 @@ export default function Activity() {
   const renderAuditLog = (log: AuditLogItem) => (
     <div className="flex items-start gap-4">
       {/* Audit Icon */}
-      <div className="flex-shrink-0 hidden sm:block">
+      <div className="shrink-0 hidden sm:block">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${AUDIT_ACTION_COLORS[log.action] || 'bg-gray-100'}`}>
           {AUDIT_ACTION_ICONS[log.action] || '📋'}
         </div>
@@ -472,7 +480,7 @@ export default function Activity() {
             </button>
           )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
           {/* Activity Source Filter */}
           <div>
             <label htmlFor="activity-type-filter" className="block text-xs font-medium text-gray-500 mb-1">
@@ -489,7 +497,7 @@ export default function Activity() {
             >
               <option value="all">All Activity</option>
               <option value="workflow">Workflow Events</option>
-              <option value="audit">Time Tracking</option>
+              <option value="audit">Audit Logs</option>
             </select>
           </div>
 
@@ -510,6 +518,30 @@ export default function Activity() {
             >
               <option value="">All types</option>
               {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Audit Type Filter (only for audit source) */}
+          <div>
+            <label htmlFor="audit-type-filter" className="block text-xs font-medium text-gray-500 mb-1">
+              Audit Type
+            </label>
+            <select
+              id="audit-type-filter"
+              value={auditTypeFilter}
+              onChange={(e) => {
+                setAuditTypeFilter(e.target.value)
+                setCurrentPage(1)
+              }}
+              disabled={activitySource === 'workflow'}
+              className="w-full px-3 py-2 bg-secondary border border-secondary-dark rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+            >
+              <option value="">All audit types</option>
+              {Object.entries(AUDITABLE_TYPE_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>

@@ -1,7 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../../lib/api'
-import type { ServiceType, ClientServiceType } from '../../lib/api'
+import type {
+  ServiceType,
+  ClientServiceType,
+  UserSummary,
+  OperationCycle,
+  OperationTaskItem,
+  ClientOperationAssignment,
+  CurrentUser,
+} from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
 import { getFilingStatusLabel } from '../../lib/constants'
 import NotFound from '../../components/common/NotFound'
@@ -192,6 +200,36 @@ export default function ClientDetailPage() {
     is_primary: false,
   })
 
+  // Operations checklist
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [staffUsers, setStaffUsers] = useState<UserSummary[]>([])
+  const [operationTemplates, setOperationTemplates] = useState<{ id: number; name: string; is_active: boolean }[]>([])
+  const [operationAssignments, setOperationAssignments] = useState<ClientOperationAssignment[]>([])
+  const [operationCycles, setOperationCycles] = useState<OperationCycle[]>([])
+  const [selectedCycleId, setSelectedCycleId] = useState<number | null>(null)
+  const [selectedCycle, setSelectedCycle] = useState<OperationCycle | null>(null)
+  const [operationsLoading, setOperationsLoading] = useState(false)
+  const [operationsError, setOperationsError] = useState<string | null>(null)
+  const [savingTaskId, setSavingTaskId] = useState<number | null>(null)
+  const [taskDrafts, setTaskDrafts] = useState<Record<number, {
+    status: OperationTaskItem['status']
+    assigned_to_id: string
+    notes: string
+    evidence_note: string
+  }>>({})
+  const [generateForm, setGenerateForm] = useState({
+    operation_template_id: '',
+    period_start: '',
+    period_end: '',
+  })
+  const [assignmentForm, setAssignmentForm] = useState({
+    operation_template_id: '',
+    auto_generate: true,
+    assignment_status: 'active' as 'active' | 'paused',
+  })
+  const [generatingCycle, setGeneratingCycle] = useState(false)
+  const [creatingAssignment, setCreatingAssignment] = useState(false)
+
   const loadAuditLogs = useCallback(async () => {
     if (!id) return
     try {
@@ -203,6 +241,85 @@ export default function ClientDetailPage() {
       console.error('Failed to load audit logs:', err)
     }
   }, [id])
+
+  const loadOperations = useCallback(async () => {
+    if (!id) return
+    setOperationsLoading(true)
+    setOperationsError(null)
+    try {
+      const clientId = parseInt(id)
+      const [userResult, usersResult, templatesResult, assignmentsResult, cyclesResult] = await Promise.all([
+        api.getCurrentUser(),
+        api.getUsers(),
+        api.getOperationTemplates(true),
+        api.getClientOperationAssignments(clientId),
+        api.getClientOperationCycles(clientId),
+      ])
+
+      if (userResult.data) {
+        setCurrentUser(userResult.data.user)
+      }
+      if (usersResult.data) {
+        setStaffUsers(usersResult.data.users.filter(u => u.role === 'admin' || u.role === 'employee'))
+      }
+      if (templatesResult.data) {
+        setOperationTemplates(
+          templatesResult.data.operation_templates.map(t => ({
+            id: t.id,
+            name: t.name,
+            is_active: t.is_active,
+          }))
+        )
+      }
+      if (assignmentsResult.data) {
+        setOperationAssignments(assignmentsResult.data.assignments)
+      }
+      if (cyclesResult.data) {
+        const cycles = cyclesResult.data.operation_cycles
+        setOperationCycles(cycles)
+        if (cycles.length > 0) {
+          const preferred = cycles.find(c => c.status === 'active') || cycles[0]
+          setSelectedCycleId(preferred.id)
+        } else {
+          setSelectedCycleId(null)
+          setSelectedCycle(null)
+        }
+      }
+
+      const firstError =
+        userResult.error || usersResult.error || templatesResult.error || assignmentsResult.error || cyclesResult.error
+      if (firstError) {
+        setOperationsError(firstError)
+      }
+    } catch (err) {
+      console.error('Failed to load operations data:', err)
+      setOperationsError('Failed to load operations checklist data')
+    } finally {
+      setOperationsLoading(false)
+    }
+  }, [id])
+
+  const loadCycleDetail = useCallback(async (cycleId: number) => {
+    const result = await api.getOperationCycle(cycleId)
+    if (result.data) {
+      const cycle = result.data.operation_cycle
+      setSelectedCycle(cycle)
+      setTaskDrafts(
+        (cycle.tasks || []).reduce((acc, task) => {
+          acc[task.id] = {
+            status: task.status,
+            assigned_to_id: task.assigned_to?.id ? String(task.assigned_to.id) : '',
+            notes: task.notes || '',
+            evidence_note: task.evidence_note || '',
+          }
+          return acc
+        }, {} as Record<number, { status: OperationTaskItem['status']; assigned_to_id: string; notes: string; evidence_note: string }>)
+      )
+      setOperationsError(null)
+    } else if (result.error) {
+      setOperationsError(result.error)
+    }
+  }, [])
 
   const resetContactForm = () => {
     setContactForm({
@@ -301,10 +418,153 @@ export default function ClientDetailPage() {
     }
   }
 
+  const handleCreateAssignment = async () => {
+    if (!client || !assignmentForm.operation_template_id) return
+    setCreatingAssignment(true)
+    setOperationsError(null)
+    try {
+      const result = await api.createClientOperationAssignment(client.id, {
+        operation_template_id: parseInt(assignmentForm.operation_template_id),
+        auto_generate: assignmentForm.auto_generate,
+        assignment_status: assignmentForm.assignment_status,
+      })
+      if (result.data) {
+        await loadOperations()
+        setAssignmentForm({
+          operation_template_id: '',
+          auto_generate: true,
+          assignment_status: 'active',
+        })
+      } else if (result.error) {
+        setOperationsError(result.error)
+      }
+    } catch (err) {
+      console.error('Failed to create assignment:', err)
+      setOperationsError('Failed to create assignment')
+    } finally {
+      setCreatingAssignment(false)
+    }
+  }
+
+  const handleGenerateCycle = async () => {
+    if (!client || !generateForm.operation_template_id || !generateForm.period_start || !generateForm.period_end) {
+      setOperationsError('Template and period dates are required to generate a cycle')
+      return
+    }
+
+    setGeneratingCycle(true)
+    setOperationsError(null)
+    try {
+      const result = await api.generateOperationCycle(client.id, {
+        operation_template_id: parseInt(generateForm.operation_template_id),
+        period_start: generateForm.period_start,
+        period_end: generateForm.period_end,
+      })
+      if (result.data) {
+        await loadOperations()
+        setSelectedCycleId(result.data.operation_cycle.id)
+      } else if (result.error) {
+        setOperationsError(result.error)
+      }
+    } catch (err) {
+      console.error('Failed to generate cycle:', err)
+      setOperationsError('Failed to generate cycle')
+    } finally {
+      setGeneratingCycle(false)
+    }
+  }
+
+  const handleTaskDraftChange = (taskId: number, patch: Partial<{
+    status: OperationTaskItem['status']
+    assigned_to_id: string
+    notes: string
+    evidence_note: string
+  }>) => {
+    setTaskDrafts(prev => ({
+      ...prev,
+      [taskId]: {
+        ...prev[taskId],
+        ...patch,
+      },
+    }))
+  }
+
+  const handleSaveTask = async (taskId: number) => {
+    const draft = taskDrafts[taskId]
+    if (!draft) return
+    setSavingTaskId(taskId)
+    setOperationsError(null)
+    try {
+      const result = await api.updateOperationTask(taskId, {
+        status: draft.status,
+        assigned_to_id: draft.assigned_to_id ? parseInt(draft.assigned_to_id) : null,
+        notes: draft.notes,
+        evidence_note: draft.evidence_note,
+      })
+      if (result.data && selectedCycleId) {
+        await loadCycleDetail(selectedCycleId)
+      } else if (result.error) {
+        setOperationsError(result.error)
+      }
+    } catch (err) {
+      console.error('Failed to update task:', err)
+      setOperationsError('Failed to update task')
+    } finally {
+      setSavingTaskId(null)
+    }
+  }
+
+  const handleCompleteTask = async (taskId: number) => {
+    const draft = taskDrafts[taskId]
+    const evidence = draft?.evidence_note?.trim() || undefined
+    setSavingTaskId(taskId)
+    setOperationsError(null)
+    try {
+      const result = await api.completeOperationTask(taskId, evidence)
+      if (result.data && selectedCycleId) {
+        await loadCycleDetail(selectedCycleId)
+      } else if (result.error) {
+        setOperationsError(result.error)
+      }
+    } catch (err) {
+      console.error('Failed to complete task:', err)
+      setOperationsError('Failed to complete task')
+    } finally {
+      setSavingTaskId(null)
+    }
+  }
+
+  const handleReopenTask = async (taskId: number) => {
+    setSavingTaskId(taskId)
+    setOperationsError(null)
+    try {
+      const result = await api.reopenOperationTask(taskId)
+      if (result.data && selectedCycleId) {
+        await loadCycleDetail(selectedCycleId)
+      } else if (result.error) {
+        setOperationsError(result.error)
+      }
+    } catch (err) {
+      console.error('Failed to reopen task:', err)
+      setOperationsError('Failed to reopen task')
+    } finally {
+      setSavingTaskId(null)
+    }
+  }
+
   useEffect(() => {
     loadClient()
     loadAuditLogs()
-  }, [loadAuditLogs, loadClient])
+    loadOperations()
+  }, [loadAuditLogs, loadClient, loadOperations])
+
+  useEffect(() => {
+    if (selectedCycleId) {
+      loadCycleDetail(selectedCycleId)
+    } else {
+      setSelectedCycle(null)
+    }
+  }, [loadCycleDetail, selectedCycleId])
 
   const startEditingNotes = (tr: TaxReturn) => {
     setEditingNotesId(tr.id)
@@ -412,6 +672,11 @@ export default function ClientDetailPage() {
   }
 
   const latestReturn = client.tax_returns[0]
+  const activeCycle = operationCycles.find(c => c.status === 'active') || null
+  const cycleTasks = selectedCycle?.tasks || []
+  const unassignedTemplateOptions = operationTemplates.filter(
+    template => template.is_active && !operationAssignments.some(a => a.operation_template_id === template.id)
+  )
 
   return (
     <FadeUp>
@@ -642,6 +907,302 @@ export default function ClientDetailPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Operations Checklist */}
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Operations Checklist</h2>
+                <p className="text-sm text-gray-500">Run recurring client work from one place.</p>
+              </div>
+              {activeCycle && (
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 self-start">
+                  Active Cycle: {activeCycle.cycle_label}
+                </span>
+              )}
+            </div>
+
+            {operationsError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {operationsError}
+              </div>
+            )}
+
+            {operationsLoading ? (
+              <div className="py-8 flex justify-center">
+                <div className="animate-spin w-6 h-6 border-4 border-primary border-t-transparent rounded-full" />
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Assignment Management */}
+                {currentUser?.is_admin && (
+                  <div className="p-4 border border-secondary-dark rounded-xl bg-secondary/20">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Template Assignments</h3>
+                    <div className="space-y-2 mb-3">
+                      {operationAssignments.length === 0 ? (
+                        <p className="text-sm text-gray-500 italic">No templates assigned to this client yet.</p>
+                      ) : (
+                        operationAssignments.map(assignment => (
+                          <div key={assignment.id} className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-gray-800">{assignment.operation_template_name || `Template #${assignment.operation_template_id}`}</span>
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              assignment.assignment_status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {assignment.assignment_status}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <select
+                        value={assignmentForm.operation_template_id}
+                        onChange={(e) => setAssignmentForm(prev => ({ ...prev, operation_template_id: e.target.value }))}
+                        className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
+                      >
+                        <option value="">Assign template...</option>
+                        {unassignedTemplateOptions.map(template => (
+                          <option key={template.id} value={template.id}>{template.name}</option>
+                        ))}
+                      </select>
+                      <label className="flex items-center gap-2 text-sm px-3 py-2 border border-secondary-dark rounded-lg bg-white">
+                        <input
+                          type="checkbox"
+                          checked={assignmentForm.auto_generate}
+                          onChange={(e) => setAssignmentForm(prev => ({ ...prev, auto_generate: e.target.checked }))}
+                        />
+                        Auto-generate
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleCreateAssignment}
+                        disabled={creatingAssignment || !assignmentForm.operation_template_id}
+                        className="min-h-11 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
+                      >
+                        {creatingAssignment ? 'Assigning...' : 'Assign Template'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Manual Generate */}
+                {currentUser?.is_admin && (
+                  <div className="p-4 border border-secondary-dark rounded-xl">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Generate Cycle</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                      <select
+                        value={generateForm.operation_template_id}
+                        onChange={(e) => setGenerateForm(prev => ({ ...prev, operation_template_id: e.target.value }))}
+                        className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
+                      >
+                        <option value="">Template...</option>
+                        {operationAssignments.filter(a => a.assignment_status === 'active').map(assignment => (
+                          <option key={assignment.id} value={assignment.operation_template_id}>
+                            {assignment.operation_template_name || `Template #${assignment.operation_template_id}`}
+                          </option>
+                        ))}
+                        {operationAssignments.length === 0 &&
+                          operationTemplates.filter(t => t.is_active).map(template => (
+                            <option key={template.id} value={template.id}>{template.name}</option>
+                          ))
+                        }
+                      </select>
+                      <input
+                        type="date"
+                        value={generateForm.period_start}
+                        onChange={(e) => setGenerateForm(prev => ({ ...prev, period_start: e.target.value }))}
+                        className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
+                      />
+                      <input
+                        type="date"
+                        value={generateForm.period_end}
+                        onChange={(e) => setGenerateForm(prev => ({ ...prev, period_end: e.target.value }))}
+                        className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleGenerateCycle}
+                        disabled={generatingCycle || !generateForm.operation_template_id || !generateForm.period_start || !generateForm.period_end}
+                        className="min-h-11 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
+                      >
+                        {generatingCycle ? 'Generating...' : 'Generate'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cycle History / Picker */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-gray-900">Cycle History</h3>
+                    <span className="text-xs text-gray-500">{operationCycles.length} cycle{operationCycles.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  {operationCycles.length === 0 ? (
+                    <p className="text-sm text-gray-500 italic">No cycles yet. Generate one to start tracking operations tasks.</p>
+                  ) : (
+                    <select
+                      value={selectedCycleId || ''}
+                      onChange={(e) => setSelectedCycleId(e.target.value ? parseInt(e.target.value) : null)}
+                      className="w-full px-3 py-2 border border-secondary-dark rounded-lg text-sm"
+                    >
+                      {operationCycles.map(cycle => (
+                        <option key={cycle.id} value={cycle.id}>
+                          {cycle.cycle_label} - {cycle.operation_template_name || `Template #${cycle.operation_template_id}`} ({cycle.status})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Task List */}
+                {selectedCycle && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-gray-900">Tasks for {selectedCycle.cycle_label}</h3>
+                    {cycleTasks.length === 0 ? (
+                      <p className="text-sm text-gray-500 italic">No tasks generated for this cycle.</p>
+                    ) : (
+                      cycleTasks.map(task => {
+                        const draft = taskDrafts[task.id] || {
+                          status: task.status,
+                          assigned_to_id: task.assigned_to?.id ? String(task.assigned_to.id) : '',
+                          notes: task.notes || '',
+                          evidence_note: task.evidence_note || '',
+                        }
+                        const logNotes = `Ops task: ${task.title} (${selectedCycle.cycle_label})`
+                        const logTimeLink =
+                          `/admin/time?prefill=true&client_id=${client.id}&operation_task_id=${task.id}&notes=${encodeURIComponent(logNotes)}`
+                        const savingThisTask = savingTaskId === task.id
+                        const hasUnmetPrerequisites = task.unmet_prerequisites.length > 0
+                        const blockedByPrerequisites =
+                          hasUnmetPrerequisites && (draft.status === 'in_progress' || draft.status === 'done')
+                        return (
+                          <div key={task.id} className="border border-secondary-dark rounded-xl p-4">
+                            <div className="flex items-start justify-between gap-2 mb-3">
+                              <div>
+                                <p className="font-medium text-gray-900">{task.position}. {task.title}</p>
+                                {task.description && <p className="text-sm text-gray-500">{task.description}</p>}
+                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                  <span className={`text-xs px-2 py-0.5 rounded ${
+                                    task.status === 'done'
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : task.status === 'blocked'
+                                        ? 'bg-red-100 text-red-700'
+                                        : task.status === 'in_progress'
+                                          ? 'bg-blue-100 text-blue-700'
+                                          : 'bg-gray-100 text-gray-700'
+                                  }`}>
+                                    {task.status.replace('_', ' ')}
+                                  </span>
+                                  {task.evidence_required && (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Evidence required</span>
+                                  )}
+                                  {task.due_at && (
+                                    <span className="text-xs text-gray-500">Due: {formatDateTime(task.due_at)}</span>
+                                  )}
+                                  {task.linked_time_entry && (
+                                    <span className="text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                                      Linked time: {task.linked_time_entry.hours.toFixed(2)}h on {formatDate(task.linked_time_entry.work_date)}
+                                    </span>
+                                  )}
+                                  {hasUnmetPrerequisites && (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700">
+                                      Waiting on prerequisites
+                                    </span>
+                                  )}
+                                </div>
+                                {hasUnmetPrerequisites && (
+                                  <p className="text-xs text-red-700 mt-1">
+                                    Unmet: {task.unmet_prerequisites.map(dep => dep.title).join(', ')}
+                                  </p>
+                                )}
+                              </div>
+                              <Link
+                                to={logTimeLink}
+                                className="text-xs text-primary hover:text-primary-dark font-medium min-h-11 inline-flex items-center"
+                              >
+                                Log Time
+                              </Link>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                              <select
+                                value={draft.status}
+                                onChange={(e) => handleTaskDraftChange(task.id, { status: e.target.value as OperationTaskItem['status'] })}
+                                className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
+                              >
+                                <option value="not_started">Not Started</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="blocked">Blocked</option>
+                                <option value="done">Done</option>
+                              </select>
+                              <select
+                                value={draft.assigned_to_id}
+                                onChange={(e) => handleTaskDraftChange(task.id, { assigned_to_id: e.target.value })}
+                                className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
+                              >
+                                <option value="">Unassigned</option>
+                                {staffUsers.map(user => (
+                                  <option key={user.id} value={user.id}>{user.full_name}</option>
+                                ))}
+                              </select>
+                              <input
+                                type="text"
+                                value={draft.notes}
+                                onChange={(e) => handleTaskDraftChange(task.id, { notes: e.target.value })}
+                                placeholder="Task notes"
+                                className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
+                              />
+                              <input
+                                type="text"
+                                value={draft.evidence_note}
+                                onChange={(e) => handleTaskDraftChange(task.id, { evidence_note: e.target.value })}
+                                placeholder={task.evidence_required ? 'Evidence note (required for done)' : 'Evidence note (optional)'}
+                                className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
+                              />
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveTask(task.id)}
+                                disabled={savingThisTask || blockedByPrerequisites}
+                                className="min-h-11 px-3 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary-dark disabled:opacity-50"
+                              >
+                                {savingThisTask ? 'Saving...' : 'Save'}
+                              </button>
+                              {task.status !== 'done' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCompleteTask(task.id)}
+                                  disabled={
+                                    savingThisTask ||
+                                    hasUnmetPrerequisites ||
+                                    (task.evidence_required && !draft.evidence_note.trim())
+                                  }
+                                  className="min-h-11 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                  Complete
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReopenTask(task.id)}
+                                  disabled={savingThisTask}
+                                  className="min-h-11 px-3 py-2 rounded-lg text-sm font-medium bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                                >
+                                  Reopen
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

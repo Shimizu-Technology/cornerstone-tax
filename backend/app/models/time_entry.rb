@@ -7,6 +7,7 @@ class TimeEntry < ApplicationRecord
   belongs_to :time_category, optional: true
   belongs_to :service_type, optional: true
   belongs_to :service_task, optional: true
+  has_one :linked_operation_task, class_name: "OperationTask", foreign_key: "linked_time_entry_id", dependent: :nullify
 
   validates :work_date, presence: true
   validates :start_time, presence: true
@@ -46,7 +47,7 @@ class TimeEntry < ApplicationRecord
       duration_hours -= (break_minutes / 60.0)
     end
 
-    self.hours = [duration_hours, 0].max.round(2)
+    self.hours = [ duration_hours, 0 ].max.round(2)
   end
 
   # Format times for display
