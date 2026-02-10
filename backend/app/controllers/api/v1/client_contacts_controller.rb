@@ -17,40 +17,54 @@ module Api
       def create
         contact = @client.client_contacts.new(contact_params)
         contact.is_primary = contact_primary?
-        ensure_primary_contact(contact)
 
-        if contact.save
-          AuditLog.log(
-            auditable: @client,
-            action: "updated",
-            user: current_user,
-            changes_made: { contact: { action: "created", name: contact.full_name } },
-            metadata: "Added contact #{contact.full_name}"
-          )
-          render json: { contact: serialize_contact(contact) }, status: :created
-        else
-          render json: { error: contact.errors.full_messages.join(", ") }, status: :unprocessable_entity
+        ActiveRecord::Base.transaction do
+          # Lock client's contacts to prevent race conditions with is_primary
+          @client.client_contacts.lock.load if contact.is_primary
+
+          if contact.save
+            ensure_primary_contact(contact)
+            AuditLog.log(
+              auditable: @client,
+              action: "updated",
+              user: current_user,
+              changes_made: { contact: { action: "created", name: contact.full_name } },
+              metadata: "Added contact #{contact.full_name}"
+            )
+            render json: { contact: serialize_contact(contact) }, status: :created
+          else
+            render json: { error: contact.errors.full_messages.join(", ") }, status: :unprocessable_entity
+          end
         end
+      rescue ActiveRecord::RecordNotUnique
+        render json: { error: "Another primary contact was set concurrently. Please try again." }, status: :conflict
       end
 
       # PATCH /api/v1/clients/:client_id/contacts/:id
       def update
         @contact.assign_attributes(contact_params)
         @contact.is_primary = contact_primary? if params[:contact].key?(:is_primary)
-        ensure_primary_contact(@contact)
 
-        if @contact.save
-          AuditLog.log(
-            auditable: @client,
-            action: "updated",
-            user: current_user,
-            changes_made: { contact: { action: "updated", name: @contact.full_name } },
-            metadata: "Updated contact #{@contact.full_name}"
-          )
-          render json: { contact: serialize_contact(@contact) }
-        else
-          render json: { error: @contact.errors.full_messages.join(", ") }, status: :unprocessable_entity
+        ActiveRecord::Base.transaction do
+          # Lock client's contacts to prevent race conditions with is_primary
+          @client.client_contacts.lock.load if @contact.is_primary
+
+          if @contact.save
+            ensure_primary_contact(@contact)
+            AuditLog.log(
+              auditable: @client,
+              action: "updated",
+              user: current_user,
+              changes_made: { contact: { action: "updated", name: @contact.full_name } },
+              metadata: "Updated contact #{@contact.full_name}"
+            )
+            render json: { contact: serialize_contact(@contact) }
+          else
+            render json: { error: @contact.errors.full_messages.join(", ") }, status: :unprocessable_entity
+          end
         end
+      rescue ActiveRecord::RecordNotUnique
+        render json: { error: "Another primary contact was set concurrently. Please try again." }, status: :conflict
       end
 
       # DELETE /api/v1/clients/:client_id/contacts/:id
