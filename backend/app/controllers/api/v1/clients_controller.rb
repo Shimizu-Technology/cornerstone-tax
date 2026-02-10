@@ -214,26 +214,28 @@ module Api
           :spouse_name, :spouse_dob, :denied_eic_actc, :denied_eic_actc_year,
           :has_crypto_transactions, :wants_direct_deposit, :bank_routing_number,
           :bank_account_number, :bank_account_type, :client_type, :business_name, 
-          :has_tax_returns, :is_service_only  # Accept both for backward compatibility
+          :has_tax_returns
         )
-        # Map is_service_only to has_tax_returns if provided (inverted logic)
-        if permitted.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
-          permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(permitted.delete(:is_service_only))
+        # Map legacy is_service_only param to has_tax_returns (inverted logic)
+        # Read from raw params since we don't permit the renamed field
+        if params[:client]&.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
+          permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(params[:client][:is_service_only])
         end
-        permitted.except(:is_service_only)
+        permitted
       end
 
       def quick_create_client_params
         permitted = params.require(:client).permit(
           :first_name, :last_name, :date_of_birth, :email, :phone,
           :filing_status, :is_new_client, :client_type, :business_name, 
-          :has_tax_returns, :is_service_only  # Accept both for backward compatibility
+          :has_tax_returns
         )
-        # Map is_service_only to has_tax_returns if provided (inverted logic)
-        if permitted.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
-          permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(permitted.delete(:is_service_only))
+        # Map legacy is_service_only param to has_tax_returns (inverted logic)
+        # Read from raw params since we don't permit the renamed field
+        if params[:client]&.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
+          permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(params[:client][:is_service_only])
         end
-        permitted.except(:is_service_only).tap do |p|
+        permitted.tap do |p|
           # Set defaults for quick create
           p[:is_new_client] = true if p[:is_new_client].nil?
           p[:client_type] ||= 'individual'

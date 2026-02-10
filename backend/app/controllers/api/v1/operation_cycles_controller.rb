@@ -2,6 +2,11 @@
 
 module Api
   module V1
+    # Authorization Model: All authenticated staff (admin or employee) can access all clients' data.
+    # This is intentional for this small tax practice where all staff work on all clients.
+    # The show action allows fetching any cycle by ID (verified via joins(:client) to ensure
+    # the cycle belongs to a valid client). For multi-tenant isolation in the future,
+    # add client-level permission checks to set_cycle.
     class OperationCyclesController < BaseController
       before_action :authenticate_user!
       before_action :require_staff!
