@@ -5,6 +5,7 @@ module Api
     class OperationCyclesController < BaseController
       before_action :authenticate_user!
       before_action :require_staff!
+      before_action :require_admin!, only: [ :generate ]
       before_action :set_client, only: [ :index, :generate ]
       before_action :set_cycle, only: [ :show ]
 
@@ -20,7 +21,7 @@ module Api
 
       # POST /api/v1/clients/:client_id/operation_cycles/generate
       def generate
-        return render json: { error: "Admin access required" }, status: :forbidden unless current_user.admin?
+        # Admin check is handled by before_action :require_admin!
 
         assignment = find_assignment
         template = assignment&.operation_template || find_template
