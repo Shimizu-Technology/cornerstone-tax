@@ -74,7 +74,13 @@ module Api
       private
 
       def set_task
-        @task = OperationTask.includes(:assigned_to, :completed_by, :operation_template_task, linked_time_entry: :user).find(params[:id])
+        @task = OperationTask.includes(
+          :assigned_to,
+          :completed_by,
+          :operation_template_task,
+          { linked_time_entry: :user },
+          { operation_cycle: [:operation_template, { operation_tasks: :operation_template_task }] }
+        ).find(params[:id])
       end
 
       def filtered_tasks

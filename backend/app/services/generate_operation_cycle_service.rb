@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
 class GenerateOperationCycleService
-  Result = Struct.new(:success?, :cycle, :errors, keyword_init: true)
+  Result = Struct.new(:success?, :cycle, :errors, :duplicate?, keyword_init: true) do
+    def initialize(success?: false, cycle: nil, errors: [], duplicate?: false)
+      super
+    end
+  end
 
   def initialize(client:, operation_template:, period_start:, period_end:, generation_mode:, generated_by:, assignment: nil)
     @client = client
@@ -60,9 +64,15 @@ class GenerateOperationCycleService
 
     Result.new(success?: true, cycle: cycle, errors: [])
   rescue ActiveRecord::RecordInvalid => e
-    failure(e.record.errors.full_messages.join(", "))
+    error_message = e.record.errors.full_messages.join(", ")
+    is_duplicate = e.record.errors[:operation_template_id]&.any? { |msg| msg.include?("already been taken") }
+    if is_duplicate
+      Result.new(success?: false, cycle: nil, errors: [error_message], duplicate?: true)
+    else
+      failure(error_message)
+    end
   rescue ActiveRecord::RecordNotUnique
-    failure("Operation cycle already exists for this period")
+    Result.new(success?: false, cycle: nil, errors: ["Operation cycle already exists for this period"], duplicate?: true)
   rescue StandardError => e
     failure(e.message)
   end

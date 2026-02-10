@@ -31,13 +31,11 @@ class AutoGenerateOperationCyclesService
 
       if result.success?
         @generated_count += 1
+      elsif result.duplicate?
+        # Duplicate period generation is expected and treated as idempotent skip
+        @skipped_count += 1
       else
-        # Duplicate period generation is expected and should be treated as skip/idempotent behavior.
-        if result.errors.any? { |error| error.include?("has already been taken") || error.include?("already exists for this period") }
-          @skipped_count += 1
-        else
-          @errors << "Assignment #{assignment.id}: #{result.errors.join(', ')}"
-        end
+        @errors << "Assignment #{assignment.id}: #{result.errors.join(', ')}"
       end
     end
 
