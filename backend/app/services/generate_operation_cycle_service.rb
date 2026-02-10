@@ -23,6 +23,16 @@ class GenerateOperationCycleService
     return failure("Period end must be on or after period start") if @period_end < @period_start
     return failure("Operation template is not active") unless @operation_template.is_active?
 
+    # Check for existing cycle before attempting creation (robust duplicate detection)
+    if OperationCycle.exists?(
+      client_id: @client.id,
+      operation_template_id: @operation_template.id,
+      period_start: @period_start,
+      period_end: @period_end
+    )
+      return Result.new(success?: false, cycle: nil, errors: ["Operation cycle already exists for this period"], duplicate?: true)
+    end
+
     cycle = nil
 
     ActiveRecord::Base.transaction do
@@ -64,14 +74,9 @@ class GenerateOperationCycleService
 
     Result.new(success?: true, cycle: cycle, errors: [])
   rescue ActiveRecord::RecordInvalid => e
-    error_message = e.record.errors.full_messages.join(", ")
-    is_duplicate = e.record.errors[:operation_template_id]&.any? { |msg| msg.include?("already been taken") }
-    if is_duplicate
-      Result.new(success?: false, cycle: nil, errors: [error_message], duplicate?: true)
-    else
-      failure(error_message)
-    end
+    failure(e.record.errors.full_messages.join(", "))
   rescue ActiveRecord::RecordNotUnique
+    # Race condition: another request created the cycle between our exists? check and create
     Result.new(success?: false, cycle: nil, errors: ["Operation cycle already exists for this period"], duplicate?: true)
   rescue StandardError => e
     failure(e.message)
