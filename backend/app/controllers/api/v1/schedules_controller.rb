@@ -5,7 +5,7 @@ module Api
     class SchedulesController < BaseController
       before_action :authenticate_user!
       before_action :require_staff!
-      before_action :require_admin!, only: [:create, :update, :destroy, :bulk_create]
+      before_action :require_admin!, only: [:create, :update, :destroy, :bulk_create, :clear_week]
       before_action :set_schedule, only: [:show, :update, :destroy]
 
       # GET /api/v1/schedules
@@ -20,16 +20,23 @@ module Api
 
         # Filter by date
         if params[:date].present?
-          @schedules = @schedules.for_date(Date.parse(params[:date]))
+          date = parse_date_param(:date)
+          return if performed?
+          @schedules = @schedules.for_date(date)
         elsif params[:week].present?
           # Week starts on Sunday
-          week_start = Date.parse(params[:week])
+          week_start = parse_date_param(:week)
+          return if performed?
           week_end = week_start + 6.days
           @schedules = @schedules.for_date_range(week_start, week_end)
         elsif params[:start_date].present? && params[:end_date].present?
+          start_date = parse_date_param(:start_date)
+          return if performed?
+          end_date = parse_date_param(:end_date)
+          return if performed?
           @schedules = @schedules.for_date_range(
-            Date.parse(params[:start_date]),
-            Date.parse(params[:end_date])
+            start_date,
+            end_date
           )
         end
 
@@ -123,9 +130,11 @@ module Api
       end
 
       # DELETE /api/v1/schedules/clear
-      # Clear all schedules for a specific week (admin only)
+      # Clear all schedules for a specific week
+      # SECURITY: Admin only - protected by require_admin! before_action
       def clear_week
-        week_start = Date.parse(params[:week])
+        week_start = parse_date_param(:week)
+        return if performed?
         week_end = week_start + 6.days
 
         schedules = Schedule.for_date_range(week_start, week_end)
@@ -156,6 +165,13 @@ module Api
           :end_time,
           :notes
         )
+      end
+
+      def parse_date_param(param_name)
+        Date.parse(params[param_name])
+      rescue ArgumentError
+        render json: { error: "Invalid #{param_name}" }, status: :unprocessable_entity
+        nil
       end
 
       def serialize_schedule(schedule)

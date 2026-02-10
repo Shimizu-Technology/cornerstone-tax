@@ -107,7 +107,11 @@ export default function Header() {
     }
   }, [mobileMenuOpen])
 
-  useEffect(() => { setMobileMenuOpen(false) }, [location.pathname])
+  useEffect(() => {
+    // Close menu on route change (intentional UI reset).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMobileMenuOpen(false)
+  }, [location.pathname])
 
   return (
     <header
@@ -119,7 +123,7 @@ export default function Header() {
       }`}
     >
       <nav className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center flex-shrink-0">
+        <Link to="/" className="flex items-center shrink-0">
           <div className="h-14 sm:h-16 overflow-hidden flex items-center">
             <img
               src="/logo.jpeg"

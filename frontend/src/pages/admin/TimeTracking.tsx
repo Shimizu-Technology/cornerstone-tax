@@ -41,8 +41,28 @@ interface TimeEntryItem {
     id: number
     tax_year: number
   } | null
+  service_type: {
+    id: number
+    name: string
+    color: string | null
+  } | null
+  service_task: {
+    id: number
+    name: string
+  } | null
+  linked_operation_task: {
+    id: number
+    title: string
+  } | null
   created_at: string
   updated_at: string
+}
+
+interface ServiceTypeOption {
+  id: number
+  name: string
+  color: string | null
+  tasks?: { id: number; name: string }[]
 }
 
 // Break duration presets
@@ -153,7 +173,10 @@ export default function TimeTracking() {
   const [categories, setCategories] = useState<TimeCategory[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
   const [users, setUsers] = useState<UserOption[]>([])
+  const [serviceTypes, setServiceTypes] = useState<ServiceTypeOption[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
+  // CST-30: Track current user ID for delete permission check
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
@@ -188,6 +211,7 @@ export default function TimeTracking() {
   // Modal state
   const [showModal, setShowModal] = useState(false)
   const [editingEntry, setEditingEntry] = useState<TimeEntryItem | null>(null)
+  const [linkedOperationTaskId, setLinkedOperationTaskId] = useState<number | null>(null)
   const [formData, setFormData] = useState({
     work_date: formatDateISO(new Date()),
     start_time: '08:00',
@@ -195,6 +219,8 @@ export default function TimeTracking() {
     description: '',
     time_category_id: '',
     client_id: '',
+    service_type_id: '',
+    service_task_id: '',
     break_minutes: null as number | null
   })
   const [saving, setSaving] = useState(false)
@@ -257,14 +283,15 @@ export default function TimeTracking() {
     }
   }, [currentDate, viewMode, entryFilters])
 
-  // Load categories, clients, and users
+  // Load categories, clients, users, and service types
   const loadOptions = useCallback(async () => {
     try {
-      const [catResponse, clientResponse, userResponse, currentUserResponse] = await Promise.all([
+      const [catResponse, clientResponse, userResponse, currentUserResponse, serviceTypeResponse] = await Promise.all([
         api.getTimeCategories(),
         api.getClients({ per_page: 100 }),
         api.getUsers(),
-        api.getCurrentUser()
+        api.getCurrentUser(),
+        api.getServiceTypes()
       ])
 
       if (catResponse.data) {
@@ -291,6 +318,12 @@ export default function TimeTracking() {
 
       if (currentUserResponse.data) {
         setIsAdmin(currentUserResponse.data.user.is_admin)
+        // CST-30: Store current user ID for permission checks
+        setCurrentUserId(currentUserResponse.data.user.id)
+      }
+
+      if (serviceTypeResponse.data) {
+        setServiceTypes(serviceTypeResponse.data.service_types as unknown as ServiceTypeOption[])
       }
     } catch {
       console.error('Failed to load options')
@@ -348,28 +381,50 @@ export default function TimeTracking() {
   // Handle prefill from schedule
   useEffect(() => {
     const prefill = searchParams.get('prefill')
-    if (prefill === 'true') {
+    if (prefill !== 'true') return
+
+    const applyPrefill = async () => {
       const date = searchParams.get('date') || formatDateISO(new Date())
-      const startTime = searchParams.get('start_time') || '08:00'
-      const endTime = searchParams.get('end_time') || '17:00'
+      let startTime = searchParams.get('start_time')
+      let endTime = searchParams.get('end_time')
       const notes = searchParams.get('notes') || ''
-      
-      // Open modal with pre-filled data
+      const clientId = searchParams.get('client_id') || ''
+      const serviceTypeId = searchParams.get('service_type_id') || ''
+      const serviceTaskId = searchParams.get('service_task_id') || ''
+      const operationTaskId = searchParams.get('operation_task_id')
+
+      // If time wasn't provided, optionally suggest from today's schedule.
+      if (!startTime || !endTime) {
+        try {
+          const scheduleResult = await api.getMySchedule()
+          const todaySchedule = scheduleResult.data?.schedules?.find(s => s.work_date === date)
+          if (todaySchedule) {
+            startTime = startTime || todaySchedule.start_time
+            endTime = endTime || todaySchedule.end_time
+          }
+        } catch {
+          // Non-blocking; keep default times if schedule lookup fails.
+        }
+      }
+
       setEditingEntry(null)
+      setLinkedOperationTaskId(operationTaskId ? parseInt(operationTaskId) : null)
       setFormData({
         work_date: date,
-        start_time: startTime,
-        end_time: endTime,
+        start_time: startTime || '08:00',
+        end_time: endTime || '17:00',
         description: notes,
         time_category_id: '',
-        client_id: '',
+        client_id: clientId,
+        service_type_id: serviceTypeId,
+        service_task_id: serviceTaskId,
         break_minutes: null
       })
       setShowModal(true)
-      
-      // Clear the URL params
       setSearchParams({})
     }
+
+    void applyPrefill()
   }, [searchParams, setSearchParams])
 
   // Navigation
@@ -398,6 +453,7 @@ export default function TimeTracking() {
   // Modal handlers
   const openNewEntry = (date?: Date, prefillStart?: string, prefillEnd?: string, prefillNotes?: string) => {
     setEditingEntry(null)
+    setLinkedOperationTaskId(null)
     setFormData({
       work_date: formatDateISO(date || currentDate),
       start_time: prefillStart || '08:00',
@@ -405,6 +461,8 @@ export default function TimeTracking() {
       description: prefillNotes || '',
       time_category_id: '',
       client_id: '',
+      service_type_id: '',
+      service_task_id: '',
       break_minutes: null
     })
     setShowModal(true)
@@ -412,6 +470,7 @@ export default function TimeTracking() {
 
   const openEditEntry = (entry: TimeEntryItem) => {
     setEditingEntry(entry)
+    setLinkedOperationTaskId(entry.linked_operation_task?.id || null)
     setFormData({
       work_date: entry.work_date,
       start_time: entry.start_time || '08:00',
@@ -419,6 +478,8 @@ export default function TimeTracking() {
       description: entry.description || '',
       time_category_id: entry.time_category?.id.toString() || '',
       client_id: entry.client?.id.toString() || '',
+      service_type_id: entry.service_type?.id.toString() || '',
+      service_task_id: entry.service_task?.id.toString() || '',
       break_minutes: entry.break_minutes
     })
     setShowModal(true)
@@ -437,7 +498,10 @@ export default function TimeTracking() {
         description: formData.description || undefined,
         time_category_id: formData.time_category_id ? parseInt(formData.time_category_id) : undefined,
         client_id: formData.client_id ? parseInt(formData.client_id) : undefined,
-        break_minutes: formData.break_minutes
+        service_type_id: formData.service_type_id ? parseInt(formData.service_type_id) : undefined,
+        service_task_id: formData.service_task_id ? parseInt(formData.service_task_id) : undefined,
+        break_minutes: formData.break_minutes,
+        operation_task_id: linkedOperationTaskId || undefined
       }
 
       if (editingEntry) {
@@ -463,18 +527,32 @@ export default function TimeTracking() {
     }
   }
 
-  const handleDelete = async (entry: TimeEntryItem) => {
-    if (!confirm('Are you sure you want to delete this time entry?')) return
+  // CST-30: Check if current user can delete this entry (admins can delete any, employees only their own)
+  const canDeleteEntry = (entry: TimeEntryItem): boolean => {
+    if (isAdmin) return true
+    return currentUserId !== null && entry.user.id === currentUserId
+  }
+
+  // CST-30: Check if current user can edit this entry (same logic as delete)
+  const canEditEntry = (entry: TimeEntryItem): boolean => {
+    if (isAdmin) return true
+    return currentUserId !== null && entry.user.id === currentUserId
+  }
+
+  const handleDelete = async (entry: TimeEntryItem): Promise<boolean> => {
+    if (!confirm('Are you sure you want to delete this time entry?')) return false
 
     try {
       const response = await api.deleteTimeEntry(entry.id)
       if (response.error) {
         setError(response.error)
-        return
+        return false
       }
       loadEntries()
+      return true
     } catch {
       setError('Failed to delete time entry')
+      return false
     }
   }
 
@@ -516,6 +594,21 @@ export default function TimeTracking() {
     const clientName = entry.client?.name || 'No Client'
     if (!acc[clientName]) acc[clientName] = 0
     acc[clientName] += entry.hours
+    return acc
+  }, {} as Record<string, number>)
+
+  const reportByService = reportData.reduce((acc, entry) => {
+    const serviceName = entry.service_type?.name || 'No Service'
+    if (!acc[serviceName]) acc[serviceName] = 0
+    acc[serviceName] += entry.hours
+    return acc
+  }, {} as Record<string, number>)
+
+  const reportByTask = reportData.reduce((acc, entry) => {
+    if (!entry.service_task) return acc
+    const taskName = entry.service_task.name
+    if (!acc[taskName]) acc[taskName] = 0
+    acc[taskName] += entry.hours
     return acc
   }, {} as Record<string, number>)
 
@@ -847,6 +940,7 @@ export default function TimeTracking() {
                       <div
                         key={entry.id}
                         className="mb-1 sm:mb-2 p-1 sm:p-2 bg-white border border-neutral-warm rounded text-xs cursor-pointer hover:bg-neutral-warm/50 transition-colors shadow-sm"
+                        aria-label={`Edit time entry ${entry.id}`}
                         onClick={() => openEditEntry(entry)}
                       >
                         <div className="font-bold text-primary-dark flex items-center gap-1">
@@ -860,6 +954,14 @@ export default function TimeTracking() {
                         )}
                         {entry.time_category && (
                           <div className="text-primary font-medium truncate text-[10px] sm:text-xs">{entry.time_category.name}</div>
+                        )}
+                        {entry.service_type && (
+                          <div 
+                            className="text-[10px] sm:text-xs font-medium truncate px-1 rounded text-white"
+                            style={{ backgroundColor: entry.service_type.color || '#8B7355' }}
+                          >
+                            {entry.service_type.name}{entry.service_task ? ` → ${entry.service_task.name}` : ''}
+                          </div>
                         )}
                         {isAdmin && (
                           <div className="text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1 hidden sm:block">{entry.user.display_name || entry.user.email.split('@')[0]}</div>
@@ -929,28 +1031,47 @@ export default function TimeTracking() {
                       {entry.description && (
                         <p className="mt-2 text-primary-dark text-sm">{entry.description}</p>
                       )}
-                      {/* Client */}
+                      {/* Client & Service */}
                       {entry.client && (
                         <p className="mt-1 text-primary-dark/70 text-xs sm:text-sm">
                           Client: {entry.client.name}
                           {entry.tax_return && ` (${entry.tax_return.tax_year})`}
                         </p>
                       )}
+                      {entry.service_type && (
+                        <span
+                          className="inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium text-white"
+                          style={{ backgroundColor: entry.service_type.color || '#8B7355' }}
+                        >
+                          {entry.service_type.name}
+                        </span>
+                      )}
+                      {entry.service_task && (
+                        <span className="inline-block mt-1 ml-1 px-2 py-0.5 rounded text-xs font-medium bg-primary-dark/10 text-primary-dark">
+                          {entry.service_task.name}
+                        </span>
+                      )}
                     </div>
-                    {/* Actions */}
+                    {/* Actions - CST-30: Show edit/delete based on permissions */}
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => openEditEntry(entry)}
-                        className="p-2 text-primary-dark hover:text-primary hover:bg-neutral-warm rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-                      >
-                        <EditIcon />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(entry)}
-                        className="p-2 text-primary-dark hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-                      >
-                        <TrashIcon />
-                      </button>
+                      {canEditEntry(entry) && (
+                        <button
+                          onClick={() => openEditEntry(entry)}
+                          aria-label={`Edit time entry ${entry.id}`}
+                          className="p-2 text-primary-dark hover:text-primary hover:bg-neutral-warm rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        >
+                          <EditIcon />
+                        </button>
+                      )}
+                      {canDeleteEntry(entry) && (
+                        <button
+                          onClick={() => handleDelete(entry)}
+                          aria-label={`Delete time entry ${entry.id}`}
+                          className="p-2 text-primary-dark hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        >
+                          <TrashIcon />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -984,6 +1105,11 @@ export default function TimeTracking() {
               <h2 className="text-xl font-bold text-primary-dark mb-4">
                 {editingEntry ? 'Edit Time Entry' : 'Log Time'}
               </h2>
+              {linkedOperationTaskId && (
+                <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-4">
+                  Linked to operations task #{linkedOperationTaskId}
+                </p>
+              )}
               
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Date */}
@@ -1104,7 +1230,7 @@ export default function TimeTracking() {
                   </label>
                   <select
                     value={formData.client_id}
-                    onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, client_id: e.target.value, service_type_id: '', service_task_id: '' })}
                     className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   >
                     <option value="">No client</option>
@@ -1115,6 +1241,51 @@ export default function TimeTracking() {
                     ))}
                   </select>
                 </div>
+
+                {/* Service Type (required if client is selected) */}
+                <div>
+                  <label className="block text-sm font-medium text-primary-dark mb-1">
+                    Service {formData.client_id ? <span className="text-red-500">*</span> : '(optional)'}
+                  </label>
+                  <select
+                    value={formData.service_type_id}
+                    onChange={(e) => setFormData({ ...formData, service_type_id: e.target.value, service_task_id: '' })}
+                    className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    required={!!formData.client_id}
+                  >
+                    <option value="">{formData.client_id ? 'Select service...' : 'No service'}</option>
+                    {serviceTypes.map(st => (
+                      <option key={st.id} value={st.id}>{st.name}</option>
+                    ))}
+                  </select>
+                  {formData.client_id && !formData.service_type_id && (
+                    <p className="text-xs text-red-500 mt-1">Service is required when logging time for a client</p>
+                  )}
+                </div>
+
+                {/* Task (optional, filtered by selected service) */}
+                {formData.service_type_id && (() => {
+                  const selectedService = serviceTypes.find(st => st.id.toString() === formData.service_type_id)
+                  const tasks = selectedService?.tasks || []
+                  if (tasks.length === 0) return null
+                  return (
+                    <div>
+                      <label className="block text-sm font-medium text-primary-dark mb-1">
+                        Task (optional)
+                      </label>
+                      <select
+                        value={formData.service_task_id}
+                        onChange={(e) => setFormData({ ...formData, service_task_id: e.target.value })}
+                        className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      >
+                        <option value="">No specific task</option>
+                        {tasks.map(task => (
+                          <option key={task.id} value={task.id}>{task.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                })()}
 
                 {/* Description */}
                 <div>
@@ -1131,21 +1302,36 @@ export default function TimeTracking() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex justify-end gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="px-4 py-2 text-primary-dark font-medium hover:bg-neutral-warm rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
-                  >
-                    {saving ? 'Saving...' : (editingEntry ? 'Update' : 'Save')}
-                  </button>
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-4">
+                  {editingEntry && canDeleteEntry(editingEntry) && (
+                    <button
+                      type="button"
+                      aria-label={`Delete time entry ${editingEntry.id}`}
+                      onClick={async () => {
+                        const deleted = await handleDelete(editingEntry)
+                        if (deleted) setShowModal(false)
+                      }}
+                      className="px-4 py-2 text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
+                  <div className="flex items-center gap-3 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => setShowModal(false)}
+                      className="px-4 py-2 text-primary-dark font-medium hover:bg-neutral-warm rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                    >
+                      {saving ? 'Saving...' : (editingEntry ? 'Update' : 'Save')}
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
@@ -1162,6 +1348,66 @@ export default function TimeTracking() {
           {/* Report Filters */}
           <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
             <h3 className="text-sm font-medium text-primary-dark mb-4">Filter Report</h3>
+            
+            {/* CST-35: Quick date range presets for easier admin access */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const startOfWeek = new Date(today)
+                  startOfWeek.setDate(today.getDate() - today.getDay())
+                  setReportFilters(f => ({ ...f, start_date: formatDateISO(startOfWeek), end_date: formatDateISO(today) }))
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-warm hover:bg-primary/10 text-primary-dark transition-colors"
+              >
+                This Week
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const startOfLastWeek = new Date(today)
+                  startOfLastWeek.setDate(today.getDate() - today.getDay() - 7)
+                  const endOfLastWeek = new Date(startOfLastWeek)
+                  endOfLastWeek.setDate(startOfLastWeek.getDate() + 6)
+                  setReportFilters(f => ({ ...f, start_date: formatDateISO(startOfLastWeek), end_date: formatDateISO(endOfLastWeek) }))
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-warm hover:bg-primary/10 text-primary-dark transition-colors"
+              >
+                Last Week
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+                  setReportFilters(f => ({ ...f, start_date: formatDateISO(startOfMonth), end_date: formatDateISO(today) }))
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-warm hover:bg-primary/10 text-primary-dark transition-colors"
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+                  const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0)
+                  setReportFilters(f => ({ ...f, start_date: formatDateISO(startOfLastMonth), end_date: formatDateISO(endOfLastMonth) }))
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-warm hover:bg-primary/10 text-primary-dark transition-colors"
+              >
+                Last Month
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const startOfYear = new Date(today.getFullYear(), 0, 1)
+                  setReportFilters(f => ({ ...f, start_date: formatDateISO(startOfYear), end_date: formatDateISO(today) }))
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-warm hover:bg-primary/10 text-primary-dark transition-colors"
+              >
+                This Year
+              </button>
+            </div>
+            
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm text-text-muted mb-1">Start Date</label>
@@ -1249,7 +1495,7 @@ export default function TimeTracking() {
           </StaggerContainer>
 
           {/* Summary Tables */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
             {/* By Category */}
             <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
               <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
@@ -1318,6 +1564,52 @@ export default function TimeTracking() {
                 )}
               </div>
             </div>
+
+            {/* By Service */}
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
+              <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
+                <h3 className="font-semibold text-primary-dark">Hours by Service</h3>
+              </div>
+              <div className="divide-y divide-neutral-warm max-h-[300px] overflow-y-auto">
+                {reportLoading ? (
+                  <div className="p-4 text-center text-text-muted">Loading...</div>
+                ) : Object.entries(reportByService).length === 0 ? (
+                  <div className="p-4 text-center text-text-muted">No data</div>
+                ) : (
+                  Object.entries(reportByService)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([name, hours]) => (
+                      <div key={name} className="px-4 py-3 flex justify-between items-center">
+                        <span className="text-primary-dark truncate max-w-[150px]">{name}</span>
+                        <span className="font-semibold text-primary">{hours.toFixed(1)}h</span>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+
+            {/* By Task */}
+            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
+              <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
+                <h3 className="font-semibold text-primary-dark">Hours by Task</h3>
+              </div>
+              <div className="divide-y divide-neutral-warm max-h-[300px] overflow-y-auto">
+                {reportLoading ? (
+                  <div className="p-4 text-center text-text-muted">Loading...</div>
+                ) : Object.entries(reportByTask).length === 0 ? (
+                  <div className="p-4 text-center text-text-muted">No tasks logged</div>
+                ) : (
+                  Object.entries(reportByTask)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([name, hours]) => (
+                      <div key={name} className="px-4 py-3 flex justify-between items-center">
+                        <span className="text-primary-dark truncate max-w-[150px]">{name}</span>
+                        <span className="font-semibold text-primary">{hours.toFixed(1)}h</span>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Detailed Entries Table */}
@@ -1333,6 +1625,8 @@ export default function TimeTracking() {
                     {isAdmin && <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Employee</th>}
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Time</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Category</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Service</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Task</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Client</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-text-muted uppercase">Hours</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Description</th>
@@ -1341,11 +1635,11 @@ export default function TimeTracking() {
                 <tbody className="divide-y divide-neutral-warm">
                   {reportLoading ? (
                     <tr>
-                      <td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-text-muted">Loading...</td>
+                      <td colSpan={isAdmin ? 9 : 8} className="px-4 py-8 text-center text-text-muted">Loading...</td>
                     </tr>
                   ) : reportData.length === 0 ? (
                     <tr>
-                      <td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-text-muted">No entries found</td>
+                      <td colSpan={isAdmin ? 9 : 8} className="px-4 py-8 text-center text-text-muted">No entries found</td>
                     </tr>
                   ) : (
                     reportData.slice(0, 100).map(entry => (
@@ -1358,6 +1652,17 @@ export default function TimeTracking() {
                             : '-'}
                         </td>
                         <td className="px-4 py-3 text-sm text-text-muted">{entry.time_category?.name || '-'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {entry.service_type ? (
+                            <span 
+                              className="px-2 py-0.5 rounded text-xs font-medium text-white"
+                              style={{ backgroundColor: entry.service_type.color || '#8B7355' }}
+                            >
+                              {entry.service_type.name}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-muted">{entry.service_task?.name || '-'}</td>
                         <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{entry.client?.name || '-'}</td>
                         <td className="px-4 py-3 text-sm text-primary font-semibold text-right">{entry.hours.toFixed(1)}</td>
                         <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[200px]">{entry.description || '-'}</td>

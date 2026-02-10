@@ -75,6 +75,7 @@ export default function IntakeForm() {
 
   useEffect(() => {
     if (isSubmitted && isKioskMode && countdown === null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCountdown(15);
     }
   }, [isSubmitted, isKioskMode, countdown]);
@@ -84,6 +85,7 @@ export default function IntakeForm() {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
       return () => clearTimeout(timer);
     } else if (countdown === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       resetForm();
     }
   }, [countdown, resetForm]);
@@ -130,6 +132,7 @@ export default function IntakeForm() {
         if (!formData.authorization_confirmed)
           newErrors.authorization_confirmed = 'You must confirm the information is accurate';
         if (!formData.signature.trim()) newErrors.signature = 'Electronic signature is required';
+        if (!formData.signature_date) newErrors.signature_date = 'Signature date is required';
         break;
     }
 
@@ -188,6 +191,22 @@ export default function IntakeForm() {
     setIsSubmitting(false);
 
     if (result.error) {
+      if (result.errors && result.errors.length > 0) {
+        const serverFieldErrors: Record<string, string> = {};
+        result.errors.forEach((message) => {
+          const normalized = message.toLowerCase();
+          if (normalized.includes('signature date')) {
+            serverFieldErrors.signature_date = message;
+          } else if (normalized.includes('signature')) {
+            serverFieldErrors.signature = message;
+          } else if (normalized.includes('authorization')) {
+            serverFieldErrors.authorization_confirmed = message;
+          }
+        });
+        if (Object.keys(serverFieldErrors).length > 0) {
+          setErrors((prev) => ({ ...prev, ...serverFieldErrors }));
+        }
+      }
       setSubmitError(result.error);
       if (result.errors && result.errors.length > 0) {
         setSubmitError(result.errors.join(', '));
@@ -659,7 +678,7 @@ function IntakeHeader() {
   return (
     <header className="bg-white shadow-sm">
       <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
-        <Link to="/" className="flex items-center flex-shrink-0">
+        <Link to="/" className="flex items-center shrink-0">
           <div className="h-14 sm:h-16 overflow-hidden flex items-center">
             <img 
               src="/logo.jpeg" 
@@ -1426,6 +1445,7 @@ function StepAuthorization({ formData, updateField, errors = {}, isKioskMode }: 
         type="date"
         value={formData.signature_date}
         onChange={(v) => updateField('signature_date', v)}
+        error={errors.signature_date}
         required
         isKioskMode={isKioskMode}
       />

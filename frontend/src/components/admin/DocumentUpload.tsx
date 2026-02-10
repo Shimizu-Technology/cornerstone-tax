@@ -47,7 +47,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
     setIsDragging(false)
   }, [])
 
-  const uploadFile = async (file: File) => {
+  const uploadFile = useCallback(async (file: File) => {
     setError(null)
 
     // CST-16: Client-side file validation
@@ -129,7 +129,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
       setUploadProgress(null)
       setUploading(false)
     }
-  }
+  }, [onDocumentsChange, selectedType, taxReturnId])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -139,7 +139,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
     if (files.length > 0) {
       uploadFile(files[0])
     }
-  }, [taxReturnId, selectedType])
+  }, [uploadFile])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -252,7 +252,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
                 className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <svg className="w-8 h-8 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+                  <svg className="w-8 h-8 text-gray-400 shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                   </svg>
                   <div className="min-w-0">
@@ -262,7 +262,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => handleDownload(doc)}
                     className="p-2 text-gray-500 hover:text-primary transition-colors"

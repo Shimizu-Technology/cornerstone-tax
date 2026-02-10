@@ -5,12 +5,20 @@ class TimeEntry < ApplicationRecord
   belongs_to :client, optional: true
   belongs_to :tax_return, optional: true
   belongs_to :time_category, optional: true
+  belongs_to :service_type, optional: true
+  belongs_to :service_task, optional: true
+  has_one :linked_operation_task, class_name: "OperationTask", foreign_key: "linked_time_entry_id", dependent: :nullify
 
   validates :work_date, presence: true
   validates :start_time, presence: true
   validates :end_time, presence: true
   validates :hours, presence: true, numericality: { greater_than: 0, less_than_or_equal_to: 24 }
   validate :end_time_after_start_time
+  # NOTE: service_type is intentionally optional when a client is selected.
+  # This allows flexibility for internal meetings or general client work.
+  # If stricter tracking is needed later, uncomment the validation below:
+  # validate :service_type_required_if_client
+  validate :service_task_matches_service_type
 
   before_validation :calculate_hours_from_times
 
@@ -39,7 +47,7 @@ class TimeEntry < ApplicationRecord
       duration_hours -= (break_minutes / 60.0)
     end
 
-    self.hours = [duration_hours, 0].max.round(2)
+    self.hours = [ duration_hours, 0 ].max.round(2)
   end
 
   # Format times for display
@@ -58,6 +66,24 @@ class TimeEntry < ApplicationRecord
 
     if end_time <= start_time
       errors.add(:end_time, "must be after start time")
+    end
+  end
+
+  # NOTE: Validation commented out - service_type is optional even with client selected.
+  # Uncomment if stricter tracking is needed:
+  # def service_type_required_if_client
+  #   if client_id.present? && service_type_id.blank?
+  #     errors.add(:service_type, "is required when a client is selected")
+  #   end
+  # end
+
+  # If service_task is selected, it must belong to the selected service_type
+  def service_task_matches_service_type
+    return unless service_task_id.present? && service_type_id.present?
+    return unless service_task # Guard against invalid service_task_id
+
+    unless service_task.service_type_id == service_type_id
+      errors.add(:service_task, "must belong to the selected service type")
     end
   end
 end

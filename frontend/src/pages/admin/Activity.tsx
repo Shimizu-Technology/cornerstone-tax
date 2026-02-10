@@ -120,6 +120,11 @@ const AUDITABLE_TYPE_LABELS: Record<string, string> = {
   Client: 'Client',
   TaxReturn: 'Tax Return',
   User: 'User',
+  OperationTemplate: 'Operations Template',
+  OperationTemplateTask: 'Operations Template Task',
+  ClientOperationAssignment: 'Operations Assignment',
+  OperationCycle: 'Operations Cycle',
+  OperationTask: 'Operations Task',
 }
 
 export default function Activity() {
@@ -134,6 +139,7 @@ export default function Activity() {
   type ActivitySource = 'all' | 'workflow' | 'audit'
   const [activitySource, setActivitySource] = useState<ActivitySource>('all')
   const [eventTypeFilter, setEventTypeFilter] = useState('')
+  const [auditTypeFilter, setAuditTypeFilter] = useState('')
   const [userFilter, setUserFilter] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -143,13 +149,15 @@ export default function Activity() {
     setLoading(true)
     try {
       const allActivities: UnifiedActivityItem[] = []
-      let totalCount = 0
+      let workflowPagination: Pagination | null = null
+      let auditPagination: Pagination | null = null
 
       // Fetch workflow events if needed
       if (activitySource === 'all' || activitySource === 'workflow') {
         const workflowParams = new URLSearchParams()
-        workflowParams.append('page', currentPage.toString())
-        workflowParams.append('per_page', activitySource === 'all' ? '15' : '25')
+        // For 'all' mode, always fetch page 1 with more items; for workflow-only, paginate normally
+        workflowParams.append('page', activitySource === 'all' ? '1' : currentPage.toString())
+        workflowParams.append('per_page', activitySource === 'all' ? '50' : '25')
         
         if (eventTypeFilter && (activitySource as ActivitySource) !== 'audit') {
           workflowParams.append('event_type', eventTypeFilter)
@@ -163,16 +171,17 @@ export default function Activity() {
           workflowResponse.data.events.forEach(event => {
             allActivities.push({ type: 'workflow', data: event })
           })
-          if (activitySource === 'workflow') {
-            totalCount = workflowResponse.data.pagination.total_count
-          }
+          workflowPagination = workflowResponse.data.pagination
         }
       }
 
       // Fetch audit logs if needed
       if (activitySource === 'all' || activitySource === 'audit') {
         const auditResponse = await api.getAuditLogs({
-          page: currentPage,
+          // For 'all' mode, always fetch page 1 with more items; for audit-only, paginate normally
+          page: activitySource === 'all' ? 1 : currentPage,
+          per_page: activitySource === 'all' ? 50 : 25,
+          auditable_type: auditTypeFilter || undefined,
           user_id: userFilter ? parseInt(userFilter) : undefined,
           start_date: startDate || undefined,
           end_date: endDate || undefined,
@@ -181,10 +190,7 @@ export default function Activity() {
           auditResponse.data.audit_logs.forEach(log => {
             allActivities.push({ type: 'audit', data: log })
           })
-          if (activitySource === 'audit') {
-            totalCount = auditResponse.data.pagination.total_count
-            setPagination(auditResponse.data.pagination)
-          }
+          auditPagination = auditResponse.data.pagination
         }
       }
 
@@ -195,24 +201,25 @@ export default function Activity() {
         return dateB - dateA
       })
 
-      // If showing all, limit and estimate pagination
+      // Set activities and pagination based on source
       if (activitySource === 'all') {
-        setActivities(allActivities.slice(0, 25))
-        setPagination({
-          current_page: currentPage,
-          per_page: 25,
-          total_count: Math.max(totalCount, allActivities.length),
-          total_pages: Math.ceil(allActivities.length / 25),
-        })
+        // CST-33: For 'all' mode, show combined latest items without pagination
+        // (pagination across two different sources doesn't work well)
+        setActivities(allActivities.slice(0, 50))
+        setPagination(null) // Disable pagination for combined view
+      } else if (activitySource === 'workflow') {
+        setActivities(allActivities)
+        setPagination(workflowPagination)
       } else {
         setActivities(allActivities)
+        setPagination(auditPagination)
       }
     } catch (error) {
       console.error('Failed to fetch activities:', error)
     } finally {
       setLoading(false)
     }
-  }, [currentPage, activitySource, eventTypeFilter, userFilter, startDate, endDate])
+  }, [currentPage, activitySource, eventTypeFilter, auditTypeFilter, userFilter, startDate, endDate])
 
   useEffect(() => {
     fetchActivities()
@@ -250,19 +257,20 @@ export default function Activity() {
   const clearFilters = () => {
     setActivitySource('all')
     setEventTypeFilter('')
+    setAuditTypeFilter('')
     setUserFilter('')
     setStartDate('')
     setEndDate('')
     setCurrentPage(1)
   }
 
-  const hasFilters = activitySource !== 'all' || eventTypeFilter || userFilter || startDate || endDate
+  const hasFilters = activitySource !== 'all' || eventTypeFilter || auditTypeFilter || userFilter || startDate || endDate
 
   // Render a workflow event
   const renderWorkflowEvent = (event: WorkflowEventItem) => (
     <div className="flex items-start gap-4">
       {/* Event Icon */}
-      <div className="flex-shrink-0 hidden sm:block">
+      <div className="shrink-0 hidden sm:block">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${EVENT_TYPE_COLORS[event.event_type] || 'bg-gray-100'}`}>
           {EVENT_TYPE_ICONS[event.event_type] || '📌'}
         </div>
@@ -352,7 +360,7 @@ export default function Activity() {
   const renderAuditLog = (log: AuditLogItem) => (
     <div className="flex items-start gap-4">
       {/* Audit Icon */}
-      <div className="flex-shrink-0 hidden sm:block">
+      <div className="shrink-0 hidden sm:block">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${AUDIT_ACTION_COLORS[log.action] || 'bg-gray-100'}`}>
           {AUDIT_ACTION_ICONS[log.action] || '📋'}
         </div>
@@ -472,7 +480,7 @@ export default function Activity() {
             </button>
           )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
           {/* Activity Source Filter */}
           <div>
             <label htmlFor="activity-type-filter" className="block text-xs font-medium text-gray-500 mb-1">
@@ -489,7 +497,7 @@ export default function Activity() {
             >
               <option value="all">All Activity</option>
               <option value="workflow">Workflow Events</option>
-              <option value="audit">Time Tracking</option>
+              <option value="audit">Audit Logs</option>
             </select>
           </div>
 
@@ -517,6 +525,30 @@ export default function Activity() {
             </select>
           </div>
 
+          {/* Audit Type Filter (only for audit source) */}
+          <div>
+            <label htmlFor="audit-type-filter" className="block text-xs font-medium text-gray-500 mb-1">
+              Audit Type
+            </label>
+            <select
+              id="audit-type-filter"
+              value={auditTypeFilter}
+              onChange={(e) => {
+                setAuditTypeFilter(e.target.value)
+                setCurrentPage(1)
+              }}
+              disabled={activitySource === 'workflow'}
+              className="w-full px-3 py-2 bg-secondary border border-secondary-dark rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+            >
+              <option value="">All audit types</option>
+              {Object.entries(AUDITABLE_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* User Filter */}
           <div>
             <label htmlFor="user-filter" className="block text-xs font-medium text-gray-500 mb-1">
@@ -532,9 +564,10 @@ export default function Activity() {
               className="w-full px-3 py-2 bg-secondary border border-secondary-dark rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               <option value="">All users</option>
+              {/* CST-36: Use first name instead of email */}
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
-                  {user.email}
+                  {user.first_name || user.last_name ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : user.email}
                 </option>
               ))}
             </select>

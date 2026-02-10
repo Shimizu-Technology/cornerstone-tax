@@ -3,30 +3,40 @@
 module Api
   module V1
     class TimeEntriesController < BaseController
+      class LinkConflictError < StandardError; end
+
       before_action :authenticate_user!
       before_action :require_staff!
-      before_action :set_time_entry, only: [:show, :update, :destroy]
+      before_action :set_time_entry, only: [ :show, :update, :destroy ]
+
+      rescue_from LinkConflictError do |e|
+        render json: { error: e.message }, status: :conflict
+      end
 
       # GET /api/v1/time_entries
       def index
         @time_entries = current_user.admin? ? TimeEntry.all : TimeEntry.for_user(current_user)
-        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category)
+        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :service_type, :service_task, :linked_operation_task)
 
         # Filter by user (admin only)
         if params[:user_id].present? && current_user.admin?
           @time_entries = @time_entries.where(user_id: params[:user_id])
         end
 
-        # Filter by date
-        if params[:date].present?
-          @time_entries = @time_entries.for_date(Date.parse(params[:date]))
-        elsif params[:week].present?
-          # Week starts on Sunday (frontend convention)
-          week_start = Date.parse(params[:week])
-          week_end = week_start + 6.days
-          @time_entries = @time_entries.where(work_date: week_start..week_end)
-        elsif params[:start_date].present? && params[:end_date].present?
-          @time_entries = @time_entries.where(work_date: Date.parse(params[:start_date])..Date.parse(params[:end_date]))
+        # Filter by date (with error handling for malformed dates)
+        begin
+          if params[:date].present?
+            @time_entries = @time_entries.for_date(Date.parse(params[:date]))
+          elsif params[:week].present?
+            # Week starts on Sunday (frontend convention)
+            week_start = Date.parse(params[:week])
+            week_end = week_start + 6.days
+            @time_entries = @time_entries.where(work_date: week_start..week_end)
+          elsif params[:start_date].present? && params[:end_date].present?
+            @time_entries = @time_entries.where(work_date: Date.parse(params[:start_date])..Date.parse(params[:end_date]))
+          end
+        rescue Date::Error, ArgumentError => e
+          return render json: { error: "Invalid date format: #{e.message}" }, status: :bad_request
         end
 
         # Filter by category
@@ -39,11 +49,17 @@ module Api
           @time_entries = @time_entries.where(client_id: params[:client_id])
         end
 
+        # Filter by service type
+        if params[:service_type_id].present?
+          @time_entries = @time_entries.where(service_type_id: params[:service_type_id])
+        end
+
         @time_entries = @time_entries.order(work_date: :desc, created_at: :desc)
 
         # Pagination
         page = (params[:page] || 1).to_i
-        per_page = (params[:per_page] || 50).to_i.clamp(1, 100)
+        # Allow up to 1000 for reports, default 50 for regular pagination
+        per_page = (params[:per_page] || 50).to_i.clamp(1, 1000)
         total_count = @time_entries.count
         @time_entries = @time_entries.offset((page - 1) * per_page).limit(per_page)
 
@@ -69,6 +85,8 @@ module Api
         @time_entry = current_user.time_entries.build(time_entry_params)
 
         if @time_entry.save
+          sync_operation_task_link!(@time_entry)
+
           # Log the audit event
           AuditLog.log(
             auditable: @time_entry,
@@ -99,6 +117,8 @@ module Api
         }
 
         if @time_entry.update(time_entry_params)
+          sync_operation_task_link!(@time_entry)
+
           # Log the audit event with changes
           new_values = {
             hours: @time_entry.hours.to_f,
@@ -137,7 +157,11 @@ module Api
         entry_info = "#{@time_entry.hours}h on #{@time_entry.work_date}"
         entry_id = @time_entry.id
 
-        @time_entry.destroy
+        # Wrap in transaction so unlink + destroy are atomic
+        ActiveRecord::Base.transaction do
+          OperationTask.where(linked_time_entry_id: @time_entry.id).update_all(linked_time_entry_id: nil)
+          @time_entry.destroy!
+        end
 
         # Log the audit event (use entry_id since record is deleted)
         AuditLog.create!(
@@ -154,7 +178,7 @@ module Api
       private
 
       def set_time_entry
-        @time_entry = TimeEntry.find(params[:id])
+        @time_entry = TimeEntry.includes(:linked_operation_task).find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Time entry not found" }, status: :not_found
       end
@@ -169,7 +193,9 @@ module Api
           :time_category_id,
           :client_id,
           :tax_return_id,
-          :break_minutes
+          :break_minutes,
+          :service_type_id,
+          :service_task_id
         )
       end
 
@@ -202,9 +228,47 @@ module Api
             id: entry.tax_return.id,
             tax_year: entry.tax_return.tax_year
           } : nil,
+          service_type: entry.service_type ? {
+            id: entry.service_type.id,
+            name: entry.service_type.name,
+            color: entry.service_type.color
+          } : nil,
+          service_task: entry.service_task ? {
+            id: entry.service_task.id,
+            name: entry.service_task.name
+          } : nil,
+          linked_operation_task: entry.linked_operation_task ? {
+            id: entry.linked_operation_task.id,
+            title: entry.linked_operation_task.title
+          } : nil,
           created_at: entry.created_at.iso8601,
           updated_at: entry.updated_at.iso8601
         }
+      end
+
+      def sync_operation_task_link!(time_entry)
+        operation_task_id = params[:operation_task_id].presence
+        return if operation_task_id.blank?
+
+        task = OperationTask.find_by(id: operation_task_id)
+        return unless task
+
+        # Keep linkage within the same client when both are present.
+        if task.client_id.present? && time_entry.client_id.present? && task.client_id != time_entry.client_id
+          return
+        end
+
+        # Wrap in transaction with row locking to prevent race conditions
+        ActiveRecord::Base.transaction do
+          old_task = OperationTask.lock.find_by(linked_time_entry_id: time_entry.id)
+          old_task.update!(linked_time_entry_id: nil) if old_task && old_task.id != task.id
+          task.lock!
+          task.update!(linked_time_entry_id: time_entry.id)
+        end
+      rescue ActiveRecord::RecordNotUnique => e
+        # Another task is already linked to this time entry (unique index violation)
+        Rails.logger.warn("Unique constraint violation linking task #{task.id} to time_entry #{time_entry.id}")
+        raise LinkConflictError, "This time entry is already linked to another task"
       end
 
       def calculate_summary(entries)

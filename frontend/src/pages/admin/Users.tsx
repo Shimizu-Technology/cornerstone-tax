@@ -77,6 +77,7 @@ export default function Users() {
         fetchUsers()
       }
     } catch (err) {
+      console.error('Failed to invite user:', err)
       setError('Failed to invite user')
     } finally {
       setInviting(false)
@@ -92,6 +93,7 @@ export default function Users() {
         fetchUsers()
       }
     } catch (err) {
+      console.error('Failed to update role:', err)
       alert('Failed to update role')
     }
   }
@@ -109,6 +111,7 @@ export default function Users() {
         fetchUsers()
       }
     } catch (err) {
+      console.error('Failed to delete user:', err)
       alert('Failed to delete user')
     }
   }
@@ -152,7 +155,7 @@ export default function Users() {
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-secondary/50 border-b border-secondary-dark">
                 <tr>
@@ -231,7 +234,7 @@ export default function Users() {
       </div>
 
       {/* Mobile Card View */}
-      <div className="sm:hidden space-y-4">
+      <div className="md:hidden space-y-4">
         {!loading && users.map((user) => (
           <div key={user.id} className="bg-white rounded-2xl border border-secondary-dark p-4">
             <div className="flex items-start justify-between gap-4">

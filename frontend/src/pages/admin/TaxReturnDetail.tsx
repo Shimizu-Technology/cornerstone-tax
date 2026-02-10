@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
@@ -157,7 +157,7 @@ export default function TaxReturnDetailPage() {
       }))
   })()
 
-  const loadTaxReturn = async () => {
+  const loadTaxReturn = useCallback(async () => {
     if (!id) return
     setLoading(true)
     try {
@@ -169,11 +169,12 @@ export default function TaxReturnDetailPage() {
         setError(result.error)
       }
     } catch (err) {
+      console.error('Failed to load tax return:', err)
       setError('Failed to load tax return')
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
 
   const refreshTaxReturn = async () => {
     if (!id) return
@@ -188,7 +189,7 @@ export default function TaxReturnDetailPage() {
     }
   }
 
-  const loadDropdownData = async () => {
+  const loadDropdownData = useCallback(async () => {
     try {
       const [stagesRes, usersRes] = await Promise.all([
         api.getWorkflowStages(),
@@ -199,12 +200,12 @@ export default function TaxReturnDetailPage() {
     } catch (err) {
       console.error('Failed to load dropdown data:', err)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadTaxReturn()
     loadDropdownData()
-  }, [id])
+  }, [loadDropdownData, loadTaxReturn])
 
   const handleStatusChange = async (stageId: number) => {
     if (!taxReturn) return
@@ -213,6 +214,7 @@ export default function TaxReturnDetailPage() {
       await api.updateTaxReturn(taxReturn.id, { workflow_stage_id: stageId })
       await loadTaxReturn()
     } catch (err) {
+      console.error('Failed to update status:', err)
       alert('Failed to update status')
     } finally {
       setSaving(false)
@@ -230,6 +232,7 @@ export default function TaxReturnDetailPage() {
       }
       await loadTaxReturn()
     } catch (err) {
+      console.error('Failed to update assignment:', err)
       alert('Failed to update assignment')
     } finally {
       setSaving(false)
@@ -243,6 +246,7 @@ export default function TaxReturnDetailPage() {
       await api.updateTaxReturn(taxReturn.id, { reviewed_by_id: userId })
       await loadTaxReturn()
     } catch (err) {
+      console.error('Failed to update reviewer:', err)
       alert('Failed to update reviewer')
     } finally {
       setSaving(false)
@@ -257,6 +261,7 @@ export default function TaxReturnDetailPage() {
       await loadTaxReturn()
       setEditingNotes(false)
     } catch (err) {
+      console.error('Failed to save notes:', err)
       alert('Failed to save notes')
     } finally {
       setSaving(false)
@@ -291,6 +296,7 @@ export default function TaxReturnDetailPage() {
       await loadTaxReturn()
       setShowIncomeModal(false)
     } catch (err) {
+      console.error('Failed to save income source:', err)
       alert('Failed to save income source')
     } finally {
       setSaving(false)
@@ -305,6 +311,7 @@ export default function TaxReturnDetailPage() {
       await api.deleteIncomeSource(taxReturn.id, srcId)
       await loadTaxReturn()
     } catch (err) {
+      console.error('Failed to delete income source:', err)
       alert('Failed to delete income source')
     } finally {
       setSaving(false)

@@ -15,19 +15,27 @@ class CreateIntakeService
   end
 
   def call
+    validate_authorization!
+    return Result.new(success?: false, client: nil, tax_return: nil, errors: @errors) if @errors.any?
+
     ActiveRecord::Base.transaction do
       create_client
       create_dependents
       create_tax_return
       create_income_sources
       log_intake_event
-
-      Result.new(success?: true, client: @client, tax_return: @tax_return, errors: [])
     end
+
+    # Transaction succeeded - notify admin (non-blocking, outside transaction)
+    notify_admin
+
+    Result.new(success?: true, client: @client, tax_return: @tax_return, errors: [])
   rescue ActiveRecord::RecordInvalid => e
+    # Transaction rolled back - don't notify admin
     @errors << e.message
     Result.new(success?: false, client: nil, tax_return: nil, errors: @errors)
   rescue StandardError => e
+    # Transaction rolled back - don't notify admin
     @errors << "Unexpected error: #{e.message}"
     Result.new(success?: false, client: nil, tax_return: nil, errors: @errors)
   end
@@ -108,5 +116,27 @@ class CreateIntakeService
       new_value: @tax_return.workflow_stage&.name,
       description: "Client intake form submitted"
     )
+  end
+
+  def validate_authorization!
+    if @params[:signature].blank?
+      @errors << "Signature is required"
+    end
+
+    if @params[:signature_date].blank?
+      @errors << "Signature date is required"
+    end
+
+    unless ActiveModel::Type::Boolean.new.cast(@params[:authorization_confirmed])
+      @errors << "Authorization confirmation is required"
+    end
+  end
+
+  # CST-37: Send email notification to admin about new intake
+  def notify_admin
+    IntakeMailer.intake_submitted_email(client: @client, tax_return: @tax_return).deliver_later
+  rescue StandardError => e
+    # Don't fail the intake if email fails - just log it
+    Rails.logger.error "Failed to send intake notification email: #{e.message}"
   end
 end

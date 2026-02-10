@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_10_122127) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -29,11 +29,55 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.index ["user_id"], name: "index_audit_logs_on_user_id"
   end
 
+  create_table "client_contacts", force: :cascade do |t|
+    t.bigint "client_id", null: false
+    t.datetime "created_at", null: false
+    t.string "email"
+    t.string "first_name", null: false
+    t.boolean "is_primary", default: false, null: false
+    t.string "last_name", null: false
+    t.string "phone"
+    t.string "role"
+    t.datetime "updated_at", null: false
+    t.index ["client_id", "is_primary"], name: "index_client_contacts_primary_unique", unique: true, where: "is_primary"
+    t.index ["client_id"], name: "index_client_contacts_on_client_id"
+  end
+
+  create_table "client_operation_assignments", force: :cascade do |t|
+    t.string "assignment_status", default: "active", null: false
+    t.boolean "auto_generate", default: true, null: false
+    t.bigint "client_id", null: false
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.date "ends_on"
+    t.bigint "operation_template_id", null: false
+    t.date "starts_on"
+    t.datetime "updated_at", null: false
+    t.index ["assignment_status", "auto_generate", "starts_on", "ends_on"], name: "index_client_operation_assignments_auto_window"
+    t.index ["assignment_status"], name: "index_client_operation_assignments_on_assignment_status"
+    t.index ["client_id", "operation_template_id"], name: "index_client_operation_assignments_unique", unique: true
+    t.index ["client_id"], name: "index_client_operation_assignments_on_client_id"
+    t.index ["created_by_id"], name: "index_client_operation_assignments_on_created_by_id"
+    t.index ["operation_template_id"], name: "index_client_operation_assignments_on_operation_template_id"
+  end
+
+  create_table "client_service_types", force: :cascade do |t|
+    t.bigint "client_id", null: false
+    t.datetime "created_at", null: false
+    t.bigint "service_type_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["client_id", "service_type_id"], name: "index_client_service_types_on_client_id_and_service_type_id", unique: true
+    t.index ["client_id"], name: "index_client_service_types_on_client_id"
+    t.index ["service_type_id"], name: "index_client_service_types_on_service_type_id"
+  end
+
   create_table "clients", force: :cascade do |t|
     t.string "bank_account_number_encrypted"
     t.string "bank_account_type"
     t.string "bank_routing_number_encrypted"
+    t.string "business_name"
     t.text "changes_from_prior_year"
+    t.string "client_type", default: "individual"
     t.datetime "created_at", null: false
     t.date "date_of_birth"
     t.boolean "denied_eic_actc", default: false
@@ -43,6 +87,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.string "first_name", null: false
     t.boolean "has_crypto_transactions", default: false
     t.boolean "has_prior_year_return", default: false
+    t.boolean "has_tax_returns", default: true, null: false
     t.boolean "is_new_client", default: true
     t.string "last_name", null: false
     t.text "mailing_address"
@@ -51,7 +96,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.string "spouse_name"
     t.datetime "updated_at", null: false
     t.boolean "wants_direct_deposit", default: false
+    t.index ["client_type"], name: "index_clients_on_client_type"
     t.index ["email"], name: "index_clients_on_email"
+    t.index ["has_tax_returns"], name: "index_clients_on_has_tax_returns"
     t.index ["last_name", "first_name"], name: "index_clients_on_last_name_and_first_name"
   end
 
@@ -110,6 +157,102 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.index ["tax_return_id"], name: "index_notifications_on_tax_return_id"
   end
 
+  create_table "operation_cycles", force: :cascade do |t|
+    t.bigint "client_id", null: false
+    t.bigint "client_operation_assignment_id"
+    t.datetime "created_at", null: false
+    t.string "cycle_label", null: false
+    t.datetime "generated_at"
+    t.bigint "generated_by_id"
+    t.string "generation_mode", default: "manual", null: false
+    t.bigint "operation_template_id", null: false
+    t.date "period_end", null: false
+    t.date "period_start", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.index ["client_id", "operation_template_id", "period_start", "period_end"], name: "index_operation_cycles_unique_period", unique: true
+    t.index ["client_id", "period_start", "created_at"], name: "index_operation_cycles_client_recent", order: { period_start: :desc, created_at: :desc }
+    t.index ["client_id", "status"], name: "index_operation_cycles_on_client_id_and_status"
+    t.index ["client_id"], name: "index_operation_cycles_on_client_id"
+    t.index ["client_operation_assignment_id"], name: "index_operation_cycles_on_client_operation_assignment_id"
+    t.index ["generated_by_id"], name: "index_operation_cycles_on_generated_by_id"
+    t.index ["operation_template_id"], name: "index_operation_cycles_on_operation_template_id"
+    t.index ["status"], name: "index_operation_cycles_on_status"
+  end
+
+  create_table "operation_tasks", force: :cascade do |t|
+    t.bigint "assigned_to_id"
+    t.bigint "client_id", null: false
+    t.datetime "completed_at"
+    t.bigint "completed_by_id"
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.datetime "due_at"
+    t.text "evidence_note"
+    t.boolean "evidence_required", default: false, null: false
+    t.bigint "linked_time_entry_id"
+    t.text "notes"
+    t.bigint "operation_cycle_id", null: false
+    t.bigint "operation_template_task_id", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "started_at"
+    t.string "status", default: "not_started", null: false
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assigned_to_id", "status"], name: "index_operation_tasks_on_assigned_to_id_and_status"
+    t.index ["assigned_to_id"], name: "index_operation_tasks_on_assigned_to_id"
+    t.index ["client_id", "status"], name: "index_operation_tasks_on_client_id_and_status"
+    t.index ["client_id"], name: "index_operation_tasks_on_client_id"
+    t.index ["completed_by_id"], name: "index_operation_tasks_on_completed_by_id"
+    t.index ["due_at"], name: "index_operation_tasks_on_due_at"
+    t.index ["linked_time_entry_id"], name: "index_operation_tasks_on_linked_time_entry_id"
+    t.index ["linked_time_entry_id"], name: "index_operation_tasks_on_linked_time_entry_unique", unique: true, where: "(linked_time_entry_id IS NOT NULL)"
+    t.index ["operation_cycle_id", "position"], name: "index_operation_tasks_order"
+    t.index ["operation_cycle_id"], name: "index_operation_tasks_on_operation_cycle_id"
+    t.index ["operation_template_task_id"], name: "index_operation_tasks_on_operation_template_task_id"
+    t.index ["status", "due_at"], name: "index_operation_tasks_active_status_due", where: "((status)::text <> 'done'::text)"
+    t.index ["status"], name: "index_operation_tasks_on_status"
+  end
+
+  create_table "operation_template_tasks", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "default_assignee_id"
+    t.integer "dependency_template_task_ids", default: [], null: false, array: true
+    t.text "description"
+    t.string "due_offset_from"
+    t.string "due_offset_unit"
+    t.integer "due_offset_value"
+    t.boolean "evidence_required", default: false, null: false
+    t.boolean "is_active", default: true, null: false
+    t.bigint "operation_template_id", null: false
+    t.integer "position", default: 0, null: false
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["default_assignee_id"], name: "index_operation_template_tasks_on_default_assignee_id"
+    t.index ["is_active"], name: "index_operation_template_tasks_on_is_active"
+    t.index ["operation_template_id", "position"], name: "index_operation_template_tasks_order"
+    t.index ["operation_template_id", "title"], name: "index_operation_template_tasks_unique_title", unique: true
+    t.index ["operation_template_id"], name: "index_operation_template_tasks_on_operation_template_id"
+  end
+
+  create_table "operation_templates", force: :cascade do |t|
+    t.boolean "auto_generate", default: true, null: false
+    t.string "category", default: "general", null: false
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.text "description"
+    t.boolean "is_active", default: true, null: false
+    t.string "name", null: false
+    t.date "recurrence_anchor"
+    t.integer "recurrence_interval"
+    t.string "recurrence_type", default: "monthly", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_operation_templates_on_created_by_id"
+    t.index ["is_active"], name: "index_operation_templates_on_is_active"
+    t.index ["name"], name: "index_operation_templates_on_name", unique: true
+    t.index ["recurrence_type"], name: "index_operation_templates_on_recurrence_type"
+  end
+
   create_table "schedule_time_presets", force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.datetime "created_at", null: false
@@ -135,6 +278,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.index ["user_id", "work_date"], name: "index_schedules_on_user_id_and_work_date"
     t.index ["user_id"], name: "index_schedules_on_user_id"
     t.index ["work_date"], name: "index_schedules_on_work_date"
+  end
+
+  create_table "service_tasks", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.boolean "is_active", default: true, null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.bigint "service_type_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["is_active"], name: "index_service_tasks_on_is_active"
+    t.index ["service_type_id", "name"], name: "index_service_tasks_on_type_and_name_unique", unique: true
+    t.index ["service_type_id", "position"], name: "index_service_tasks_on_service_type_id_and_position"
+    t.index ["service_type_id"], name: "index_service_tasks_on_service_type_id"
+  end
+
+  create_table "service_types", force: :cascade do |t|
+    t.string "color"
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.boolean "is_active", default: true, null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["is_active"], name: "index_service_types_on_is_active"
+    t.index ["name"], name: "index_service_types_on_name_unique", unique: true
+    t.index ["position"], name: "index_service_types_on_position"
   end
 
   create_table "settings", force: :cascade do |t|
@@ -178,6 +348,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.text "description"
     t.time "end_time"
     t.decimal "hours", precision: 4, scale: 2, null: false
+    t.bigint "service_task_id"
+    t.bigint "service_type_id"
     t.time "start_time"
     t.bigint "tax_return_id"
     t.bigint "time_category_id"
@@ -185,6 +357,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.bigint "user_id", null: false
     t.date "work_date", null: false
     t.index ["client_id"], name: "index_time_entries_on_client_id"
+    t.index ["service_task_id"], name: "index_time_entries_on_service_task_id"
+    t.index ["service_type_id"], name: "index_time_entries_on_service_type_id"
     t.index ["tax_return_id"], name: "index_time_entries_on_tax_return_id"
     t.index ["time_category_id"], name: "index_time_entries_on_time_category_id"
     t.index ["user_id"], name: "index_time_entries_on_user_id"
@@ -221,6 +395,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
     t.index ["client_id"], name: "index_users_on_client_id"
     t.index ["email"], name: "index_users_on_email"
     t.index ["role"], name: "index_users_on_role"
+    t.check_constraint "role::text = ANY (ARRAY['admin'::character varying, 'employee'::character varying, 'client'::character varying]::text[])", name: "check_valid_role"
   end
 
   create_table "workflow_events", force: :cascade do |t|
@@ -251,19 +426,41 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_27_062045) do
   end
 
   add_foreign_key "audit_logs", "users"
+  add_foreign_key "client_contacts", "clients"
+  add_foreign_key "client_operation_assignments", "clients"
+  add_foreign_key "client_operation_assignments", "operation_templates"
+  add_foreign_key "client_operation_assignments", "users", column: "created_by_id"
+  add_foreign_key "client_service_types", "clients"
+  add_foreign_key "client_service_types", "service_types"
   add_foreign_key "dependents", "clients"
   add_foreign_key "documents", "tax_returns"
   add_foreign_key "documents", "users", column: "uploaded_by_id"
   add_foreign_key "income_sources", "tax_returns"
   add_foreign_key "notifications", "clients"
   add_foreign_key "notifications", "tax_returns"
+  add_foreign_key "operation_cycles", "client_operation_assignments"
+  add_foreign_key "operation_cycles", "clients"
+  add_foreign_key "operation_cycles", "operation_templates"
+  add_foreign_key "operation_cycles", "users", column: "generated_by_id"
+  add_foreign_key "operation_tasks", "clients"
+  add_foreign_key "operation_tasks", "operation_cycles"
+  add_foreign_key "operation_tasks", "operation_template_tasks"
+  add_foreign_key "operation_tasks", "time_entries", column: "linked_time_entry_id"
+  add_foreign_key "operation_tasks", "users", column: "assigned_to_id"
+  add_foreign_key "operation_tasks", "users", column: "completed_by_id"
+  add_foreign_key "operation_template_tasks", "operation_templates"
+  add_foreign_key "operation_template_tasks", "users", column: "default_assignee_id"
+  add_foreign_key "operation_templates", "users", column: "created_by_id"
   add_foreign_key "schedules", "users"
   add_foreign_key "schedules", "users", column: "created_by_id"
+  add_foreign_key "service_tasks", "service_types"
   add_foreign_key "tax_returns", "clients"
   add_foreign_key "tax_returns", "users", column: "assigned_to_id"
   add_foreign_key "tax_returns", "users", column: "reviewed_by_id"
   add_foreign_key "tax_returns", "workflow_stages"
   add_foreign_key "time_entries", "clients"
+  add_foreign_key "time_entries", "service_tasks"
+  add_foreign_key "time_entries", "service_types"
   add_foreign_key "time_entries", "tax_returns"
   add_foreign_key "time_entries", "time_categories"
   add_foreign_key "time_entries", "users"
