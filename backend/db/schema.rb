@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_10_090101) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_10_122127) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -289,6 +289,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_10_090101) do
     t.bigint "service_type_id", null: false
     t.datetime "updated_at", null: false
     t.index ["is_active"], name: "index_service_tasks_on_is_active"
+    t.index ["service_type_id", "name"], name: "index_service_tasks_on_type_and_name_unique", unique: true
     t.index ["service_type_id", "position"], name: "index_service_tasks_on_service_type_id_and_position"
     t.index ["service_type_id"], name: "index_service_tasks_on_service_type_id"
   end
@@ -302,6 +303,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_10_090101) do
     t.integer "position", default: 0, null: false
     t.datetime "updated_at", null: false
     t.index ["is_active"], name: "index_service_types_on_is_active"
+    t.index ["name"], name: "index_service_types_on_name_unique", unique: true
     t.index ["position"], name: "index_service_types_on_position"
   end
 

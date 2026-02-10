@@ -40,9 +40,9 @@ module Api
         end
 
         # Filter by service-only clients (has_tax_returns = false means service-only)
-        if params[:service_only].present?
-          # service_only=true means has_tax_returns=false
-          clients = clients.where(has_tax_returns: params[:service_only] == 'true' ? false : true)
+        # Only filter when service_only=true; service_only=false means "show all" (no filter)
+        if params[:service_only] == 'true'
+          clients = clients.where(has_tax_returns: false)
         end
         
         # Also support has_tax_returns param directly
@@ -154,17 +154,10 @@ module Api
           if client.update(client_params)
             create_contacts_for_client(client) if client.client_type == "business" && client.client_contacts.empty?
 
-            # Update service types if provided
+            # Update service types if provided (atomic via Rails association setter)
             if params[:client].key?(:service_type_ids)
               new_service_type_ids = (params[:client][:service_type_ids] || []).map(&:to_i)
-              
-              # Remove old associations
-              client.client_service_types.destroy_all
-              
-              # Add new associations
-              new_service_type_ids.each do |st_id|
-                client.client_service_types.create!(service_type_id: st_id)
-              end
+              client.service_type_ids = new_service_type_ids
             end
 
             # Calculate what actually changed
