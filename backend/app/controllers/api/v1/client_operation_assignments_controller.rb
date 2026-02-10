@@ -5,7 +5,7 @@ module Api
     class ClientOperationAssignmentsController < BaseController
       before_action :authenticate_user!
       before_action :require_admin!
-      before_action :set_client, only: [:index, :create]
+      before_action :set_client, only: [:index, :create, :update]
       before_action :set_assignment, only: [:update]
 
       # GET /api/v1/clients/:client_id/operation_assignments
@@ -43,7 +43,8 @@ module Api
       end
 
       def set_assignment
-        @assignment = ClientOperationAssignment.includes(:operation_template).find(params[:id])
+        # Scope through client to prevent unauthorized access to other clients' assignments
+        @assignment = @client.client_operation_assignments.includes(:operation_template).find(params[:id])
       end
 
       def assignment_params
