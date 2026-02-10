@@ -450,7 +450,7 @@ export default function OperationsPage() {
                         <button
                           type="button"
                           onClick={() => handleQuickStatus(task, 'done')}
-                          disabled={savingTaskId === task.id || task.evidence_required || hasUnmetPrerequisites}
+                          disabled={savingTaskId === task.id || (task.evidence_required && !task.evidence_note) || hasUnmetPrerequisites}
                           className="min-h-11 px-3 py-2 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50"
                         >
                           Mark Done
@@ -468,7 +468,7 @@ export default function OperationsPage() {
                       )}
                     </div>
 
-                    {task.evidence_required && task.status !== 'done' && (
+                    {task.evidence_required && !task.evidence_note && task.status !== 'done' && (
                       <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
                         Evidence is required before this task can be marked done from the board.
                       </p>

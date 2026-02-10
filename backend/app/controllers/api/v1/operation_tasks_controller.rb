@@ -149,9 +149,10 @@ module Api
         return unless @task.saved_change_to_status?
 
         if @task.status == "done"
-          @task.update_columns(completed_at: Time.current, completed_by_id: current_user.id) if @task.completed_at.blank?
+          # Use update! to run validations (evidence_required check)
+          @task.update!(completed_at: Time.current, completed_by_id: current_user.id) if @task.completed_at.blank?
         elsif @task.status != "done" && (@task.completed_at.present? || @task.completed_by_id.present?)
-          @task.update_columns(completed_at: nil, completed_by_id: nil)
+          @task.update!(completed_at: nil, completed_by_id: nil)
         end
       end
 

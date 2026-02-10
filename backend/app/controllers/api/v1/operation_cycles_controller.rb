@@ -62,11 +62,14 @@ module Api
       end
 
       def set_cycle
-        @cycle = OperationCycle.includes(
-          :operation_template,
-          :generated_by,
-          operation_tasks: [ :assigned_to, :completed_by, :client, :operation_template_task, { linked_time_entry: :user } ]
-        ).find(params[:id])
+        # Join client to ensure cycle belongs to a valid client (defense in depth)
+        @cycle = OperationCycle
+          .joins(:client)
+          .includes(
+            :operation_template,
+            :generated_by,
+            operation_tasks: [ :assigned_to, :completed_by, :client, :operation_template_task, { linked_time_entry: :user } ]
+          ).find(params[:id])
       end
 
       def find_assignment
@@ -80,7 +83,8 @@ module Api
         template_id = params[:operation_template_id]
         return nil if template_id.blank?
 
-        OperationTemplate.find(template_id)
+        # Scope to active templates only to prevent using inactive/deleted templates
+        OperationTemplate.where(is_active: true).find(template_id)
       end
 
       def parse_date(raw)
