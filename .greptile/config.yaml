@@ -1,6 +1,0 @@
-# Greptile configuration
-# https://docs.greptile.com/configuration
-
-review:
-  # Increase file limit for large PRs (default is 100)
-  max_files: 200
