@@ -635,10 +635,11 @@ export default function TimeTracking() {
       
       {/* Tab Navigation */}
       <div className="border-b border-neutral-warm">
-        <nav className="flex gap-4">
+        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+        <nav className="flex gap-2 sm:gap-4 w-max min-w-full">
           <button
             onClick={() => setActiveTab('entries')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+            className={`pb-3 px-2 sm:px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap shrink-0 ${
               activeTab === 'entries'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -650,7 +651,7 @@ export default function TimeTracking() {
           {isAdmin && (
             <button
               onClick={() => setActiveTab('reports')}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              className={`pb-3 px-2 sm:px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap shrink-0 ${
                 activeTab === 'reports'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -661,6 +662,7 @@ export default function TimeTracking() {
             </button>
           )}
         </nav>
+        </div>
       </div>
 
       {/* Entries Tab */}
@@ -1209,7 +1211,7 @@ export default function TimeTracking() {
                 {/* Category */}
                 <div>
                   <label className="block text-sm font-medium text-primary-dark mb-1">
-                    Category
+                    Time Category
                   </label>
                   <select
                     value={formData.time_category_id}
@@ -1245,7 +1247,7 @@ export default function TimeTracking() {
                 {/* Service Type (required if client is selected) */}
                 <div>
                   <label className="block text-sm font-medium text-primary-dark mb-1">
-                    Service {formData.client_id ? <span className="text-red-500">*</span> : '(optional)'}
+                    Client Service {formData.client_id ? <span className="text-red-500">*</span> : '(optional)'}
                   </label>
                   <select
                     value={formData.service_type_id}
@@ -1259,7 +1261,7 @@ export default function TimeTracking() {
                     ))}
                   </select>
                   {formData.client_id && !formData.service_type_id && (
-                    <p className="text-xs text-red-500 mt-1">Service is required when logging time for a client</p>
+                    <p className="text-xs text-red-500 mt-1">A client service is required when logging time for a client</p>
                   )}
                 </div>
 

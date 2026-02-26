@@ -380,6 +380,45 @@ Currently tracking workflow events and some audit logs, but could be more compre
 
 ## Workflow & Task Management
 
+### Checklist Auto-Run Scheduler (Future)
+**Priority:** Medium | **Effort:** Medium
+
+Current product direction is manual run creation after setup (staff clicks Create Run when needed). In a future phase, add optional automation to generate runs on cadence.
+
+**Future automation options:**
+- Solid Queue recurring job (preferred for Rails-native scheduling)
+- Cron-triggered rake task (`operations:auto_generate`)
+- Platform scheduler (Render/host cron calling a protected endpoint)
+
+**Requirements before enabling:**
+- Global on/off setting for auto-run
+- Per-checklist toggle and run window/timezone rules
+- Duplicate protection and idempotent retries
+- Clear activity logs: "Auto-created checklist run"
+
+---
+
+### Recurring Checklist Role Presets
+**Priority:** Medium | **Effort:** Medium
+
+Add role/person presets for recurring checklist tasks so each generated run auto-assigns each step to the right teammate.
+
+**Why this helps Cornerstone:**
+- Bi-weekly payroll and bookkeeping runs are repeatable; ownership usually stays consistent.
+- Reduces manual re-assignment every cycle.
+- Improves accountability and "who owns this step?" clarity.
+
+**Scope ideas:**
+- Per checklist task: assign default owner (`default_assignee_id`) in template setup.
+- Optional per-client override (same template, different staff for a specific client).
+- Keep manual reassignment available on individual runs/tasks.
+
+**UX notes:**
+- Show owner chips in template preview and in generated checklist runs.
+- Surface unassigned tasks as warnings before saving a recurring checklist.
+
+---
+
 ### Kanban Board View
 **Priority:** Medium | **Effort:** High
 

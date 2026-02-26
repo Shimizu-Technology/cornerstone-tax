@@ -219,4 +219,88 @@ RSpec.describe "Api::V1::OperationCycles", type: :request do
       expect(JSON.parse(response.body)["error"]).to eq("Staff access required")
     end
   end
+
+  describe "PATCH /api/v1/operation_cycles/:id/archive" do
+    it "archives a run for admin users" do
+      cycle = GenerateOperationCycleService.new(
+        client: client,
+        operation_template: template,
+        assignment: assignment,
+        period_start: Date.current.beginning_of_month,
+        period_end: Date.current.end_of_month,
+        generation_mode: "manual",
+        generated_by: admin
+      ).call.cycle
+      expect(cycle.status).to eq("active")
+
+      stub_clerk_for(admin)
+      patch "/api/v1/operation_cycles/#{cycle.id}/archive", headers: auth_headers_for(admin)
+
+      expect(response).to have_http_status(:ok)
+      payload = JSON.parse(response.body).fetch("operation_cycle")
+      expect(payload["status"]).to eq("archived")
+      expect(cycle.reload.status).to eq("archived")
+    end
+
+    it "rejects non-admin users" do
+      cycle = GenerateOperationCycleService.new(
+        client: client,
+        operation_template: template,
+        assignment: assignment,
+        period_start: Date.current.beginning_of_month + 1.day,
+        period_end: Date.current.end_of_month + 1.day,
+        generation_mode: "manual",
+        generated_by: admin
+      ).call.cycle
+      expect(cycle).to be_present
+
+      stub_clerk_for(employee)
+      patch "/api/v1/operation_cycles/#{cycle.id}/archive", headers: auth_headers_for(employee)
+
+      expect(response).to have_http_status(:forbidden)
+      expect(JSON.parse(response.body)["error"]).to eq("Admin access required")
+    end
+  end
+
+  describe "PATCH /api/v1/operation_cycles/:id/unarchive" do
+    it "restores archived runs to active for admins" do
+      cycle = GenerateOperationCycleService.new(
+        client: client,
+        operation_template: template,
+        assignment: assignment,
+        period_start: Date.current.beginning_of_month,
+        period_end: Date.current.end_of_month,
+        generation_mode: "manual",
+        generated_by: admin
+      ).call.cycle
+      cycle.update!(status: "archived")
+
+      stub_clerk_for(admin)
+      patch "/api/v1/operation_cycles/#{cycle.id}/unarchive", headers: auth_headers_for(admin)
+
+      expect(response).to have_http_status(:ok)
+      payload = JSON.parse(response.body).fetch("operation_cycle")
+      expect(payload["status"]).to eq("active")
+      expect(cycle.reload.status).to eq("active")
+    end
+
+    it "rejects non-admin users" do
+      cycle = GenerateOperationCycleService.new(
+        client: client,
+        operation_template: template,
+        assignment: assignment,
+        period_start: Date.current.beginning_of_month + 2.days,
+        period_end: Date.current.end_of_month + 2.days,
+        generation_mode: "manual",
+        generated_by: admin
+      ).call.cycle
+      cycle.update!(status: "archived")
+
+      stub_clerk_for(employee)
+      patch "/api/v1/operation_cycles/#{cycle.id}/unarchive", headers: auth_headers_for(employee)
+
+      expect(response).to have_http_status(:forbidden)
+      expect(JSON.parse(response.body)["error"]).to eq("Admin access required")
+    end
+  end
 end

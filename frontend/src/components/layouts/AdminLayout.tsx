@@ -21,7 +21,7 @@ const navigation: NavItem[] = [
   { name: 'Clients', href: '/admin/clients', icon: UsersIcon },
   { name: 'Tax Returns', href: '/admin/returns', icon: DocumentIcon },
   { name: 'Activity', href: '/admin/activity', icon: ActivityIcon },
-  { name: 'Operations', href: '/admin/operations', icon: ChecklistIcon },
+  { name: 'Checklists', href: '/admin/operations', icon: ChecklistIcon },
   { name: 'Time Tracking', href: '/admin/time', icon: ClockIcon },
   { name: 'Schedule', href: '/admin/schedule', icon: CalendarIcon },
   { name: 'Users', href: '/admin/users', icon: TeamIcon, adminOnly: true },
@@ -172,7 +172,7 @@ export default function AdminLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-secondary">
+    <div className="min-h-screen bg-secondary overflow-x-hidden">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-100 focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:shadow-lg focus:rounded focus:outline-none"

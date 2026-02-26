@@ -181,6 +181,40 @@ RSpec.describe "Api::V1::OperationTasks", type: :request do
       expect(body.fetch("meta").fetch("total_count")).to be >= 3
       expect(body.fetch("operation_tasks").length).to eq(1)
     end
+
+    it "excludes tasks for archived clients" do
+      client.update!(archived_at: Time.current)
+      stub_clerk_for(employee)
+
+      get "/api/v1/operation_tasks", headers: auth_headers_for(employee)
+
+      expect(response).to have_http_status(:ok)
+      ids = JSON.parse(response.body).fetch("operation_tasks").map { |task| task["id"] }
+      expect(ids).not_to include(main_task.id)
+    end
+
+    it "excludes tasks for archived runs" do
+      cycle.update!(status: "archived")
+      stub_clerk_for(employee)
+
+      get "/api/v1/operation_tasks", headers: auth_headers_for(employee)
+
+      expect(response).to have_http_status(:ok)
+      ids = JSON.parse(response.body).fetch("operation_tasks").map { |task| task["id"] }
+      expect(ids).not_to include(main_task.id)
+    end
+
+    it "includes tasks for archived runs when explicitly requested" do
+      cycle.update!(status: "archived")
+      stub_clerk_for(employee)
+
+      get "/api/v1/operation_tasks?client_id=#{client.id}&include_archived_runs=true&include_done=true",
+          headers: auth_headers_for(employee)
+
+      expect(response).to have_http_status(:ok)
+      ids = JSON.parse(response.body).fetch("operation_tasks").map { |task| task["id"] }
+      expect(ids).to include(main_task.id)
+    end
   end
 
   describe "POST /api/v1/operation_tasks/:id/complete" do
@@ -248,6 +282,23 @@ RSpec.describe "Api::V1::OperationTasks", type: :request do
       payload = JSON.parse(response.body).fetch("operation_task")
       expect(payload["status"]).to eq("in_progress")
       expect(payload["notes"]).to eq("Started processing")
+    end
+
+    it "rejects updates for tasks in archived runs" do
+      cycle.update!(status: "archived")
+      stub_clerk_for(employee)
+
+      patch "/api/v1/operation_tasks/#{assigned_task.id}",
+            params: {
+              operation_task: {
+                status: "in_progress",
+                notes: "Should not save"
+              }
+            }.to_json,
+            headers: auth_headers_for(employee)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(JSON.parse(response.body)["error"]).to eq("Cannot update tasks for archived runs")
     end
   end
 

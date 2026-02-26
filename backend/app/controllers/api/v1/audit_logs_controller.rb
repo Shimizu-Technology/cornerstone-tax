@@ -28,7 +28,22 @@ module Api
 
         # Filter by client (CST-7)
         if params[:client_id].present?
-          @audit_logs = @audit_logs.where(auditable_type: 'Client', auditable_id: params[:client_id])
+          client_id = params[:client_id].to_i
+          @audit_logs = @audit_logs.where(
+            <<~SQL.squish,
+              (auditable_type = 'Client' AND auditable_id = :client_id)
+              OR (auditable_type = 'OperationTask' AND auditable_id IN (
+                SELECT id FROM operation_tasks WHERE client_id = :client_id
+              ))
+              OR (auditable_type = 'OperationCycle' AND auditable_id IN (
+                SELECT id FROM operation_cycles WHERE client_id = :client_id
+              ))
+              OR (auditable_type = 'ClientOperationAssignment' AND auditable_id IN (
+                SELECT id FROM client_operation_assignments WHERE client_id = :client_id
+              ))
+            SQL
+            client_id: client_id
+          )
         end
 
         # Filter by date range

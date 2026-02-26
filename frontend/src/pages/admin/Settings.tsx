@@ -145,9 +145,6 @@ export default function Settings() {
     name: '',
     description: '',
     category: 'general' as 'payroll' | 'bookkeeping' | 'compliance' | 'general' | 'custom',
-    recurrence_type: 'monthly' as 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom',
-    recurrence_interval: '',
-    auto_generate: true,
   })
   const [isAddingOperationTaskForTemplate, setIsAddingOperationTaskForTemplate] = useState<number | null>(null)
   const [editingOperationTask, setEditingOperationTask] = useState<{ templateId: number; task: OperationTemplateTask } | null>(null)
@@ -665,12 +662,9 @@ export default function Settings() {
       name: operationTemplateFormData.name.trim(),
       description: operationTemplateFormData.description.trim() || undefined,
       category: operationTemplateFormData.category,
-      recurrence_type: operationTemplateFormData.recurrence_type,
-      recurrence_interval:
-        operationTemplateFormData.recurrence_type === 'custom' && operationTemplateFormData.recurrence_interval
-          ? Number(operationTemplateFormData.recurrence_interval)
-          : undefined,
-      auto_generate: operationTemplateFormData.auto_generate,
+      // Cadence is now configured per-client recurring plan.
+      recurrence_type: 'monthly' as const,
+      auto_generate: true,
     }
 
     setSavingOperationTemplate(true)
@@ -706,9 +700,6 @@ export default function Settings() {
       name: '',
       description: '',
       category: 'general',
-      recurrence_type: 'monthly',
-      recurrence_interval: '',
-      auto_generate: true,
     })
   }
 
@@ -720,9 +711,6 @@ export default function Settings() {
       name: template.name,
       description: template.description || '',
       category: template.category,
-      recurrence_type: template.recurrence_type,
-      recurrence_interval: template.recurrence_interval ? String(template.recurrence_interval) : '',
-      auto_generate: template.auto_generate,
     })
   }
 
@@ -918,10 +906,11 @@ export default function Settings() {
       
       {/* Tabs */}
       <div className="border-b border-neutral-warm">
-        <nav className="flex gap-4">
+        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+        <nav className="flex gap-2 sm:gap-4 w-max min-w-full">
           <button
             onClick={() => setActiveTab('workflow')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+            className={`pb-3 px-2 sm:px-1 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === 'workflow'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -931,7 +920,7 @@ export default function Settings() {
           </button>
           <button
             onClick={() => setActiveTab('time')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+            className={`pb-3 px-2 sm:px-1 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === 'time'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -941,7 +930,7 @@ export default function Settings() {
           </button>
           <button
             onClick={() => setActiveTab('schedule')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+            className={`pb-3 px-2 sm:px-1 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === 'schedule'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -951,7 +940,7 @@ export default function Settings() {
           </button>
           <button
             onClick={() => setActiveTab('services')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+            className={`pb-3 px-2 sm:px-1 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === 'services'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -961,17 +950,17 @@ export default function Settings() {
           </button>
           <button
             onClick={() => setActiveTab('operations')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+            className={`pb-3 px-2 sm:px-1 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === 'operations'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
             }`}
           >
-            Operations Templates
+            Checklist Templates
           </button>
           <button
             onClick={() => setActiveTab('system')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+            className={`pb-3 px-2 sm:px-1 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === 'system'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -980,6 +969,7 @@ export default function Settings() {
             System
           </button>
         </nav>
+        </div>
       </div>
 
       {/* Workflow Stages Tab */}
@@ -1619,13 +1609,13 @@ export default function Settings() {
       </div>
       )}
 
-      {/* Operations Templates Tab */}
+      {/* Checklist Templates Tab */}
       {activeTab === 'operations' && (
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
         <div className="px-6 py-5 border-b border-neutral-warm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-primary-dark">Operations Templates</h2>
-            <p className="text-sm text-text-muted mt-0.5">Manage recurring operational playbooks and checklist tasks</p>
+            <h2 className="text-lg font-semibold text-primary-dark">Checklist Templates</h2>
+            <p className="text-sm text-text-muted mt-0.5">Define reusable checklist steps. Cadence is set per client plan.</p>
           </div>
           {!isAddingNewOperationTemplate && !editingOperationTemplate && (
             <button
@@ -1635,7 +1625,7 @@ export default function Settings() {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Add Template
+              Add Checklist Template
             </button>
           )}
         </div>
@@ -1643,7 +1633,7 @@ export default function Settings() {
         {(isAddingNewOperationTemplate || editingOperationTemplate) && (
           <div className="p-6 bg-secondary/30 border-b border-neutral-warm">
             <h3 className="font-medium text-primary-dark mb-4">
-              {editingOperationTemplate ? 'Edit Template' : 'Create Template'}
+              {editingOperationTemplate ? 'Edit Checklist Template' : 'Create Checklist Template'}
             </h3>
             <OperationTemplateForm
               formData={operationTemplateFormData}
@@ -1664,7 +1654,7 @@ export default function Settings() {
           <div className="divide-y divide-neutral-warm">
             {activeOperationTemplates.length === 0 && !isAddingNewOperationTemplate ? (
               <div className="p-12 text-center text-text-muted">
-                No active operations templates yet.
+                No active checklist templates yet.
               </div>
             ) : (
               activeOperationTemplates.map((template) => {
@@ -1684,13 +1674,7 @@ export default function Settings() {
                             {template.category}
                           </span>
                           <span className="text-xs px-2 py-1 rounded-lg bg-neutral-warm text-text-muted font-medium">
-                            {template.recurrence_type}
-                            {template.recurrence_type === 'custom' && template.recurrence_interval ? ` (${template.recurrence_interval})` : ''}
-                          </span>
-                          <span className={`text-xs px-2 py-1 rounded-lg font-medium ${
-                            template.auto_generate ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                          }`}>
-                            {template.auto_generate ? 'Auto-generate' : 'Manual generation'}
+                            Reusable template
                           </span>
                         </div>
                         {template.description && (
@@ -1839,7 +1823,7 @@ export default function Settings() {
                   <div key={template.id} className="p-5 sm:p-6 bg-neutral-warm/20 flex items-center justify-between">
                     <div>
                       <p className="font-medium text-primary-dark opacity-70">{template.name}</p>
-                      <p className="text-xs text-text-muted mt-0.5">{template.recurrence_type} • {template.category}</p>
+                      <p className="text-xs text-text-muted mt-0.5">{template.category}</p>
                     </div>
                     <button
                       onClick={() => handleReactivateOperationTemplate(template)}
@@ -2176,17 +2160,11 @@ interface OperationTemplateFormProps {
     name: string
     description: string
     category: 'payroll' | 'bookkeeping' | 'compliance' | 'general' | 'custom'
-    recurrence_type: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom'
-    recurrence_interval: string
-    auto_generate: boolean
   }
   onChange: (data: {
     name: string
     description: string
     category: 'payroll' | 'bookkeeping' | 'compliance' | 'general' | 'custom'
-    recurrence_type: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom'
-    recurrence_interval: string
-    auto_generate: boolean
   }) => void
   onSave: () => void
   onCancel: () => void
@@ -2223,33 +2201,6 @@ function OperationTemplateForm({ formData, onChange, onSave, onCancel, saving, e
             <option value="custom">Custom</option>
           </select>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-primary-dark mb-2">Recurrence</label>
-          <select
-            value={formData.recurrence_type}
-            onChange={(e) => onChange({ ...formData, recurrence_type: e.target.value as OperationTemplateFormProps['formData']['recurrence_type'] })}
-            className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
-          >
-            <option value="weekly">Weekly</option>
-            <option value="biweekly">Biweekly</option>
-            <option value="monthly">Monthly</option>
-            <option value="quarterly">Quarterly</option>
-            <option value="custom">Custom</option>
-          </select>
-        </div>
-        {formData.recurrence_type === 'custom' && (
-          <div>
-            <label className="block text-sm font-medium text-primary-dark mb-2">Recurrence Interval *</label>
-            <input
-              type="number"
-              min={1}
-              value={formData.recurrence_interval}
-              onChange={(e) => onChange({ ...formData, recurrence_interval: e.target.value })}
-              className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
-              placeholder="e.g., every 10 periods"
-            />
-          </div>
-        )}
       </div>
       <div>
         <label className="block text-sm font-medium text-primary-dark mb-2">Description</label>
@@ -2261,15 +2212,6 @@ function OperationTemplateForm({ formData, onChange, onSave, onCancel, saving, e
           placeholder="Optional guidance for staff"
         />
       </div>
-      <label className="inline-flex items-center gap-2 text-sm text-text-muted">
-        <input
-          type="checkbox"
-          checked={formData.auto_generate}
-          onChange={(e) => onChange({ ...formData, auto_generate: e.target.checked })}
-          className="w-4 h-4 rounded border-neutral-warm text-primary focus:ring-primary"
-        />
-        Auto-generate cycles at period start
-      </label>
       <div className="flex justify-end gap-3">
         <button type="button" onClick={onCancel} className="px-5 py-2.5 text-text-muted hover:bg-neutral-warm rounded-xl text-sm font-medium transition-colors">Cancel</button>
         <button type="button" onClick={onSave} disabled={saving} className="px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-dark disabled:opacity-50 transition-all shadow-md">

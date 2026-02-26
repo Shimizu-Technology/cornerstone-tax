@@ -5,8 +5,8 @@ module Api
     class ClientOperationAssignmentsController < BaseController
       before_action :authenticate_user!
       before_action :require_admin!
-      before_action :set_client, only: [:index, :create]
-      before_action :set_assignment, only: [:update]
+      before_action :set_client, only: [ :index, :create ]
+      before_action :set_assignment, only: [ :update ]
 
       # GET /api/v1/clients/:client_id/operation_assignments
       def index
@@ -54,6 +54,9 @@ module Api
       def assignment_params
         params.require(:assignment).permit(
           :operation_template_id,
+          :cadence_type,
+          :cadence_interval,
+          :cadence_anchor,
           :auto_generate,
           :assignment_status,
           :starts_on,
@@ -67,6 +70,9 @@ module Api
           client_id: assignment.client_id,
           operation_template_id: assignment.operation_template_id,
           operation_template_name: assignment.operation_template&.name,
+          cadence_type: assignment.cadence_type,
+          cadence_interval: assignment.cadence_interval,
+          cadence_anchor: assignment.cadence_anchor,
           auto_generate: assignment.auto_generate,
           assignment_status: assignment.assignment_status,
           starts_on: assignment.starts_on,

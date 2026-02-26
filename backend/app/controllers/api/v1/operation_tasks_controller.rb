@@ -29,6 +29,13 @@ module Api
 
       # PATCH /api/v1/operation_tasks/:id
       def update
+        if @task.client&.archived?
+          return render json: { error: "Cannot update tasks for archived clients" }, status: :unprocessable_entity
+        end
+        if archived_cycle_task?(@task)
+          return render json: { error: "Cannot update tasks for archived runs" }, status: :unprocessable_entity
+        end
+
         previous = snapshot(@task)
 
         if @task.update(operation_task_params)
@@ -42,6 +49,13 @@ module Api
 
       # POST /api/v1/operation_tasks/:id/complete
       def complete
+        if @task.client&.archived?
+          return render json: { error: "Cannot complete tasks for archived clients" }, status: :unprocessable_entity
+        end
+        if archived_cycle_task?(@task)
+          return render json: { error: "Cannot complete tasks for archived runs" }, status: :unprocessable_entity
+        end
+
         previous = snapshot(@task)
         @task.assign_attributes(
           status: "done",
@@ -51,7 +65,7 @@ module Api
         )
 
         if @task.save
-          log_update(previous, @task, metadata: "Marked task done")
+          log_update(previous, @task, metadata: "Marked checklist task \"#{@task.title}\" done")
           render json: { operation_task: serialize_task(@task) }
         else
           render json: { error: @task.errors.full_messages.join(", ") }, status: :unprocessable_entity
@@ -60,11 +74,18 @@ module Api
 
       # POST /api/v1/operation_tasks/:id/reopen
       def reopen
+        if @task.client&.archived?
+          return render json: { error: "Cannot reopen tasks for archived clients" }, status: :unprocessable_entity
+        end
+        if archived_cycle_task?(@task)
+          return render json: { error: "Cannot reopen tasks for archived runs" }, status: :unprocessable_entity
+        end
+
         previous = snapshot(@task)
         @task.assign_attributes(status: "not_started", completed_at: nil, completed_by: nil)
 
         if @task.save
-          log_update(previous, @task, metadata: "Reopened task")
+          log_update(previous, @task, metadata: "Reopened checklist task \"#{@task.title}\"")
           render json: { operation_task: serialize_task(@task) }
         else
           render json: { error: @task.errors.full_messages.join(", ") }, status: :unprocessable_entity
@@ -79,7 +100,7 @@ module Api
           :completed_by,
           :operation_template_task,
           { linked_time_entry: :user },
-          { operation_cycle: [:operation_template, { operation_tasks: :operation_template_task }] }
+          { operation_cycle: [ :operation_template, { operation_tasks: :operation_template_task } ] }
         ).find(params[:id])
       end
 
@@ -90,8 +111,13 @@ module Api
           :client,
           :operation_template_task,
           { linked_time_entry: :user },
-          { operation_cycle: [:operation_template, { operation_tasks: :operation_template_task }] }
-        ).ordered
+          { operation_cycle: [ :operation_template, { operation_tasks: :operation_template_task } ] }
+        ).joins(:client, :operation_cycle)
+          .where(clients: { archived_at: nil })
+          .ordered
+
+        include_archived_runs = params[:include_archived_runs] == "true" && params[:client_id].present?
+        tasks = tasks.where.not(operation_cycles: { status: "archived" }) unless include_archived_runs
 
         tasks = tasks.where(status: params[:status]) if params[:status].present?
         tasks = tasks.where(assigned_to_id: params[:assigned_to_id]) if params[:assigned_to_id].present?
@@ -181,8 +207,12 @@ module Api
           action: "updated",
           user: current_user,
           changes_made: changes.presence,
-          metadata: metadata || "Updated operation task #{task.id}"
+          metadata: metadata || "Updated checklist task \"#{task.title}\""
         )
+      end
+
+      def archived_cycle_task?(task)
+        task.operation_cycle&.status == "archived"
       end
 
       def serialize_task(task)
@@ -193,7 +223,7 @@ module Api
           operation_template_name: task.operation_cycle&.operation_template&.name,
           operation_template_task_id: task.operation_template_task_id,
           client_id: task.client_id,
-          client_name: task.client&.full_name,
+          client_name: task.client&.display_name,
           title: task.title,
           description: task.description,
           position: task.position,

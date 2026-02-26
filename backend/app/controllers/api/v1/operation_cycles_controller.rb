@@ -10,9 +10,9 @@ module Api
     class OperationCyclesController < BaseController
       before_action :authenticate_user!
       before_action :require_staff!
-      before_action :require_admin!, only: [ :generate ]
+      before_action :require_admin!, only: [ :generate, :archive, :unarchive ]
       before_action :set_client, only: [ :index, :generate ]
-      before_action :set_cycle, only: [ :show ]
+      before_action :set_cycle, only: [ :show, :archive, :unarchive ]
 
       # GET /api/v1/clients/:client_id/operation_cycles
       def index
@@ -61,6 +61,28 @@ module Api
         render json: { operation_cycle: serialize_cycle(@cycle, include_tasks: true) }
       end
 
+      # PATCH /api/v1/operation_cycles/:id/archive
+      def archive
+        previous_status = @cycle.status
+        if previous_status != "archived"
+          @cycle.update!(status: "archived")
+          log_cycle_status_change(@cycle, previous_status, "archived")
+        end
+
+        render json: { operation_cycle: serialize_cycle(@cycle, include_tasks: true) }
+      end
+
+      # PATCH /api/v1/operation_cycles/:id/unarchive
+      def unarchive
+        previous_status = @cycle.status
+        if previous_status == "archived"
+          @cycle.update!(status: "active")
+          log_cycle_status_change(@cycle, previous_status, "active")
+        end
+
+        render json: { operation_cycle: serialize_cycle(@cycle, include_tasks: true) }
+      end
+
       private
 
       def set_client
@@ -101,6 +123,16 @@ module Api
         Date.parse(raw)
       end
 
+      def log_cycle_status_change(cycle, from_status, to_status)
+        AuditLog.log(
+          auditable: cycle,
+          action: "updated",
+          user: current_user,
+          changes_made: { status: { from: from_status, to: to_status } },
+          metadata: "#{to_status == 'archived' ? 'Archived' : 'Unarchived'} checklist run \"#{cycle.cycle_label}\""
+        )
+      end
+
       def serialize_cycle(cycle, include_tasks: false)
         payload = {
           id: cycle.id,
@@ -135,7 +167,7 @@ module Api
           operation_cycle_id: task.operation_cycle_id,
           operation_template_task_id: task.operation_template_task_id,
           client_id: task.client_id,
-          client_name: task.client&.full_name,
+          client_name: task.client&.display_name,
           title: task.title,
           description: task.description,
           status: task.status,

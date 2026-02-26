@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { OperationTaskItem, UserSummary } from '../../lib/api'
-import { formatDateTime } from '../../lib/dateUtils'
+import { formatDate, formatDateTime } from '../../lib/dateUtils'
 
-type ViewMode = 'team' | 'my'
+type ViewMode = 'team' | 'my' | 'matrix'
 type DueFilter = 'all' | 'overdue' | 'today' | 'upcoming'
 type GroupBy = 'status' | 'client' | 'assignee'
 type StatusFilter = 'all' | 'not_started' | 'in_progress' | 'blocked' | 'done'
@@ -20,11 +20,23 @@ interface SavedQuickFilter {
   assignedToId: string
 }
 
+interface MatrixPeriod {
+  key: string
+  start: string
+  end: string
+}
+
+interface MatrixClientRow {
+  clientId: number
+  clientName: string
+  byPeriod: Record<string, { done: number; total: number; inProgress: number; blocked: number }>
+}
+
 const SAVED_FILTERS_KEY = 'operations.savedQuickFilters.v1'
 
 export default function OperationsPage() {
   useEffect(() => {
-    document.title = 'Operations | Cornerstone Admin'
+    document.title = 'Checklists | Cornerstone Admin'
   }, [])
 
   const [viewMode, setViewMode] = useState<ViewMode>('team')
@@ -40,6 +52,11 @@ export default function OperationsPage() {
   const [tasks, setTasks] = useState<OperationTaskItem[]>([])
   const [staffUsers, setStaffUsers] = useState<UserSummary[]>([])
   const [savingTaskId, setSavingTaskId] = useState<number | null>(null)
+  const [matrixLoading, setMatrixLoading] = useState(false)
+  const [matrixError, setMatrixError] = useState<string | null>(null)
+  const [matrixPeriods, setMatrixPeriods] = useState<MatrixPeriod[]>([])
+  const [matrixRows, setMatrixRows] = useState<MatrixClientRow[]>([])
+  const [matrixPeriodCount, setMatrixPeriodCount] = useState(6)
 
   useEffect(() => {
     try {
@@ -57,6 +74,11 @@ export default function OperationsPage() {
   }, [savedQuickFilters])
 
   const loadData = useCallback(async () => {
+    if (viewMode === 'matrix') {
+      setLoading(false)
+      setError(null)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -95,9 +117,90 @@ export default function OperationsPage() {
     }
   }, [assignedToId, dueFilter, includeDone, statusFilter, viewMode])
 
+  const loadMatrixData = useCallback(async () => {
+    if (viewMode !== 'matrix') return
+
+    setMatrixLoading(true)
+    setMatrixError(null)
+    try {
+      const tasksResult = await api.getOperationTasks({
+        include_done: true,
+        limit: 1000,
+      })
+
+      if (!tasksResult.data) {
+        if (tasksResult.error) setMatrixError(tasksResult.error)
+        setMatrixRows([])
+        setMatrixPeriods([])
+        return
+      }
+
+      const allTasks = tasksResult.data.operation_tasks
+      const cycleIds = Array.from(new Set(allTasks.map(task => task.operation_cycle_id)))
+      const cycleResults = await Promise.all(cycleIds.map(cycleId => api.getOperationCycle(cycleId)))
+      const cycleMap = new Map(
+        cycleResults
+          .filter(result => !!result.data)
+          .map(result => [result.data!.operation_cycle.id, result.data!.operation_cycle])
+      )
+
+      const uniquePeriods = Array.from(
+        new Map(
+          Array.from(cycleMap.values())
+            .sort((a, b) => new Date(b.period_end).getTime() - new Date(a.period_end).getTime())
+            .map(cycle => [`${cycle.period_start}|${cycle.period_end}`, { key: `${cycle.period_start}|${cycle.period_end}`, start: cycle.period_start, end: cycle.period_end }])
+        ).values()
+      ).slice(0, matrixPeriodCount)
+
+      const periodKeySet = new Set(uniquePeriods.map(period => period.key))
+      const byClient = new Map<number, MatrixClientRow>()
+
+      allTasks.forEach(task => {
+        const cycle = cycleMap.get(task.operation_cycle_id)
+        if (!cycle) return
+        const periodKey = `${cycle.period_start}|${cycle.period_end}`
+        if (!periodKeySet.has(periodKey)) return
+
+        if (!byClient.has(task.client_id)) {
+          byClient.set(task.client_id, {
+            clientId: task.client_id,
+            clientName: task.client_name || `Client #${task.client_id}`,
+            byPeriod: {},
+          })
+        }
+
+        const row = byClient.get(task.client_id)!
+        if (!row.byPeriod[periodKey]) {
+          row.byPeriod[periodKey] = { done: 0, total: 0, inProgress: 0, blocked: 0 }
+        }
+
+        row.byPeriod[periodKey].total += 1
+        if (task.status === 'done') row.byPeriod[periodKey].done += 1
+        if (task.status === 'in_progress') row.byPeriod[periodKey].inProgress += 1
+        if (task.status === 'blocked') row.byPeriod[periodKey].blocked += 1
+      })
+
+      setMatrixPeriods(uniquePeriods)
+      setMatrixRows(
+        Array.from(byClient.values()).sort((a, b) => a.clientName.localeCompare(b.clientName))
+      )
+    } catch (err) {
+      console.error('Failed to load checklist matrix data:', err)
+      setMatrixError('Failed to load checklist matrix data')
+      setMatrixRows([])
+      setMatrixPeriods([])
+    } finally {
+      setMatrixLoading(false)
+    }
+  }, [matrixPeriodCount, viewMode])
+
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  useEffect(() => {
+    loadMatrixData()
+  }, [loadMatrixData])
 
   const tasksForDisplay = useMemo(() => {
     const list = [...tasks]
@@ -213,8 +316,8 @@ export default function OperationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark tracking-tight">Operations</h1>
-        <p className="text-text-muted mt-1">Team operational board with quick filters for overdue and assigned work.</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark tracking-tight">Checklists</h1>
+        <p className="text-text-muted mt-1">Team checklist board with quick filters for overdue and assigned work.</p>
       </div>
 
       <div className="bg-white rounded-2xl border border-neutral-warm shadow-sm p-4 sm:p-5 space-y-4">
@@ -237,256 +340,362 @@ export default function OperationsPage() {
           >
             My Tasks
           </button>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => applyQuickPreset({ dueFilter: 'overdue', statusFilter: 'all', includeDone: false })}
-            className="min-h-11 px-3 py-2 rounded-xl text-xs font-medium bg-neutral-warm text-primary-dark hover:bg-secondary-dark"
+            onClick={() => setViewMode('matrix')}
+            className={`min-h-11 px-4 py-2 rounded-xl text-sm font-medium ${
+              viewMode === 'matrix' ? 'bg-primary text-white' : 'bg-secondary text-gray-700 hover:bg-secondary-dark'
+            }`}
           >
-            Overdue
-          </button>
-          <button
-            type="button"
-            onClick={() => applyQuickPreset({ dueFilter: 'today', statusFilter: 'all', includeDone: false })}
-            className="min-h-11 px-3 py-2 rounded-xl text-xs font-medium bg-neutral-warm text-primary-dark hover:bg-secondary-dark"
-          >
-            Due Today
-          </button>
-          <button
-            type="button"
-            onClick={() => applyQuickPreset({ dueFilter: 'all', statusFilter: 'blocked', includeDone: false })}
-            className="min-h-11 px-3 py-2 rounded-xl text-xs font-medium bg-neutral-warm text-primary-dark hover:bg-secondary-dark"
-          >
-            Blocked
-          </button>
-          <button
-            type="button"
-            onClick={() => applyQuickPreset({ viewMode: 'my', dueFilter: 'today', statusFilter: 'all', includeDone: false })}
-            className="min-h-11 px-3 py-2 rounded-xl text-xs font-medium bg-neutral-warm text-primary-dark hover:bg-secondary-dark"
-          >
-            My Tasks Today
+            Client Matrix
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-          <select
-            value={dueFilter}
-            onChange={(e) => setDueFilter(e.target.value as DueFilter)}
-            className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm"
-          >
-            <option value="all">All Due Dates</option>
-            <option value="overdue">Overdue</option>
-            <option value="today">Due Today</option>
-            <option value="upcoming">Upcoming (2 weeks)</option>
-          </select>
+        {viewMode !== 'matrix' ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => applyQuickPreset({ dueFilter: 'overdue', statusFilter: 'all', includeDone: false })}
+                className="min-h-11 px-3 py-2 rounded-xl text-xs font-medium bg-neutral-warm text-primary-dark hover:bg-secondary-dark"
+              >
+                Overdue
+              </button>
+              <button
+                type="button"
+                onClick={() => applyQuickPreset({ dueFilter: 'today', statusFilter: 'all', includeDone: false })}
+                className="min-h-11 px-3 py-2 rounded-xl text-xs font-medium bg-neutral-warm text-primary-dark hover:bg-secondary-dark"
+              >
+                Due Today
+              </button>
+              <button
+                type="button"
+                onClick={() => applyQuickPreset({ dueFilter: 'all', statusFilter: 'blocked', includeDone: false })}
+                className="min-h-11 px-3 py-2 rounded-xl text-xs font-medium bg-neutral-warm text-primary-dark hover:bg-secondary-dark"
+              >
+                Blocked
+              </button>
+              <button
+                type="button"
+                onClick={() => applyQuickPreset({ viewMode: 'my', dueFilter: 'today', statusFilter: 'all', includeDone: false })}
+                className="min-h-11 px-3 py-2 rounded-xl text-xs font-medium bg-neutral-warm text-primary-dark hover:bg-secondary-dark"
+              >
+                My Tasks Today
+              </button>
+            </div>
 
-          <select
-            value={groupBy}
-            onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-            className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm"
-          >
-            <option value="status">Group by Status</option>
-            <option value="client">Group by Client</option>
-            <option value="assignee">Group by Assignee</option>
-          </select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+              <select
+                value={dueFilter}
+                onChange={(e) => setDueFilter(e.target.value as DueFilter)}
+                className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm"
+              >
+                <option value="all">All Due Dates</option>
+                <option value="overdue">Overdue</option>
+                <option value="today">Due Today</option>
+                <option value="upcoming">Upcoming (2 weeks)</option>
+              </select>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm"
-          >
-            <option value="all">All Statuses</option>
-            <option value="not_started">Not Started</option>
-            <option value="in_progress">In Progress</option>
-            <option value="blocked">Blocked</option>
-            <option value="done">Done</option>
-          </select>
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+                className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm"
+              >
+                <option value="status">Group by Status</option>
+                <option value="client">Group by Client</option>
+                <option value="assignee">Group by Assignee</option>
+              </select>
 
-          {viewMode === 'team' && (
-            <select
-              value={assignedToId}
-              onChange={(e) => setAssignedToId(e.target.value)}
-              className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm"
-            >
-              <option value="">All Assignees</option>
-              {staffUsers.map(user => (
-                <option key={user.id} value={user.id}>{user.full_name}</option>
-              ))}
-            </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm"
+              >
+                <option value="all">All Statuses</option>
+                <option value="not_started">Not Started</option>
+                <option value="in_progress">In Progress</option>
+                <option value="blocked">Blocked</option>
+                <option value="done">Done</option>
+              </select>
+
+              {viewMode === 'team' && (
+                <select
+                  value={assignedToId}
+                  onChange={(e) => setAssignedToId(e.target.value)}
+                  className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm"
+                >
+                  <option value="">All Assignees</option>
+                  {staffUsers.map(user => (
+                    <option key={user.id} value={user.id}>{user.full_name}</option>
+                  ))}
+                </select>
+              )}
+
+              <label className="min-h-11 inline-flex items-center gap-2 px-3 py-2 border border-neutral-warm rounded-xl text-sm">
+                <input
+                  type="checkbox"
+                  checked={includeDone}
+                  onChange={(e) => setIncludeDone(e.target.checked)}
+                />
+                Include Done
+              </label>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={saveFilterName}
+                  onChange={(e) => setSaveFilterName(e.target.value)}
+                  className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm flex-1"
+                  placeholder="Save current filter set"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveQuickFilter}
+                  disabled={!saveFilterName.trim()}
+                  className="min-h-11 px-4 py-2 rounded-xl text-sm font-medium bg-primary text-white hover:bg-primary-dark disabled:opacity-50"
+                >
+                  Save Quick Filter
+                </button>
+              </div>
+              {savedQuickFilters.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {savedQuickFilters.map(filter => (
+                    <div key={filter.id} className="inline-flex items-center border border-neutral-warm rounded-xl overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => applyQuickPreset(filter)}
+                        className="min-h-11 px-3 py-2 text-xs font-medium text-primary-dark hover:bg-neutral-warm"
+                      >
+                        {filter.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteQuickFilter(filter.id)}
+                        aria-label={`Delete quick filter ${filter.name}`}
+                        className="min-h-11 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Period columns
+              <select
+                value={matrixPeriodCount}
+                onChange={(e) => setMatrixPeriodCount(parseInt(e.target.value))}
+                className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm"
+              >
+                <option value={4}>Last 4 periods</option>
+                <option value={6}>Last 6 periods</option>
+                <option value={8}>Last 8 periods</option>
+                <option value={10}>Last 10 periods</option>
+              </select>
+            </label>
+            <div className="text-xs text-gray-600 flex items-end pb-2">
+              At-a-glance matrix per client per pay period.
+            </div>
+          </div>
+        )}
+      </div>
+
+      {viewMode === 'matrix' ? (
+        <>
+          {matrixError && (
+            <div className="bg-red-50 text-red-700 border border-red-200 rounded-xl p-3 text-sm">
+              {matrixError}
+            </div>
+          )}
+          {matrixLoading ? (
+            <div className="py-12 flex justify-center">
+              <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+            </div>
+          ) : matrixRows.length === 0 || matrixPeriods.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-neutral-warm shadow-sm p-8 text-center text-text-muted">
+              No checklist run data available yet.
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-neutral-warm shadow-sm overflow-x-auto">
+              <table className="min-w-[980px] w-full text-sm">
+                <thead className="bg-secondary/40 border-b border-neutral-warm">
+                  <tr>
+                    <th className="text-left p-3 sticky left-0 bg-secondary/40 z-10 min-w-[220px]">Client</th>
+                    {matrixPeriods.map(period => (
+                      <th key={period.key} className="text-center p-3 min-w-[140px]">
+                        <div className="text-xs font-semibold text-gray-700">{formatDate(period.start)}</div>
+                        <div className="text-[11px] text-gray-500">to {formatDate(period.end)}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {matrixRows.map(row => (
+                    <tr key={row.clientId} className="border-b border-neutral-warm">
+                      <td className="p-3 sticky left-0 bg-white z-10">
+                        <Link to={`/admin/clients/${row.clientId}`} className="font-medium text-primary hover:text-primary-dark">
+                          {row.clientName}
+                        </Link>
+                      </td>
+                      {matrixPeriods.map(period => {
+                        const cell = row.byPeriod[period.key]
+                        if (!cell) {
+                          return (
+                            <td key={`${row.clientId}-${period.key}`} className="p-3 text-center text-xs text-gray-400">
+                              —
+                            </td>
+                          )
+                        }
+                        const pct = cell.total > 0 ? Math.round((cell.done / cell.total) * 100) : 0
+                        const cellClass =
+                          pct === 100
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : pct >= 50
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-red-50 text-red-700 border-red-200'
+
+                        return (
+                          <td key={`${row.clientId}-${period.key}`} className="p-2 text-center">
+                            <div className={`mx-auto w-[92px] rounded-lg border px-2 py-1.5 ${cellClass}`}>
+                              <div className="text-sm font-semibold">{cell.done}/{cell.total}</div>
+                              <div className="text-[10px] uppercase tracking-wide">{pct}%</div>
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          {error && (
+            <div className="bg-red-50 text-red-700 border border-red-200 rounded-xl p-3 text-sm">
+              {error}
+            </div>
           )}
 
-          <label className="min-h-11 inline-flex items-center gap-2 px-3 py-2 border border-neutral-warm rounded-xl text-sm">
-            <input
-              type="checkbox"
-              checked={includeDone}
-              onChange={(e) => setIncludeDone(e.target.checked)}
-            />
-            Include Done
-          </label>
-        </div>
+          {loading ? (
+            <div className="py-12 flex justify-center">
+              <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+            </div>
+          ) : groupedTasks.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-neutral-warm shadow-sm p-8 text-center text-text-muted">
+              No checklist tasks matched these filters.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {groupedTasks.map(([groupName, items]) => (
+                <div key={groupName} className="bg-white rounded-2xl border border-neutral-warm shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 bg-secondary border-b border-neutral-warm flex items-center justify-between">
+                    <h2 className="font-semibold text-primary-dark">{groupName}</h2>
+                    <span className="text-xs text-text-muted">{items.length} task{items.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="divide-y divide-neutral-warm">
+                    {items.map(task => (
+                      <div key={task.id} className="p-4 space-y-3">
+                        {(() => {
+                          const hasUnmetPrerequisites = task.unmet_prerequisites.length > 0
+                          return (
+                            <>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-primary-dark">{task.title}</p>
+                            <p className="text-sm text-text-muted">
+                              {task.client_name || 'Unknown client'} • {task.operation_template_name || 'Template'} • {task.cycle_label || 'Cycle'}
+                            </p>
+                            {task.due_at && <p className="text-xs text-text-muted mt-1">Due: {formatDateTime(task.due_at)}</p>}
+                            {task.linked_time_entry && (
+                              <p className="text-xs text-blue-700 mt-1">
+                                Linked time: {task.linked_time_entry.hours.toFixed(2)}h on {formatDate(task.linked_time_entry.work_date)}
+                                {task.linked_time_entry.user_name ? ` by ${task.linked_time_entry.user_name}` : ''}
+                              </p>
+                            )}
+                            {hasUnmetPrerequisites && (
+                              <p className="text-xs text-red-700 mt-1">
+                                Waiting on: {task.unmet_prerequisites.map(dep => dep.title).join(', ')}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <Link
+                              to={`/admin/clients/${task.client_id}`}
+                              className="min-h-11 inline-flex items-center text-sm text-primary hover:text-primary-dark font-medium"
+                            >
+                              Open Client
+                            </Link>
+                            <Link
+                              to={`/admin/time?prefill=true&client_id=${task.client_id}&operation_task_id=${task.id}&notes=${encodeURIComponent(`Ops task: ${task.title} (${task.cycle_label || 'Cycle'})`)}`}
+                              className="min-h-11 inline-flex items-center text-xs text-blue-700 hover:text-blue-800 font-medium"
+                            >
+                              Log Time
+                            </Link>
+                          </div>
+                        </div>
 
-        <div className="space-y-2">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              type="text"
-              value={saveFilterName}
-              onChange={(e) => setSaveFilterName(e.target.value)}
-              className="min-h-11 px-3 py-2 border border-neutral-warm rounded-xl text-sm flex-1"
-              placeholder="Save current filter set"
-            />
-            <button
-              type="button"
-              onClick={handleSaveQuickFilter}
-              disabled={!saveFilterName.trim()}
-              className="min-h-11 px-4 py-2 rounded-xl text-sm font-medium bg-primary text-white hover:bg-primary-dark disabled:opacity-50"
-            >
-              Save Quick Filter
-            </button>
-          </div>
-          {savedQuickFilters.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {savedQuickFilters.map(filter => (
-                <div key={filter.id} className="inline-flex items-center border border-neutral-warm rounded-xl overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => applyQuickPreset(filter)}
-                    className="min-h-11 px-3 py-2 text-xs font-medium text-primary-dark hover:bg-neutral-warm"
-                  >
-                    {filter.name}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteQuickFilter(filter.id)}
-                    aria-label={`Delete quick filter ${filter.name}`}
-                    className="min-h-11 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                  >
-                    ✕
-                  </button>
+                        <div className="flex flex-wrap gap-2">
+                          {task.status !== 'in_progress' && task.status !== 'done' && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuickStatus(task, 'in_progress')}
+                              disabled={savingTaskId === task.id || hasUnmetPrerequisites}
+                              className="min-h-11 px-3 py-2 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50"
+                            >
+                              Start
+                            </button>
+                          )}
+                          {task.status !== 'done' && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuickStatus(task, 'done')}
+                              disabled={savingTaskId === task.id || (task.evidence_required && !task.evidence_note) || hasUnmetPrerequisites}
+                              className="min-h-11 px-3 py-2 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50"
+                            >
+                              Mark Done
+                            </button>
+                          )}
+                          {task.status === 'done' && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuickStatus(task, 'not_started')}
+                              disabled={savingTaskId === task.id}
+                              className="min-h-11 px-3 py-2 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50"
+                            >
+                              Reopen
+                            </button>
+                          )}
+                        </div>
+
+                        {task.evidence_required && !task.evidence_note && task.status !== 'done' && (
+                          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                            Evidence is required before this task can be marked done from the board.
+                          </p>
+                        )}
+                        {hasUnmetPrerequisites && (
+                          <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
+                            Complete prerequisite tasks before moving this task to in progress or done.
+                          </p>
+                        )}
+                            </>
+                          )
+                        })()}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
-      </div>
-
-      {error && (
-        <div className="bg-red-50 text-red-700 border border-red-200 rounded-xl p-3 text-sm">
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="py-12 flex justify-center">
-          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-        </div>
-      ) : groupedTasks.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-neutral-warm shadow-sm p-8 text-center text-text-muted">
-          No operation tasks matched these filters.
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {groupedTasks.map(([groupName, items]) => (
-            <div key={groupName} className="bg-white rounded-2xl border border-neutral-warm shadow-sm overflow-hidden">
-              <div className="px-4 py-3 bg-secondary border-b border-neutral-warm flex items-center justify-between">
-                <h2 className="font-semibold text-primary-dark">{groupName}</h2>
-                <span className="text-xs text-text-muted">{items.length} task{items.length !== 1 ? 's' : ''}</span>
-              </div>
-              <div className="divide-y divide-neutral-warm">
-                {items.map(task => (
-                  <div key={task.id} className="p-4 space-y-3">
-                    {(() => {
-                      const hasUnmetPrerequisites = task.unmet_prerequisites.length > 0
-                      return (
-                        <>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-primary-dark">{task.title}</p>
-                        <p className="text-sm text-text-muted">
-                          {task.client_name || 'Unknown client'} • {task.operation_template_name || 'Template'} • {task.cycle_label || 'Cycle'}
-                        </p>
-                        {task.due_at && <p className="text-xs text-text-muted mt-1">Due: {formatDateTime(task.due_at)}</p>}
-                        {task.linked_time_entry && (
-                          <p className="text-xs text-blue-700 mt-1">
-                            Linked time: {task.linked_time_entry.hours.toFixed(2)}h on {formatDateTime(task.linked_time_entry.work_date)}
-                            {task.linked_time_entry.user_name ? ` by ${task.linked_time_entry.user_name}` : ''}
-                          </p>
-                        )}
-                        {hasUnmetPrerequisites && (
-                          <p className="text-xs text-red-700 mt-1">
-                            Waiting on: {task.unmet_prerequisites.map(dep => dep.title).join(', ')}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <Link
-                          to={`/admin/clients/${task.client_id}`}
-                          className="min-h-11 inline-flex items-center text-sm text-primary hover:text-primary-dark font-medium"
-                        >
-                          Open Client
-                        </Link>
-                        <Link
-                          to={`/admin/time?prefill=true&client_id=${task.client_id}&operation_task_id=${task.id}&notes=${encodeURIComponent(`Ops task: ${task.title} (${task.cycle_label || 'Cycle'})`)}`}
-                          className="min-h-11 inline-flex items-center text-xs text-blue-700 hover:text-blue-800 font-medium"
-                        >
-                          Log Time
-                        </Link>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {task.status !== 'in_progress' && task.status !== 'done' && (
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStatus(task, 'in_progress')}
-                          disabled={savingTaskId === task.id || hasUnmetPrerequisites}
-                          className="min-h-11 px-3 py-2 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50"
-                        >
-                          Start
-                        </button>
-                      )}
-                      {task.status !== 'done' && (
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStatus(task, 'done')}
-                          disabled={savingTaskId === task.id || (task.evidence_required && !task.evidence_note) || hasUnmetPrerequisites}
-                          className="min-h-11 px-3 py-2 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50"
-                        >
-                          Mark Done
-                        </button>
-                      )}
-                      {task.status === 'done' && (
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStatus(task, 'not_started')}
-                          disabled={savingTaskId === task.id}
-                          className="min-h-11 px-3 py-2 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50"
-                        >
-                          Reopen
-                        </button>
-                      )}
-                    </div>
-
-                    {task.evidence_required && !task.evidence_note && task.status !== 'done' && (
-                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                        Evidence is required before this task can be marked done from the board.
-                      </p>
-                    )}
-                    {hasUnmetPrerequisites && (
-                      <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
-                        Complete prerequisite tasks before moving this task to in progress or done.
-                      </p>
-                    )}
-                        </>
-                      )
-                    })()}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        </>
       )}
     </div>
   )

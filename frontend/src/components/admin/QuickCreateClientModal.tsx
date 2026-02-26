@@ -31,6 +31,20 @@ const FILING_STATUS_OPTIONS = [
   { value: 'qualifying_widow', label: 'Qualifying Widow(er)' },
 ]
 
+const buildDefaultFormData = (currentYear: number): FormData => ({
+  first_name: '',
+  last_name: '',
+  email: '',
+  phone: '',
+  date_of_birth: '',
+  filing_status: 'single',
+  tax_year: currentYear,
+  client_type: 'individual',
+  business_name: '',
+  is_service_only: false,
+  service_type_ids: [],
+})
+
 export default function QuickCreateClientModal({
   isOpen,
   onClose,
@@ -38,19 +52,7 @@ export default function QuickCreateClientModal({
 }: QuickCreateClientModalProps) {
   const currentYear = new Date().getFullYear()
   
-  const [formData, setFormData] = useState<FormData>({
-    first_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
-    date_of_birth: '',
-    filing_status: 'single',
-    tax_year: currentYear,
-    client_type: 'individual',
-    business_name: '',
-    is_service_only: false,
-    service_type_ids: [],
-  })
+  const [formData, setFormData] = useState<FormData>(buildDefaultFormData(currentYear))
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
@@ -141,13 +143,13 @@ export default function QuickCreateClientModal({
         last_name: formData.last_name,
         email: formData.email,
         phone: formData.phone,
-        date_of_birth: formData.date_of_birth || null,
-        filing_status: formData.filing_status,
+        date_of_birth: formData.client_type === 'individual' && !formData.is_service_only ? formData.date_of_birth || null : null,
+        filing_status: formData.client_type === 'individual' && !formData.is_service_only ? formData.filing_status : undefined,
         tax_year: formData.tax_year,
         is_new_client: true,
         client_type: formData.client_type,
         business_name: formData.client_type === 'business' ? formData.business_name : undefined,
-        is_service_only: formData.is_service_only,
+        is_service_only: formData.client_type === 'business' ? true : formData.is_service_only,
         service_type_ids: formData.service_type_ids,
         contacts: formData.client_type === 'business' ? [{
           first_name: formData.first_name,
@@ -167,19 +169,7 @@ export default function QuickCreateClientModal({
       if (result.data) {
           onSuccess(result.data.client.id)
         // Reset form
-        setFormData({
-          first_name: '',
-          last_name: '',
-          email: '',
-          phone: '',
-          date_of_birth: '',
-          filing_status: 'single',
-          tax_year: currentYear,
-          client_type: 'individual',
-          business_name: '',
-          is_service_only: false,
-          service_type_ids: [],
-        })
+        setFormData(buildDefaultFormData(currentYear))
         onClose()
       }
     } catch (error) {
@@ -191,6 +181,29 @@ export default function QuickCreateClientModal({
   }
 
   if (!isOpen) return null
+
+  const selectClientType = (type: 'individual' | 'business') => {
+    setFormData(prev => {
+      if (type === 'business') {
+        return {
+          ...prev,
+          client_type: 'business',
+          // Business clients are service-based by default.
+          is_service_only: true,
+          // Clear individual-only tax fields.
+          date_of_birth: '',
+          filing_status: 'single',
+        }
+      }
+
+      return {
+        ...prev,
+        client_type: 'individual',
+        // Individual defaults to tax workflow enabled.
+        is_service_only: false,
+      }
+    })
+  }
 
   return (
     <AnimatePresence>
@@ -253,7 +266,7 @@ export default function QuickCreateClientModal({
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, client_type: 'individual' }))}
+                  onClick={() => selectClientType('individual')}
                   className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     formData.client_type === 'individual'
                       ? 'bg-primary text-white shadow-sm'
@@ -264,7 +277,7 @@ export default function QuickCreateClientModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, client_type: 'business' }))}
+                  onClick={() => selectClientType('business')}
                   className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     formData.client_type === 'business'
                       ? 'bg-primary text-white shadow-sm'
@@ -357,24 +370,37 @@ export default function QuickCreateClientModal({
               />
             </div>
 
-            {/* Service-Only Toggle */}
-            <div className="p-4 bg-secondary/50 rounded-xl">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="is_service_only"
-                  checked={formData.is_service_only}
-                  onChange={handleChange}
-                  className="mt-0.5 w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Service Client Only</span>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    This client receives ongoing services (payroll, bookkeeping, etc.) without a tax return.
-                  </p>
-                </div>
-              </label>
-            </div>
+            {/* Tax workflow toggle for individuals only */}
+            {formData.client_type === 'individual' ? (
+              <div className="p-4 bg-secondary/50 rounded-xl">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!formData.is_service_only}
+                    onChange={(e) =>
+                      setFormData(prev => ({
+                        ...prev,
+                        is_service_only: !e.target.checked,
+                      }))
+                    }
+                    className="mt-0.5 w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Include in Tax Return Workflow</span>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Turn off only for ongoing service clients without a tax return.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            ) : (
+              <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                <p className="text-sm font-medium text-blue-900">Business clients default to service workflow.</p>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  Individual tax-return fields are not used for business clients.
+                </p>
+              </div>
+            )}
 
             {/* Service Types Selection */}
             <div>
@@ -406,7 +432,7 @@ export default function QuickCreateClientModal({
             </div>
 
             {/* Tax Return Fields (only if NOT service-only) */}
-            {!formData.is_service_only && (
+            {formData.client_type === 'individual' && !formData.is_service_only && (
               <>
                 <div className="border-t border-secondary-dark pt-4">
                   <p className="text-sm font-medium text-gray-700 mb-3">Tax Return Details</p>

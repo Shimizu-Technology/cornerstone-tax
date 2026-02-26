@@ -29,27 +29,42 @@ class AuditLog < ApplicationRecord
   # Helper to get a human-readable description
   def description
     entity_name = case auditable_type
-                  when "TimeEntry"
+    when "TimeEntry"
                     if auditable
                       "time entry (#{auditable.hours}h on #{auditable.work_date})"
                     else
                       "time entry ##{auditable_id}"
                     end
-                  when "Client"
+    when "Client"
                     if auditable
-                      "client #{auditable.full_name}"
+                      "client #{auditable.display_name}"
                     else
                       "client ##{auditable_id}"
                     end
-                  when "TaxReturn"
+    when "TaxReturn"
                     if auditable
-                      "#{auditable.tax_year} tax return for #{auditable.client&.full_name}"
+                      "#{auditable.tax_year} tax return for #{auditable.client&.display_name}"
                     else
                       "tax return ##{auditable_id}"
                     end
-                  else
+    when "OperationTask"
+                    if auditable
+                      client_label = auditable.client&.display_name.presence || "client ##{auditable.client_id}"
+                      "checklist task \"#{auditable.title}\" for #{client_label}"
+                    else
+                      "checklist task ##{auditable_id}"
+                    end
+    when "OperationCycle"
+                    if auditable
+                      client_label = auditable.client&.display_name.presence || "client ##{auditable.client_id}"
+                      run_label = auditable.cycle_label.presence || "run ##{auditable.id}"
+                      "checklist run \"#{run_label}\" for #{client_label}"
+                    else
+                      "checklist run ##{auditable_id}"
+                    end
+    else
                     "#{auditable_type.underscore.humanize.downcase} ##{auditable_id}"
-                  end
+    end
 
     case action
     when "created"

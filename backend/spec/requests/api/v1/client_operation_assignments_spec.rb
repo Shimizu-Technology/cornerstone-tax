@@ -104,6 +104,8 @@ RSpec.describe "Api::V1::ClientOperationAssignments", type: :request do
            params: {
              assignment: {
                operation_template_id: create_template.id,
+                cadence_type: "biweekly",
+                cadence_anchor: Date.current.to_s,
                assignment_status: "active",
                starts_on: Date.current.to_s
              }
@@ -113,6 +115,7 @@ RSpec.describe "Api::V1::ClientOperationAssignments", type: :request do
       expect(response).to have_http_status(:created)
       body = JSON.parse(response.body)
       expect(body.dig("assignment", "operation_template_id")).to eq(create_template.id)
+      expect(body.dig("assignment", "cadence_type")).to eq("biweekly")
     end
 
     it "rejects non-admin users" do
@@ -155,6 +158,22 @@ RSpec.describe "Api::V1::ClientOperationAssignments", type: :request do
 
       expect(response).to have_http_status(:unprocessable_entity)
       expect(JSON.parse(response.body)["error"]).to include("must be on or after start date")
+    end
+
+    it "validates custom cadence interval on update" do
+      stub_clerk_for(admin)
+
+      patch "/api/v1/client_operation_assignments/#{assignment.id}",
+            params: {
+              assignment: {
+                cadence_type: "custom",
+                cadence_interval: nil
+              }
+            }.to_json,
+            headers: auth_headers_for(admin)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(JSON.parse(response.body)["error"].downcase).to include("cadence interval")
     end
 
     it "rejects non-admin users" do

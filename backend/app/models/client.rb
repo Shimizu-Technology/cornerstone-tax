@@ -19,8 +19,10 @@ class Client < ApplicationRecord
   validates :last_name, presence: true
   validates :client_type, inclusion: { in: %w[individual business], allow_nil: true }
 
-  scope :individuals, -> { where(client_type: 'individual') }
-  scope :businesses, -> { where(client_type: 'business') }
+  scope :individuals, -> { where(client_type: "individual") }
+  scope :businesses, -> { where(client_type: "business") }
+  scope :active, -> { where(archived_at: nil) }
+  scope :archived, -> { where.not(archived_at: nil) }
   scope :with_tax_returns, -> { where(has_tax_returns: true) }
   scope :service_only, -> { where(has_tax_returns: false) }
   # Legacy alias for backward compatibility
@@ -36,6 +38,14 @@ class Client < ApplicationRecord
   end
 
   def display_name
-    full_name
+    if client_type == "business" && business_name.present?
+      business_name
+    else
+      full_name
+    end
+  end
+
+  def archived?
+    archived_at.present?
   end
 end

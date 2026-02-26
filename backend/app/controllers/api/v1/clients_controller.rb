@@ -6,11 +6,21 @@ module Api
       # Require authentication for all actions except intake endpoints
       before_action :authenticate_user!, except: []
       before_action :require_staff!, except: []
+      before_action :require_admin!, only: [ :archive, :unarchive ]
 
       # GET /api/v1/clients
       def index
-        clients = Client.includes(:tax_returns, :service_types, :client_contacts, tax_returns: [:workflow_stage, :assigned_to])
+        clients = Client.includes(:tax_returns, :service_types, :client_contacts, tax_returns: [ :workflow_stage, :assigned_to ])
                         .order(created_at: :desc)
+
+        case params[:archived]
+        when "true"
+          clients = clients.archived
+        when "all"
+          # no-op
+        else
+          clients = clients.active
+        end
 
         # Search
         if params[:search].present?
@@ -41,13 +51,13 @@ module Api
 
         # Filter by service-only clients (has_tax_returns = false means service-only)
         # Only filter when service_only=true; service_only=false means "show all" (no filter)
-        if params[:service_only] == 'true'
+        if params[:service_only] == "true"
           clients = clients.where(has_tax_returns: false)
         end
-        
+
         # Also support has_tax_returns param directly
         if params[:has_tax_returns].present?
-          clients = clients.where(has_tax_returns: params[:has_tax_returns] == 'true')
+          clients = clients.where(has_tax_returns: params[:has_tax_returns] == "true")
         end
 
         # Pagination
@@ -73,7 +83,7 @@ module Api
           :dependents,
           :service_types,
           :client_contacts,
-          tax_returns: [:workflow_stage, :income_sources, :workflow_events, :assigned_to]
+          tax_returns: [ :workflow_stage, :income_sources, :workflow_events, :assigned_to ]
         ).find(params[:id])
 
         render json: { client: client_detail(client) }
@@ -100,7 +110,7 @@ module Api
               initial_stage = WorkflowStage.find_by(slug: "intake_received") ||
                               WorkflowStage.active.ordered.first
               tax_year = (params.dig(:client, :tax_year) || Date.current.year).to_i
-              
+
               tax_return = client.tax_returns.create!(
                 tax_year: tax_year,
                 workflow_stage: initial_stage
@@ -114,16 +124,23 @@ module Api
               )
             end
 
-            render json: { 
+            AuditLog.log(
+              auditable: client,
+              action: "created",
+              user: current_user,
+              metadata: "Client created"
+            )
+
+            render json: {
               message: "Client created successfully",
-              client: client_summary(client.reload) 
+              client: client_summary(client.reload)
             }, status: :created
           else
             render json: { errors: client.errors.full_messages }, status: :unprocessable_entity
           end
         end
       rescue ActiveRecord::RecordInvalid => e
-        render json: { errors: [e.message] }, status: :unprocessable_entity
+        render json: { errors: [ e.message ] }, status: :unprocessable_entity
       end
 
       # PATCH /api/v1/clients/:id
@@ -140,7 +157,7 @@ module Api
 
         # Get only the safe attributes that are being updated
         attrs_to_track = client_params.keys.map(&:to_s) & safe_audit_attrs
-        
+
         # Capture old values before update (only safe attributes)
         old_values = {}
         attrs_to_track.each do |attr|
@@ -174,7 +191,7 @@ module Api
               if old_service_type_ids.sort != new_service_type_ids.sort
                 old_names = ServiceType.where(id: old_service_type_ids).pluck(:name)
                 new_names = ServiceType.where(id: new_service_type_ids).pluck(:name)
-                changes['service_types'] = { from: old_names.join(', '), to: new_names.join(', ') }
+                changes["service_types"] = { from: old_names.join(", "), to: new_names.join(", ") }
               end
             end
 
@@ -195,7 +212,60 @@ module Api
           end
         end
       rescue ActiveRecord::RecordInvalid => e
-        render json: { errors: [e.message] }, status: :unprocessable_entity
+        render json: { errors: [ e.message ] }, status: :unprocessable_entity
+      end
+
+      # PATCH /api/v1/clients/:id/archive
+      def archive
+        client = Client.find(params[:id])
+        previous_archived_at = client.archived_at
+
+        ActiveRecord::Base.transaction do
+          client.update!(archived_at: Time.current)
+          client.client_operation_assignments.update_all(assignment_status: "paused", updated_at: Time.current)
+          client.operation_cycles.where(status: "active").update_all(status: "cancelled", updated_at: Time.current)
+        end
+
+        AuditLog.log(
+          auditable: client,
+          action: "updated",
+          user: current_user,
+          changes_made: {
+            archived_at: { from: previous_archived_at, to: client.archived_at }
+          },
+          metadata: "Client archived and checklist generation paused"
+        )
+
+        render json: {
+          message: "Client archived successfully",
+          client: client_detail(client.reload)
+        }
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # PATCH /api/v1/clients/:id/unarchive
+      def unarchive
+        client = Client.find(params[:id])
+        previous_archived_at = client.archived_at
+        client.update!(archived_at: nil)
+
+        AuditLog.log(
+          auditable: client,
+          action: "updated",
+          user: current_user,
+          changes_made: {
+            archived_at: { from: previous_archived_at, to: nil }
+          },
+          metadata: "Client unarchived (recurring plans remain paused until resumed)"
+        )
+
+        render json: {
+          message: "Client unarchived successfully",
+          client: client_detail(client.reload)
+        }
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { error: e.message }, status: :unprocessable_entity
       end
 
       private
@@ -206,7 +276,7 @@ module Api
           :filing_status, :is_new_client, :has_prior_year_return, :changes_from_prior_year,
           :spouse_name, :spouse_dob, :denied_eic_actc, :denied_eic_actc_year,
           :has_crypto_transactions, :wants_direct_deposit, :bank_routing_number,
-          :bank_account_number, :bank_account_type, :client_type, :business_name, 
+          :bank_account_number, :bank_account_type, :client_type, :business_name,
           :has_tax_returns
         )
         # Map legacy is_service_only param to has_tax_returns (inverted logic)
@@ -214,13 +284,14 @@ module Api
         if params[:client]&.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
           permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(params[:client][:is_service_only])
         end
+        normalize_client_workflow_fields!(permitted)
         permitted
       end
 
       def quick_create_client_params
         permitted = params.require(:client).permit(
           :first_name, :last_name, :date_of_birth, :email, :phone,
-          :filing_status, :is_new_client, :client_type, :business_name, 
+          :filing_status, :is_new_client, :client_type, :business_name,
           :has_tax_returns
         )
         # Map legacy is_service_only param to has_tax_returns (inverted logic)
@@ -231,9 +302,26 @@ module Api
         permitted.tap do |p|
           # Set defaults for quick create
           p[:is_new_client] = true if p[:is_new_client].nil?
-          p[:client_type] ||= 'individual'
-          p[:has_tax_returns] = true if p[:has_tax_returns].nil?  # Default to tax client
+          p[:client_type] ||= "individual"
+          p[:has_tax_returns] = true if p[:has_tax_returns].nil? # Default to tax client
+          normalize_client_workflow_fields!(p)
         end
+      end
+
+      def normalize_client_workflow_fields!(permitted)
+        client_type = permitted[:client_type].presence || "individual"
+        return unless client_type == "business"
+
+        # Business clients should not use individual tax-return workflow fields.
+        permitted[:has_tax_returns] = false
+        permitted[:date_of_birth] = nil if permitted.key?(:date_of_birth)
+        permitted[:filing_status] = nil if permitted.key?(:filing_status)
+        permitted[:spouse_name] = nil if permitted.key?(:spouse_name)
+        permitted[:spouse_dob] = nil if permitted.key?(:spouse_dob)
+        permitted[:has_prior_year_return] = false if permitted.key?(:has_prior_year_return)
+        permitted[:changes_from_prior_year] = nil if permitted.key?(:changes_from_prior_year)
+        permitted[:denied_eic_actc] = false if permitted.key?(:denied_eic_actc)
+        permitted[:denied_eic_actc_year] = nil if permitted.key?(:denied_eic_actc_year)
       end
 
       def client_summary(client)
@@ -249,6 +337,8 @@ module Api
           is_new_client: client.is_new_client,
           client_type: client.client_type,
           business_name: client.business_name,
+          archived_at: client.archived_at,
+          is_archived: client.archived?,
           has_tax_returns: client.has_tax_returns,
           is_service_only: !client.has_tax_returns,  # Backward compatibility
           created_at: client.created_at,
@@ -289,6 +379,8 @@ module Api
           wants_direct_deposit: client.wants_direct_deposit,
           client_type: client.client_type,
           business_name: client.business_name,
+          archived_at: client.archived_at,
+          is_archived: client.archived?,
           has_tax_returns: client.has_tax_returns,
           is_service_only: !client.has_tax_returns,  # Backward compatibility
           service_types: client.service_types.map do |st|

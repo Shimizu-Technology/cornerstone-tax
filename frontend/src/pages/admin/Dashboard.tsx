@@ -5,6 +5,7 @@ import type { Schedule, TimeEntry } from '../../lib/api'
 import QuickCreateClientModal from '../../components/admin/QuickCreateClientModal'
 import { SkeletonStats, SkeletonCard, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
+import { formatLongDate, formatWorkDate } from '../../lib/dateUtils'
 
 interface DashboardStats {
   totalClients: number
@@ -210,7 +211,7 @@ export default function Dashboard() {
       />
 
       {/* Stats Grid */}
-      <StaggerContainer className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      <StaggerContainer className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StaggerItem><StatCard
           title="Total Clients"
           value={stats.totalClients}
@@ -259,7 +260,7 @@ export default function Dashboard() {
         <div className="px-6 py-5 border-b border-secondary-dark">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md">
+              <div className="w-10 h-10 bg-linear-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -342,11 +343,7 @@ export default function Dashboard() {
           </div>
           {activityDate !== getLocalDateString() && (
             <p className="text-sm text-primary mt-2 font-medium">
-              {new Date(activityDate + 'T00:00:00').toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                month: 'long', 
-                day: 'numeric' 
-              })}
+              {formatLongDate(new Date(activityDate + 'T00:00:00'))}
             </p>
           )}
         </div>
@@ -376,7 +373,7 @@ export default function Dashboard() {
             teamActivity.map((activity) => (
               <div key={activity.userId} className="px-6 py-4">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-primary-light to-primary rounded-full flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 bg-linear-to-br from-primary-light to-primary rounded-full flex items-center justify-center shrink-0">
                     <span className="text-white font-semibold text-sm">
                       {activity.displayName.charAt(0).toUpperCase()}
                     </span>
@@ -403,7 +400,7 @@ export default function Dashboard() {
                         return (
                           <div key={entry.id} className="text-sm">
                             <div className="flex items-start gap-2">
-                              <span className="text-gray-400 flex-shrink-0">
+                              <span className="text-gray-400 shrink-0">
                                 {entry.formatted_start_time} - {entry.formatted_end_time}
                               </span>
                               <div className="flex-1 min-w-0">
@@ -497,11 +494,7 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <p className="font-medium text-gray-900">
-                        {new Date(schedule.work_date + 'T00:00:00').toLocaleDateString('en-US', { 
-                          weekday: 'short', 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })}
+                        {formatWorkDate(schedule.work_date)}
                       </p>
                       <p className="text-sm text-gray-500">
                         {schedule.formatted_time_range}
@@ -556,7 +549,7 @@ export default function Dashboard() {
                 className="block px-6 py-4 hover:bg-secondary/50 transition-colors"
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 bg-gradient-to-br from-primary-light to-primary rounded-full flex items-center justify-center flex-shrink-0">
+                  <div className="w-11 h-11 bg-linear-to-br from-primary-light to-primary rounded-full flex items-center justify-center shrink-0">
                     <span className="text-white font-semibold">
                       {client.full_name.charAt(0)}
                     </span>
@@ -600,14 +593,14 @@ interface StatCardProps {
 
 function StatCard({ title, value, icon, gradient }: StatCardProps) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark p-5 sm:p-6 hover:shadow-md transition-shadow">
-      <div className="flex items-center gap-4">
-        <div className={`bg-gradient-to-br ${gradient} text-white p-3 rounded-xl shadow-md`}>
+    <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark p-5 sm:p-6 hover:shadow-md transition-shadow h-full min-h-[120px]">
+      <div className="flex items-center gap-3 sm:gap-4 h-full">
+        <div className={`bg-linear-to-br ${gradient} text-white p-2.5 sm:p-3 rounded-xl shadow-md`}>
           {icon}
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-2xl sm:text-3xl font-bold text-gray-900">{value}</p>
-          <p className="text-sm text-gray-500">{title}</p>
+          <p className="text-sm text-gray-500 leading-tight min-h-10">{title}</p>
         </div>
       </div>
     </div>

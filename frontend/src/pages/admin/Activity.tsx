@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
-import { formatRelativeTime } from '../../lib/dateUtils'
+import { formatDate, formatDateTime, formatRelativeTime } from '../../lib/dateUtils'
 
 // Define types locally to avoid Vite caching issues
 interface ActivityUser {
@@ -120,11 +120,21 @@ const AUDITABLE_TYPE_LABELS: Record<string, string> = {
   Client: 'Client',
   TaxReturn: 'Tax Return',
   User: 'User',
-  OperationTemplate: 'Operations Template',
-  OperationTemplateTask: 'Operations Template Task',
-  ClientOperationAssignment: 'Operations Assignment',
-  OperationCycle: 'Operations Cycle',
-  OperationTask: 'Operations Task',
+  OperationTemplate: 'Checklist Template',
+  OperationTemplateTask: 'Checklist Template Task',
+  ClientOperationAssignment: 'Checklist Assignment',
+  OperationCycle: 'Checklist Run',
+  OperationTask: 'Checklist Task',
+}
+
+const AUDIT_CHANGE_LABELS: Record<string, string> = {
+  status: 'Status',
+  notes: 'Notes',
+  evidence_note: 'Evidence Note',
+  due_at: 'Due',
+  completed_at: 'Completed At',
+  assigned_to_id: 'Assigned To',
+  completed_by_id: 'Completed By',
 }
 
 export default function Activity() {
@@ -242,6 +252,56 @@ export default function Activity() {
 
   // Use shared date utilities - formatRelativeTime returns { display, full }
   const getTimeDisplay = (dateString: string) => formatRelativeTime(dateString)
+
+  const isDateLike = (raw: string) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(raw) ||
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)
+
+  const formatAuditChangeValue = (field: string, value: unknown) => {
+    if (value === null || value === undefined || value === '') return 'none'
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+
+    const raw = String(value)
+    const statusLabels: Record<string, string> = {
+      not_started: 'Not Started',
+      in_progress: 'In Progress',
+      done: 'Done',
+      blocked: 'Blocked',
+    }
+    const dateOnlyFields = new Set(['date_of_birth', 'spouse_dob', 'work_date', 'period_start', 'period_end'])
+    const dateTimeFields = new Set(['archived_at', 'due_at', 'started_at', 'completed_at', 'created_at', 'updated_at'])
+
+    if (field === 'status') return statusLabels[raw] || raw
+    if (field === 'assigned_to_id' || field === 'completed_by_id') return raw === 'none' ? 'none' : `User #${raw}`
+    if (dateOnlyFields.has(field) && isDateLike(raw)) return formatDate(raw)
+    if (dateTimeFields.has(field) && isDateLike(raw)) return formatDateTime(raw)
+    if (isDateLike(raw)) return raw.includes('T') ? formatDateTime(raw) : formatDate(raw)
+
+    return raw
+  }
+
+  const formatAuditFieldLabel = (field: string) => AUDIT_CHANGE_LABELS[field] || field.replace(/_/g, ' ').replace(/\bid\b/gi, 'ID')
+
+  const shouldShowAuditChange = (
+    log: AuditLogItem,
+    field: string,
+    change: { from: unknown; to: unknown } | unknown
+  ) => {
+    if (field === 'updated_at') return false
+
+    if (log.auditable_type === 'OperationTask') {
+      // Keep operation task changes focused on the fields staff care about.
+      const allowed = new Set(['status', 'assigned_to_id', 'due_at', 'notes', 'evidence_note', 'completed_at'])
+      return allowed.has(field)
+    }
+
+    // Hide no-op changes where from/to are effectively identical.
+    if (change && typeof change === 'object' && 'from' in change && 'to' in change) {
+      return String(change.from ?? '') !== String(change.to ?? '')
+    }
+
+    return true
+  }
 
   // Look up display name for audit log users (CST-4)
   const getUserDisplayName = (user: { id: number; email: string } | null): string => {
@@ -414,20 +474,22 @@ export default function Activity() {
         {/* Changes for updates */}
         {log.action === 'updated' && log.changes_made && Object.keys(log.changes_made).length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-            {Object.entries(log.changes_made).map(([field, change]) => {
+            {Object.entries(log.changes_made)
+              .filter(([field, change]) => shouldShowAuditChange(log, field, change))
+              .map(([field, change]) => {
               // Handle case where change is an object with from/to
               const hasFromTo = change && typeof change === 'object' && 'from' in change && 'to' in change
               
               if (hasFromTo) {
                 return (
                   <div key={field} className="flex items-center gap-1">
-                    <span className="text-gray-500 capitalize">{field.replace(/_/g, ' ')}:</span>
+                    <span className="text-gray-500">{formatAuditFieldLabel(field)}:</span>
                     <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-lg line-through">
-                      {String(change.from ?? 'none')}
+                      {formatAuditChangeValue(field, change.from)}
                     </span>
                     <span className="text-gray-400">→</span>
                     <span className="px-2 py-0.5 bg-amber-100 text-amber-700 font-medium rounded-lg">
-                      {String(change.to ?? 'none')}
+                      {formatAuditChangeValue(field, change.to)}
                     </span>
                   </div>
                 )
@@ -435,9 +497,9 @@ export default function Activity() {
                 // Handle case where change is just a value (e.g., income_source_added: "payer name")
                 return (
                   <div key={field} className="flex items-center gap-1">
-                    <span className="text-gray-500 capitalize">{field.replace(/_/g, ' ')}:</span>
+                    <span className="text-gray-500">{formatAuditFieldLabel(field)}:</span>
                     <span className="px-2 py-0.5 bg-amber-100 text-amber-700 font-medium rounded-lg">
-                      {String(change)}
+                      {formatAuditChangeValue(field, change)}
                     </span>
                   </div>
                 )

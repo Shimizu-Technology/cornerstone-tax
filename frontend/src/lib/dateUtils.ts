@@ -33,6 +33,20 @@ export function formatDate(dateString: string | Date): string {
 }
 
 /**
+ * Format just the time portion
+ * Example: "3:36 PM"
+ */
+export function formatTime(dateString: string | Date): string {
+  const date = typeof dateString === 'string' ? new Date(dateString) : dateString
+
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+/**
  * Format a date for work dates (no time component, parse as local date)
  * Example: "Jan 20, 2026"
  */
@@ -43,6 +57,21 @@ export function formatWorkDate(dateString: string): string {
   return date.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+/**
+ * Format long readable date labels
+ * Example: "Tuesday, February 11, 2026"
+ */
+export function formatLongDate(dateString: string | Date): string {
+  const date = typeof dateString === 'string' ? new Date(dateString) : dateString
+
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
     day: 'numeric',
     year: 'numeric',
   })

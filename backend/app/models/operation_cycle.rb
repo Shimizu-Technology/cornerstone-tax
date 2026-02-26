@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class OperationCycle < ApplicationRecord
-  STATUSES = %w[active completed cancelled].freeze
+  STATUSES = %w[active completed cancelled archived].freeze
   GENERATION_MODES = %w[auto manual].freeze
 
   belongs_to :client

@@ -49,24 +49,28 @@ class AutoGenerateOperationCyclesService
       .includes(:operation_template, :client)
       .where(assignment_status: "active", auto_generate: true)
       .joins(:operation_template)
-      .where(operation_templates: { is_active: true, auto_generate: true })
+      .where(operation_templates: { is_active: true })
       .where("starts_on IS NULL OR starts_on <= ?", @run_date)
       .where("ends_on IS NULL OR ends_on >= ?", @run_date)
   end
 
   def period_for(assignment)
     template = assignment.operation_template
-    case template.recurrence_type
+    cadence_type = assignment.cadence_type.presence || template.recurrence_type
+    cadence_interval = assignment.cadence_interval.presence || template.recurrence_interval
+    cadence_anchor = assignment.cadence_anchor || assignment.starts_on
+
+    case cadence_type
     when "weekly"
       [ @run_date.beginning_of_week, @run_date.end_of_week ]
     when "biweekly"
-      biweekly_period(assignment.starts_on || @run_date.beginning_of_week)
+      biweekly_period(cadence_anchor || @run_date.beginning_of_week)
     when "monthly"
       [ @run_date.beginning_of_month, @run_date.end_of_month ]
     when "quarterly"
       [ @run_date.beginning_of_quarter, @run_date.end_of_quarter ]
     when "custom"
-      custom_period(assignment.starts_on || @run_date, template.recurrence_interval)
+      custom_period(cadence_anchor || @run_date, cadence_interval)
     else
       [ nil, nil ]
     end

@@ -20,6 +20,10 @@ Rails.application.routes.draw do
 
       # Admin/Employee routes (requires authentication)
       resources :clients, only: [:index, :show, :create, :update] do
+        member do
+          patch :archive
+          patch :unarchive
+        end
         resources :contacts, controller: "client_contacts", only: [:index, :create, :update, :destroy]
         resources :operation_assignments, controller: "client_operation_assignments", only: [:index, :create]
         resources :operation_cycles, controller: "operation_cycles", only: [:index] do
@@ -37,7 +41,12 @@ Rails.application.routes.draw do
         end
       end
       resources :operation_template_tasks, only: [:update, :destroy]
-      resources :operation_cycles, only: [:show]
+      resources :operation_cycles, only: [:show] do
+        member do
+          patch :archive
+          patch :unarchive
+        end
+      end
       resources :operation_tasks, only: [:index, :update] do
         collection do
           get :my_tasks

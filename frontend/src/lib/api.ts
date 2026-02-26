@@ -140,6 +140,8 @@ export interface ClientSummary {
   client_type: 'individual' | 'business';
   business_name: string | null;
   is_service_only: boolean;
+  is_archived?: boolean;
+  archived_at?: string | null;
   service_types: ClientServiceType[];
   contacts: ClientContact[];
   created_at: string;
@@ -186,6 +188,8 @@ export interface ClientDetailResponse {
     client_type: 'individual' | 'business';
     business_name: string | null;
     is_service_only: boolean;
+    is_archived?: boolean;
+    archived_at?: string | null;
     service_types: ClientServiceType[];
     contacts: ClientContact[];
     created_at: string;
@@ -629,6 +633,9 @@ export interface ClientOperationAssignment {
   client_id: number;
   operation_template_id: number;
   operation_template_name: string | null;
+  cadence_type: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom';
+  cadence_interval: number | null;
+  cadence_anchor: string | null;
   auto_generate: boolean;
   assignment_status: 'active' | 'paused';
   starts_on: string | null;
@@ -684,7 +691,7 @@ export interface OperationCycle {
   period_end: string;
   cycle_label: string;
   generation_mode: 'auto' | 'manual';
-  status: 'active' | 'completed' | 'cancelled';
+  status: 'active' | 'completed' | 'cancelled' | 'archived';
   generated_at: string | null;
   generated_by: { id: number; name: string } | null;
   created_at: string;
@@ -748,6 +755,7 @@ export const api = {
     service_type_id?: number;
     client_type?: 'individual' | 'business';
     service_only?: boolean;
+    archived?: 'true' | 'all';
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
@@ -757,6 +765,7 @@ export const api = {
     if (params?.service_type_id) searchParams.set('service_type_id', params.service_type_id.toString());
     if (params?.client_type) searchParams.set('client_type', params.client_type);
     if (params?.service_only !== undefined) searchParams.set('service_only', params.service_only.toString());
+    if (params?.archived) searchParams.set('archived', params.archived);
     const query = searchParams.toString();
     return fetchApi<ClientsResponse>(`/api/v1/clients${query ? `?${query}` : ''}`);
   },
@@ -795,6 +804,16 @@ export const api = {
     fetchApi<{ client: ClientDetailResponse['client'] }>(`/api/v1/clients/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ client: data }),
+    }),
+
+  archiveClient: (id: number) =>
+    fetchApi<{ message: string; client: ClientDetailResponse['client'] }>(`/api/v1/clients/${id}/archive`, {
+      method: 'PATCH',
+    }),
+
+  unarchiveClient: (id: number) =>
+    fetchApi<{ message: string; client: ClientDetailResponse['client'] }>(`/api/v1/clients/${id}/unarchive`, {
+      method: 'PATCH',
     }),
 
   // Client Contacts
@@ -923,6 +942,9 @@ export const api = {
 
   createClientOperationAssignment: (clientId: number, data: {
     operation_template_id: number;
+    cadence_type?: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom';
+    cadence_interval?: number | null;
+    cadence_anchor?: string;
     auto_generate?: boolean;
     assignment_status?: 'active' | 'paused';
     starts_on?: string;
@@ -934,6 +956,9 @@ export const api = {
     }),
 
   updateClientOperationAssignment: (assignmentId: number, data: Partial<{
+    cadence_type: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom';
+    cadence_interval: number | null;
+    cadence_anchor: string | null;
     auto_generate: boolean;
     assignment_status: 'active' | 'paused';
     starts_on: string | null;
@@ -973,6 +998,16 @@ export const api = {
   getOperationCycle: (cycleId: number) =>
     fetchApi<{ operation_cycle: OperationCycle }>(`/api/v1/operation_cycles/${cycleId}`),
 
+  archiveOperationCycle: (cycleId: number) =>
+    fetchApi<{ operation_cycle: OperationCycle }>(`/api/v1/operation_cycles/${cycleId}/archive`, {
+      method: 'PATCH',
+    }),
+
+  unarchiveOperationCycle: (cycleId: number) =>
+    fetchApi<{ operation_cycle: OperationCycle }>(`/api/v1/operation_cycles/${cycleId}/unarchive`, {
+      method: 'PATCH',
+    }),
+
   // Operation Tasks
   updateOperationTask: (taskId: number, data: Partial<{
     status: 'not_started' | 'in_progress' | 'blocked' | 'done';
@@ -1003,6 +1038,7 @@ export const api = {
     client_id?: number;
     due_filter?: 'overdue' | 'today' | 'upcoming';
     include_done?: boolean;
+    include_archived_runs?: boolean;
     limit?: number;
     page?: number;
     per_page?: number;
@@ -1013,6 +1049,9 @@ export const api = {
     if (params?.client_id) searchParams.set('client_id', params.client_id.toString());
     if (params?.due_filter) searchParams.set('due_filter', params.due_filter);
     if (params?.include_done !== undefined) searchParams.set('include_done', params.include_done.toString());
+    if (params?.include_archived_runs !== undefined) {
+      searchParams.set('include_archived_runs', params.include_archived_runs.toString());
+    }
     if (params?.limit) searchParams.set('limit', params.limit.toString());
     if (params?.page) searchParams.set('page', params.page.toString());
     if (params?.per_page) searchParams.set('per_page', params.per_page.toString());

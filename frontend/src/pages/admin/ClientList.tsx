@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { ServiceType, ClientServiceType } from '../../lib/api'
-import { formatDateTime } from '../../lib/dateUtils'
 import QuickCreateClientModal from '../../components/admin/QuickCreateClientModal'
 import { FadeUp } from '../../components/ui/MotionComponents'
+import { formatDate, formatTime } from '../../lib/dateUtils'
 
 interface Client {
   id: number
@@ -15,6 +15,8 @@ interface Client {
   client_type: 'individual' | 'business'
   business_name: string | null
   is_service_only: boolean
+  is_archived?: boolean
+  archived_at?: string | null
   service_types: ClientServiceType[]
   created_at: string
   tax_return: {
@@ -50,6 +52,7 @@ export default function ClientList() {
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
   const [selectedServiceTypeId, setSelectedServiceTypeId] = useState<number | undefined>()
   const [showServiceOnly, setShowServiceOnly] = useState<boolean | undefined>()
+  const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived' | 'all'>('active')
 
   // Load service types for filter dropdown
   useEffect(() => {
@@ -76,6 +79,7 @@ export default function ClientList() {
         per_page: 20,
         service_type_id: selectedServiceTypeId,
         service_only: showServiceOnly,
+        archived: archiveFilter === 'archived' ? 'true' : archiveFilter === 'all' ? 'all' : undefined,
       })
       if (result.data) {
         setClients(result.data.clients as Client[])
@@ -86,7 +90,7 @@ export default function ClientList() {
     } finally {
       setLoading(false)
     }
-  }, [page, appliedSearch, selectedServiceTypeId, showServiceOnly])
+  }, [page, appliedSearch, selectedServiceTypeId, showServiceOnly, archiveFilter])
 
   useEffect(() => {
     loadClients()
@@ -103,10 +107,14 @@ export default function ClientList() {
     setAppliedSearch('')  // Clear applied search too
     setSelectedServiceTypeId(undefined)
     setShowServiceOnly(undefined)
+    setArchiveFilter('active')
     setPage(1)
   }
 
-  const hasActiveFilters = appliedSearch || selectedServiceTypeId !== undefined || showServiceOnly !== undefined
+  const hasActiveFilters = appliedSearch || selectedServiceTypeId !== undefined || showServiceOnly !== undefined || archiveFilter !== 'active'
+
+  const formatCreatedDate = (value: string) => formatDate(value)
+  const formatCreatedTime = (value: string) => formatTime(value)
 
   return (
     <FadeUp>
@@ -140,7 +148,7 @@ export default function ClientList() {
 
       {/* Search and Filters */}
       <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark p-5 sm:p-6 space-y-4">
-        <form onSubmit={handleSearch} className="flex gap-4">
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <div className="flex-1 relative">
             <svg
               className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
@@ -160,7 +168,7 @@ export default function ClientList() {
           </div>
           <button
             type="submit"
-            className="px-6 py-3 bg-secondary text-gray-700 rounded-xl hover:bg-secondary-dark transition-colors font-medium"
+            className="w-full sm:w-auto px-6 py-3 bg-secondary text-gray-700 rounded-xl hover:bg-secondary-dark transition-colors font-medium min-h-[44px]"
           >
             Search
           </button>
@@ -214,6 +222,20 @@ export default function ClientList() {
             </button>
           </div>
 
+          {/* Archive Filter */}
+          <select
+            value={archiveFilter}
+            onChange={(e) => {
+              setArchiveFilter(e.target.value as 'active' | 'archived' | 'all')
+              setPage(1)
+            }}
+            className="px-4 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white text-sm"
+          >
+            <option value="active">Active Clients</option>
+            <option value="archived">Archived Clients</option>
+            <option value="all">All Clients</option>
+          </select>
+
           {/* Clear Filters */}
           {hasActiveFilters && (
             <button
@@ -250,23 +272,23 @@ export default function ClientList() {
         ) : (
           <>
             {/* Desktop Table */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full">
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full min-w-[980px] table-fixed">
                 <thead className="bg-secondary/50">
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[28%]">
                       Client
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[24%]">
                       Contact
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[20%]">
                       Services
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[14%]">
                       Status
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[14%]">
                       Created
                     </th>
                   </tr>
@@ -276,10 +298,10 @@ export default function ClientList() {
                     <tr key={client.id} className="hover:bg-secondary/30 transition-colors">
                       <td className="px-6 py-4">
                         <Link to={`/admin/clients/${client.id}`} className="flex items-center gap-3 group">
-                          <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${
                             client.client_type === 'business' 
-                              ? 'bg-gradient-to-br from-blue-400 to-blue-600' 
-                              : 'bg-gradient-to-br from-primary-light to-primary'
+                              ? 'bg-linear-to-br from-blue-400 to-blue-600' 
+                              : 'bg-linear-to-br from-primary-light to-primary'
                           }`}>
                             {client.client_type === 'business' ? (
                               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -291,21 +313,25 @@ export default function ClientList() {
                               </span>
                             )}
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <p className="font-medium text-gray-900 group-hover:text-primary transition-colors">
                               {client.client_type === 'business' && client.business_name 
                                 ? client.business_name 
                                 : client.full_name}
                             </p>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap mt-0.5">
                               {client.client_type === 'business' && client.business_name && (
-                                <span className="text-xs text-gray-500">{client.full_name}</span>
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700">
+                                  Primary: {client.full_name}
+                                </span>
                               )}
                               {client.is_new_client && (
                                 <span className="text-xs text-primary font-medium">New</span>
                               )}
-                              {client.is_service_only && (
-                                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Service Only</span>
+                              {client.is_archived && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-700">
+                                  Archived
+                                </span>
                               )}
                             </div>
                           </div>
@@ -313,26 +339,34 @@ export default function ClientList() {
                       </td>
                       <td className="px-6 py-4">
                         <p className="text-gray-900">{client.email}</p>
+                        {client.client_type === 'business' && client.business_name && (
+                          <p className="text-xs text-gray-500">{client.full_name}</p>
+                        )}
                         <p className="text-sm text-gray-500">{client.phone}</p>
                       </td>
                       <td className="px-6 py-4">
                         {client.service_types.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             {client.service_types.slice(0, 2).map(st => (
                               <span 
                                 key={st.id}
-                                className="px-2 py-0.5 rounded text-xs font-medium text-white"
+                                className="inline-flex max-w-[110px] items-center px-2 py-0.5 rounded-md text-xs font-medium text-white truncate"
                                 style={{ backgroundColor: st.color || '#8B7355' }}
+                                title={st.name}
                               >
                                 {st.name.length > 12 ? st.name.slice(0, 12) + '...' : st.name}
                               </span>
                             ))}
                             {client.service_types.length > 2 && (
-                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-600">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-200 text-gray-600">
                                 +{client.service_types.length - 2}
                               </span>
                             )}
                           </div>
+                        ) : client.is_service_only ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-600">
+                            Service Workflow
+                          </span>
                         ) : (
                           <span className="text-gray-400 text-sm">—</span>
                         )}
@@ -340,19 +374,25 @@ export default function ClientList() {
                       <td className="px-6 py-4">
                         {client.tax_return ? (
                           <span
-                            className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm"
+                            className="inline-flex max-w-[130px] px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm truncate"
                             style={{ backgroundColor: client.tax_return.status_color || '#8B7355' }}
+                            title={client.tax_return.status}
                           >
                             {client.tax_return.status}
                           </span>
                         ) : client.is_service_only ? (
-                          <span className="text-gray-400 text-sm">Service client</span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-600">
+                            Service Client
+                          </span>
                         ) : (
                           <span className="text-gray-400 text-sm">No return</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {formatDateTime(client.created_at)}
+                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
+                        <div className="leading-tight">
+                          <div>{formatCreatedDate(client.created_at)}</div>
+                          <div className="mt-1 text-xs text-gray-400">{formatCreatedTime(client.created_at)}</div>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -361,7 +401,7 @@ export default function ClientList() {
             </div>
 
             {/* Mobile Cards */}
-            <div className="md:hidden divide-y divide-secondary-dark">
+            <div className="lg:hidden divide-y divide-secondary-dark">
               {clients.map((client) => (
                 <Link
                   key={client.id}
@@ -369,10 +409,10 @@ export default function ClientList() {
                   className="block p-4 hover:bg-secondary/30 hover:shadow-md transition-all rounded-xl"
                 >
                   <div className="flex items-center gap-4">
-                    <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${
                       client.client_type === 'business' 
-                        ? 'bg-gradient-to-br from-blue-400 to-blue-600' 
-                        : 'bg-gradient-to-br from-primary-light to-primary'
+                        ? 'bg-linear-to-br from-blue-400 to-blue-600' 
+                        : 'bg-linear-to-br from-primary-light to-primary'
                     }`}>
                       {client.client_type === 'business' ? (
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -392,11 +432,20 @@ export default function ClientList() {
                               ? client.business_name 
                               : client.full_name}
                           </p>
-                          <p className="text-sm text-gray-500 truncate">{client.email}</p>
+                          {client.client_type === 'business' && client.business_name ? (
+                            <p className="text-sm text-gray-500 truncate">Primary: {client.full_name}</p>
+                          ) : (
+                            <p className="text-sm text-gray-500 truncate">{client.email}</p>
+                          )}
                         </div>
                         <div className="flex flex-wrap gap-1">
-                          {client.is_service_only && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Service Only</span>
+                          {client.is_new_client && (
+                            <span className="text-xs text-primary font-medium">New</span>
+                          )}
+                          {client.is_archived && (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                              Archived
+                            </span>
                           )}
                           {client.service_types.slice(0, 2).map(st => (
                             <span 
@@ -407,6 +456,11 @@ export default function ClientList() {
                               {st.name.length > 10 ? st.name.slice(0, 10) + '...' : st.name}
                             </span>
                           ))}
+                          {client.service_types.length === 0 && client.is_service_only && (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                              Service Workflow
+                            </span>
+                          )}
                           {client.tax_return && (
                             <span
                               className="px-2 py-0.5 rounded text-xs font-semibold text-white"
@@ -428,24 +482,24 @@ export default function ClientList() {
 
             {/* Pagination */}
             {meta && meta.total_pages > 1 && (
-              <div className="px-6 py-4 border-t border-secondary-dark flex items-center justify-between bg-secondary/30">
+              <div className="px-4 sm:px-6 py-4 border-t border-secondary-dark flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 sm:justify-between bg-secondary/30">
                 <p className="text-sm text-gray-600">
                   Showing {((meta.current_page - 1) * meta.per_page) + 1} to{' '}
                   {Math.min(meta.current_page * meta.per_page, meta.total_count)} of{' '}
                   {meta.total_count} clients
                 </p>
-                <div className="flex gap-2">
+                <div className="flex gap-2 w-full sm:w-auto">
                   <button
                     onClick={() => setPage(page - 1)}
                     disabled={page === 1}
-                    className="px-4 py-2 border border-secondary-dark rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-colors"
+                    className="flex-1 sm:flex-none px-4 py-2 border border-secondary-dark rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-colors"
                   >
                     Previous
                   </button>
                   <button
                     onClick={() => setPage(page + 1)}
                     disabled={page >= meta.total_pages}
-                    className="px-4 py-2 border border-secondary-dark rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-colors"
+                    className="flex-1 sm:flex-none px-4 py-2 border border-secondary-dark rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-colors"
                   >
                     Next
                   </button>

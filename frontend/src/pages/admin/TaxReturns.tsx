@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
-import { formatDateTime } from '../../lib/dateUtils'
+import { formatDate, formatDateTime, formatTime } from '../../lib/dateUtils'
 import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
 
 // Define types locally to avoid Vite import caching issues
@@ -238,8 +238,8 @@ export default function TaxReturns() {
                 exit={{ opacity: 0 }}
               >
                 {/* Desktop Table */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="min-w-full">
+                <div className="hidden lg:block overflow-x-auto">
+                  <table className="min-w-[1120px] w-full">
                     <thead className="bg-secondary/50">
                       <tr>
                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -254,7 +254,7 @@ export default function TaxReturns() {
                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                           Assigned To
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[190px] min-w-[190px]">
                           Date
                         </th>
                         <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -313,8 +313,11 @@ export default function TaxReturns() {
                               ))}
                             </select>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-500">
-                            {formatDateTime(taxReturn.created_at)}
+                          <td className="px-6 py-4 text-sm text-gray-500 w-[190px] min-w-[190px] align-top">
+                            <div className="leading-tight">
+                              <div className="whitespace-nowrap">{formatDate(taxReturn.created_at)}</div>
+                              <div className="mt-1 whitespace-nowrap">{formatTime(taxReturn.created_at)}</div>
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-right">
                             <Link
@@ -331,7 +334,7 @@ export default function TaxReturns() {
                 </div>
 
                 {/* Mobile Cards */}
-                <StaggerContainer className="md:hidden divide-y divide-secondary-dark">
+                <StaggerContainer className="lg:hidden divide-y divide-secondary-dark">
                   {returns.map((taxReturn) => (
                     <StaggerItem key={taxReturn.id}>
                       <div className="p-4 space-y-4">
@@ -343,7 +346,7 @@ export default function TaxReturns() {
                             <p className="text-sm text-gray-500">{taxReturn.tax_year} Tax Return</p>
                           </Link>
                           <span 
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white shadow-sm flex-shrink-0"
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white shadow-sm shrink-0"
                             style={{ backgroundColor: taxReturn.status_color || '#8B7355' }}
                           >
                             {taxReturn.status}
@@ -396,21 +399,21 @@ export default function TaxReturns() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="px-6 py-4 border-t border-secondary-dark flex items-center justify-between bg-secondary/30">
+            <div className="px-4 sm:px-6 py-4 border-t border-secondary-dark flex items-center justify-between bg-secondary/30">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-4 py-2 text-sm font-medium border border-secondary-dark rounded-xl hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-3 sm:px-4 py-2 text-sm font-medium border border-secondary-dark rounded-xl hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Previous
               </button>
-              <span className="text-sm text-gray-600">
+              <span className="text-xs sm:text-sm text-gray-600">
                 Page {page} of {totalPages}
               </span>
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="px-4 py-2 text-sm font-medium border border-secondary-dark rounded-xl hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-3 sm:px-4 py-2 text-sm font-medium border border-secondary-dark rounded-xl hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Next
               </button>

@@ -2,8 +2,15 @@
 
 class GenerateOperationCycleService
   Result = Struct.new(:success?, :cycle, :errors, :duplicate?, keyword_init: true) do
-    def initialize(success?: false, cycle: nil, errors: [], duplicate?: false)
-      super
+    # Struct members can end with ?, but keyword args cannot.
+    # Accept plain keywords and map them to the predicate members.
+    def initialize(success: false, cycle: nil, errors: nil, duplicate: false)
+      super(
+        success?: success,
+        cycle: cycle,
+        errors: errors || [],
+        duplicate?: duplicate
+      )
     end
   end
 
@@ -30,7 +37,7 @@ class GenerateOperationCycleService
       period_start: @period_start,
       period_end: @period_end
     )
-      return Result.new(success?: false, cycle: nil, errors: ["Operation cycle already exists for this period"], duplicate?: true)
+      return Result.new(success: false, cycle: nil, errors: [ "Operation cycle already exists for this period" ], duplicate: true)
     end
 
     cycle = nil
@@ -72,12 +79,12 @@ class GenerateOperationCycleService
       )
     end
 
-    Result.new(success?: true, cycle: cycle, errors: [])
+    Result.new(success: true, cycle: cycle, errors: [])
   rescue ActiveRecord::RecordInvalid => e
     failure(e.record.errors.full_messages.join(", "))
   rescue ActiveRecord::RecordNotUnique
     # Race condition: another request created the cycle between our exists? check and create
-    Result.new(success?: false, cycle: nil, errors: ["Operation cycle already exists for this period"], duplicate?: true)
+    Result.new(success: false, cycle: nil, errors: [ "Operation cycle already exists for this period" ], duplicate: true)
   rescue StandardError => e
     failure(e.message)
   end
@@ -107,6 +114,6 @@ class GenerateOperationCycleService
 
   def failure(message)
     @errors << message
-    Result.new(success?: false, cycle: nil, errors: @errors)
+    Result.new(success: false, cycle: nil, errors: @errors)
   end
 end

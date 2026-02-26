@@ -48,12 +48,11 @@ RSpec.describe AutoGenerateOperationCyclesService, type: :service do
     )
   end
 
-  def create_auto_template!(recurrence_type:, recurrence_interval: nil)
+  def create_auto_template!
     OperationTemplate.create!(
-      name: "Auto #{recurrence_type} Template #{SecureRandom.hex(4)}",
+      name: "Auto Template #{SecureRandom.hex(4)}",
       category: "general",
-      recurrence_type: recurrence_type,
-      recurrence_interval: recurrence_interval,
+      recurrence_type: "monthly",
       auto_generate: true,
       created_by: admin
     ).tap do |new_template|
@@ -61,10 +60,13 @@ RSpec.describe AutoGenerateOperationCyclesService, type: :service do
     end
   end
 
-  def create_auto_assignment!(operation_template:, starts_on: nil)
+  def create_auto_assignment!(operation_template:, starts_on: nil, cadence_type: "monthly", cadence_interval: nil, cadence_anchor: nil)
     ClientOperationAssignment.create!(
       client: client,
       operation_template: operation_template,
+      cadence_type: cadence_type,
+      cadence_interval: cadence_interval,
+      cadence_anchor: cadence_anchor || starts_on,
       auto_generate: true,
       assignment_status: "active",
       starts_on: starts_on,
@@ -97,8 +99,8 @@ RSpec.describe AutoGenerateOperationCyclesService, type: :service do
     end
 
     it "uses correct month-end boundaries for monthly recurrence" do
-      monthly_template = create_auto_template!(recurrence_type: "monthly")
-      create_auto_assignment!(operation_template: monthly_template, starts_on: nil)
+      monthly_template = create_auto_template!
+      create_auto_assignment!(operation_template: monthly_template, starts_on: nil, cadence_type: "monthly")
       run_date = Date.new(2026, 1, 31)
 
       described_class.new(run_date: run_date, generated_by: admin).call
@@ -109,8 +111,8 @@ RSpec.describe AutoGenerateOperationCyclesService, type: :service do
     end
 
     it "uses leap-year February boundaries for monthly recurrence" do
-      monthly_template = create_auto_template!(recurrence_type: "monthly")
-      create_auto_assignment!(operation_template: monthly_template, starts_on: nil)
+      monthly_template = create_auto_template!
+      create_auto_assignment!(operation_template: monthly_template, starts_on: nil, cadence_type: "monthly")
       run_date = Date.new(2024, 2, 29)
 
       described_class.new(run_date: run_date, generated_by: admin).call
@@ -121,8 +123,8 @@ RSpec.describe AutoGenerateOperationCyclesService, type: :service do
     end
 
     it "respects app timezone when deriving default run date" do
-      monthly_template = create_auto_template!(recurrence_type: "monthly")
-      create_auto_assignment!(operation_template: monthly_template, starts_on: nil)
+      monthly_template = create_auto_template!
+      create_auto_assignment!(operation_template: monthly_template, starts_on: nil, cadence_type: "monthly")
 
       Time.use_zone("Pacific/Honolulu") do
         travel_to Time.utc(2026, 1, 1, 8, 30, 0) do
@@ -133,6 +135,22 @@ RSpec.describe AutoGenerateOperationCyclesService, type: :service do
       cycle = OperationCycle.find_by(client: client, operation_template: monthly_template, period_start: Date.new(2025, 12, 1))
       expect(cycle).to be_present
       expect(cycle.period_end).to eq(Date.new(2025, 12, 31))
+    end
+
+    it "uses assignment cadence for biweekly runs" do
+      template = create_auto_template!
+      create_auto_assignment!(
+        operation_template: template,
+        starts_on: Date.new(2026, 1, 1),
+        cadence_type: "biweekly",
+        cadence_anchor: Date.new(2026, 1, 1)
+      )
+
+      described_class.new(run_date: Date.new(2026, 1, 20), generated_by: admin).call
+
+      cycle = OperationCycle.find_by(client: client, operation_template: template, period_start: Date.new(2026, 1, 15))
+      expect(cycle).to be_present
+      expect(cycle.period_end).to eq(Date.new(2026, 1, 28))
     end
   end
 end
