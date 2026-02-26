@@ -19,6 +19,19 @@ class TimeEntry < ApplicationRecord
   scope :for_user, ->(user) { where(user: user) }
   scope :recent, -> { order(work_date: :desc, created_at: :desc) }
 
+  def locked?
+    locked_at.present?
+  end
+
+  def editable_by?(acting_user)
+    return false if locked?
+    acting_user.admin? || user_id == acting_user.id
+  end
+
+  def deletable_by?(acting_user)
+    editable_by?(acting_user)
+  end
+
   # Calculate hours from start/end times minus break
   def calculate_hours_from_times
     return unless start_time.present? && end_time.present?

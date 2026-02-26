@@ -411,6 +411,7 @@ export interface TimeEntry {
     id: number;
     tax_year: number;
   } | null;
+  locked_at: string | null;
   created_at: string;
   updated_at: string;
 }

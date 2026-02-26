@@ -41,6 +41,7 @@ interface TimeEntryItem {
     id: number
     tax_year: number
   } | null
+  locked_at: string | null
   created_at: string
   updated_at: string
 }
@@ -112,6 +113,12 @@ const ChartIcon = () => (
   </svg>
 )
 
+const LockIcon = () => (
+  <svg className="h-3 w-3" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+  </svg>
+)
+
 // Helper functions
 function formatDate(dateString: string): string {
   return new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', {
@@ -154,6 +161,7 @@ export default function TimeTracking() {
   const [clients, setClients] = useState<ClientOption[]>([])
   const [users, setUsers] = useState<UserOption[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
@@ -213,6 +221,13 @@ export default function TimeTracking() {
   }
 
   const calculatedHours = calculateHours(formData.start_time, formData.end_time, formData.break_minutes)
+
+  // Owner display: "You" for self, real name for others
+  const ownerLabel = (entry: TimeEntryItem): string => {
+    const name = entry.user.display_name || entry.user.full_name || entry.user.email.split('@')[0]
+    if (currentUserId && entry.user.id === currentUserId) return 'You'
+    return name
+  }
 
   // Load time entries
   const loadEntries = useCallback(async () => {
@@ -291,6 +306,7 @@ export default function TimeTracking() {
 
       if (currentUserResponse.data) {
         setIsAdmin(currentUserResponse.data.user.is_admin)
+        setCurrentUserId(currentUserResponse.data.user.id)
       }
     } catch {
       console.error('Failed to load options')
@@ -846,11 +862,11 @@ export default function TimeTracking() {
                     {dayEntries.map(entry => (
                       <div
                         key={entry.id}
-                        className="mb-1 sm:mb-2 p-1 sm:p-2 bg-white border border-neutral-warm rounded text-xs cursor-pointer hover:bg-neutral-warm/50 transition-colors shadow-sm"
+                        className={`mb-1 sm:mb-2 p-1 sm:p-2 bg-white border rounded text-xs cursor-pointer hover:bg-neutral-warm/50 transition-colors shadow-sm ${entry.locked_at ? 'border-amber-300 bg-amber-50/30' : 'border-neutral-warm'}`}
                         onClick={() => openEditEntry(entry)}
                       >
                         <div className="font-bold text-primary-dark flex items-center gap-1">
-                          <ClockIcon />
+                          {entry.locked_at ? <LockIcon /> : <ClockIcon />}
                           {entry.hours}h
                         </div>
                         {entry.formatted_start_time && entry.formatted_end_time && (
@@ -861,9 +877,7 @@ export default function TimeTracking() {
                         {entry.time_category && (
                           <div className="text-primary font-medium truncate text-[10px] sm:text-xs">{entry.time_category.name}</div>
                         )}
-                        {isAdmin && (
-                          <div className="text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1 hidden sm:block">{entry.user.display_name || entry.user.email.split('@')[0]}</div>
-                        )}
+                        <div className="text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1">{ownerLabel(entry)}</div>
                       </div>
                     ))}
                     <button
@@ -899,13 +913,13 @@ export default function TimeTracking() {
           ) : (
             <div className="divide-y divide-neutral-warm">
               {entries.map(entry => (
-                <div key={entry.id} className="p-3 sm:p-4">
+                <div key={entry.id} className={`p-3 sm:p-4 ${entry.locked_at ? 'bg-amber-50/30' : ''}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       {/* Hours + Time + Category Row */}
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 bg-primary/20 text-primary font-bold rounded-full text-sm">
-                          <ClockIcon />
+                        <span className={`inline-flex items-center gap-1 px-2 sm:px-3 py-1 font-bold rounded-full text-sm ${entry.locked_at ? 'bg-amber-100 text-amber-700' : 'bg-primary/20 text-primary'}`}>
+                          {entry.locked_at ? <LockIcon /> : <ClockIcon />}
                           {entry.hours}h
                         </span>
                         {entry.formatted_start_time && entry.formatted_end_time && (
@@ -918,13 +932,16 @@ export default function TimeTracking() {
                             {entry.time_category.name}
                           </span>
                         )}
+                        {entry.locked_at && (
+                          <span className="px-2 py-1 bg-amber-100 text-amber-700 font-medium text-xs rounded">
+                            Locked
+                          </span>
+                        )}
                       </div>
-                      {/* User (only show for admin) */}
-                      {isAdmin && (
-                        <p className="mt-1 text-xs sm:text-sm text-primary-dark/80 truncate">
-                          by {entry.user.display_name || entry.user.email.split('@')[0]}
-                        </p>
-                      )}
+                      {/* Owner */}
+                      <p className="mt-1 text-xs sm:text-sm text-primary-dark/80 truncate">
+                        by {ownerLabel(entry)}
+                      </p>
                       {/* Description */}
                       {entry.description && (
                         <p className="mt-2 text-primary-dark text-sm">{entry.description}</p>
@@ -941,13 +958,17 @@ export default function TimeTracking() {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => openEditEntry(entry)}
-                        className="p-2 text-primary-dark hover:text-primary hover:bg-neutral-warm rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        disabled={!!entry.locked_at}
+                        className={`p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${entry.locked_at ? 'text-gray-300 cursor-not-allowed' : 'text-primary-dark hover:text-primary hover:bg-neutral-warm'}`}
+                        title={entry.locked_at ? 'This entry is locked' : 'Edit entry'}
                       >
                         <EditIcon />
                       </button>
                       <button
                         onClick={() => handleDelete(entry)}
-                        className="p-2 text-primary-dark hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        disabled={!!entry.locked_at}
+                        className={`p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${entry.locked_at ? 'text-gray-300 cursor-not-allowed' : 'text-primary-dark hover:text-red-600 hover:bg-red-50'}`}
+                        title={entry.locked_at ? 'This entry is locked' : 'Delete entry'}
                       >
                         <TrashIcon />
                       </button>
@@ -981,11 +1002,26 @@ export default function TimeTracking() {
             transition={{ duration: 0.25, delay: 0.1 }}
             className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
-              <h2 className="text-xl font-bold text-primary-dark mb-4">
+              <h2 className="text-xl font-bold text-primary-dark mb-1">
                 {editingEntry ? 'Edit Time Entry' : 'Log Time'}
               </h2>
+              {editingEntry && (
+                <div className="mb-4">
+                  <p className="text-sm text-primary-dark/70">
+                    Entry for: <span className="font-medium text-primary-dark">{editingEntry.user.full_name || editingEntry.user.display_name || editingEntry.user.email.split('@')[0]}</span>
+                  </p>
+                  {editingEntry.locked_at && (
+                    <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
+                      <LockIcon />
+                      <span>This entry is locked and cannot be edited.</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {!editingEntry && <div className="mb-4" />}
               
               <form onSubmit={handleSubmit} className="space-y-4">
+              <fieldset disabled={!!(editingEntry?.locked_at)} className={editingEntry?.locked_at ? 'opacity-60' : ''}>
                 {/* Date */}
                 <div>
                   <label className="block text-sm font-medium text-primary-dark mb-1">
@@ -1130,6 +1166,7 @@ export default function TimeTracking() {
                   />
                 </div>
 
+              </fieldset>
                 {/* Actions */}
                 <div className="flex justify-end gap-3 pt-4">
                   <button
@@ -1139,13 +1176,15 @@ export default function TimeTracking() {
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
-                  >
-                    {saving ? 'Saving...' : (editingEntry ? 'Update' : 'Save')}
-                  </button>
+                  {!(editingEntry?.locked_at) && (
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                    >
+                      {saving ? 'Saving...' : (editingEntry ? 'Update' : 'Save')}
+                    </button>
+                  )}
                 </div>
               </form>
             </div>
