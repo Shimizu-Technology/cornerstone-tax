@@ -7,9 +7,19 @@ class Client < ApplicationRecord
   has_many :transmittals, dependent: :destroy
   has_many :notifications, dependent: :destroy
   has_one :user, dependent: :nullify
+  has_many :client_service_types, dependent: :destroy
+  has_many :service_types, through: :client_service_types
 
   validates :first_name, presence: true
   validates :last_name, presence: true
+  validates :client_type, inclusion: { in: %w[individual business], allow_nil: true }
+
+  scope :individuals, -> { where(client_type: 'individual') }
+  scope :businesses, -> { where(client_type: 'business') }
+  scope :with_tax_returns, -> { where(has_tax_returns: true) }
+  scope :service_only, -> { where(has_tax_returns: false) }
+  # Legacy alias for backward compatibility
+  scope :tax_clients, -> { with_tax_returns }
 
   # Encrypt sensitive bank information at rest
   # Requires ACTIVE_RECORD_ENCRYPTION_* environment variables to be set
