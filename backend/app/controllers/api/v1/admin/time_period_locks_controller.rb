@@ -46,15 +46,18 @@ module Api
           lock = TimePeriodLock.find(params[:id])
           metadata = "Unlocked time period #{lock.start_date} to #{lock.end_date}"
           lock_id = lock.id
-          lock.destroy!
 
-          AuditLog.create!(
-            auditable_type: "TimePeriodLock",
-            auditable_id: lock_id,
-            action: "deleted",
-            user: current_user,
-            metadata: metadata
-          )
+          ActiveRecord::Base.transaction do
+            lock.destroy!
+
+            AuditLog.create!(
+              auditable_type: "TimePeriodLock",
+              auditable_id: lock_id,
+              action: "deleted",
+              user: current_user,
+              metadata: metadata
+            )
+          end
 
           render json: { message: "Time period unlocked" }
         end

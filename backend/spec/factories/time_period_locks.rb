@@ -5,7 +5,7 @@ FactoryBot.define do
     start_date { Date.current.beginning_of_week(:sunday) }
     end_date { start_date + 6.days }
     locked_at { Time.current }
-    association :locked_by, factory: [:user, :admin]
+    locked_by { create(:user, :admin) }
     reason { "Payroll finalized" }
   end
 end
