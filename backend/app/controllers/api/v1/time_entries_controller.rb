@@ -66,6 +66,10 @@ module Api
 
       # POST /api/v1/time_entries
       def create
+        if period_locked_for_date?(time_entry_params[:work_date])
+          return render json: { error: "This time period is locked and cannot be modified" }, status: :forbidden
+        end
+
         @time_entry = current_user.time_entries.build(time_entry_params)
 
         if @time_entry.save
@@ -85,6 +89,11 @@ module Api
 
       # PATCH /api/v1/time_entries/:id
       def update
+        target_work_date = time_entry_params[:work_date].presence || @time_entry.work_date
+        if period_locked_for_date?(target_work_date) || period_locked_for_date?(@time_entry.work_date)
+          return render json: { error: "This time period is locked and cannot be modified" }, status: :forbidden
+        end
+
         unless @time_entry.editable_by?(current_user)
           message = @time_entry.locked? ? "This time entry is locked and cannot be edited" : "You can only edit your own time entries"
           return render json: { error: message }, status: :forbidden
@@ -128,6 +137,10 @@ module Api
 
       # DELETE /api/v1/time_entries/:id
       def destroy
+        if period_locked_for_date?(@time_entry.work_date)
+          return render json: { error: "This time period is locked and cannot be modified" }, status: :forbidden
+        end
+
         unless @time_entry.deletable_by?(current_user)
           message = @time_entry.locked? ? "This time entry is locked and cannot be deleted" : "You can only delete your own time entries"
           return render json: { error: message }, status: :forbidden
@@ -171,6 +184,14 @@ module Api
           :tax_return_id,
           :break_minutes
         )
+      end
+
+      def period_locked_for_date?(date)
+        return false if date.blank?
+
+        TimePeriodLock.locked_for_date?(Date.parse(date.to_s))
+      rescue Date::Error
+        false
       end
 
       def serialize_time_entry(entry)

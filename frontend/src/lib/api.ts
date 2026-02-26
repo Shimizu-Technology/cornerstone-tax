@@ -431,6 +431,26 @@ export interface TimeEntriesResponse {
   };
 }
 
+export interface TimePeriodLock {
+  id: number;
+  start_date: string;
+  end_date: string;
+  locked_at: string;
+  reason: string | null;
+  locked_by: {
+    id: number;
+    full_name: string;
+    email: string;
+  };
+}
+
+export interface TimePeriodLockStatusResponse {
+  week_start: string;
+  week_end: string;
+  locked: boolean;
+  lock: TimePeriodLock | null;
+}
+
 // Schedule Types
 export interface Schedule {
   id: number;
@@ -753,6 +773,20 @@ export const api = {
 
   getTimeCategories: () =>
     fetchApi<{ time_categories: TimeCategory[] }>('/api/v1/time_categories'),
+
+  getTimePeriodLockStatus: (week: string) =>
+    fetchApi<TimePeriodLockStatusResponse>(`/api/v1/time_period_locks?week=${encodeURIComponent(week)}`),
+
+  lockTimePeriod: (week: string, reason?: string) =>
+    fetchApi<{ lock: TimePeriodLock; message: string }>('/api/v1/admin/time_period_locks', {
+      method: 'POST',
+      body: JSON.stringify({ week, reason }),
+    }),
+
+  unlockTimePeriod: (id: number) =>
+    fetchApi<{ message: string }>(`/api/v1/admin/time_period_locks/${id}`, {
+      method: 'DELETE',
+    }),
 
   // Admin: Time Categories
   getAdminTimeCategories: () =>

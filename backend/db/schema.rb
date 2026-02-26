@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_26_141422) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_26_145500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -366,6 +366,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_141422) do
     t.index ["work_date"], name: "index_time_entries_on_work_date"
   end
 
+  create_table "time_period_locks", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "end_date", null: false
+    t.datetime "locked_at", null: false
+    t.bigint "locked_by_id", null: false
+    t.text "reason"
+    t.date "start_date", null: false
+    t.datetime "updated_at", null: false
+    t.index ["locked_by_id"], name: "index_time_period_locks_on_locked_by_id"
+    t.index ["start_date", "end_date"], name: "index_time_period_locks_on_start_date_and_end_date", unique: true
+  end
+
   create_table "transmittals", force: :cascade do |t|
     t.bigint "client_id", null: false
     t.datetime "created_at", null: false
@@ -465,6 +477,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_141422) do
   add_foreign_key "time_entries", "tax_returns"
   add_foreign_key "time_entries", "time_categories"
   add_foreign_key "time_entries", "users"
+  add_foreign_key "time_period_locks", "users", column: "locked_by_id"
   add_foreign_key "transmittals", "clients"
   add_foreign_key "transmittals", "tax_returns"
   add_foreign_key "transmittals", "users", column: "created_by_id"

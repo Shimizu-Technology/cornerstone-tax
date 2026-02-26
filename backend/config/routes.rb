@@ -48,6 +48,7 @@ Rails.application.routes.draw do
       # Time tracking
       resources :time_entries, only: [:index, :show, :create, :update, :destroy]
       resources :time_categories, only: [:index]
+      resources :time_period_locks, only: [:index]
 
       # Employee scheduling
       resources :schedules, only: [:index, :show, :create, :update, :destroy] do
@@ -77,6 +78,7 @@ Rails.application.routes.draw do
 
         # Time category management
         resources :time_categories, only: [:index, :show, :create, :update, :destroy]
+        resources :time_period_locks, only: [:create, :destroy]
 
         # Schedule time presets management
         resources :schedule_time_presets, only: [:index, :show, :create, :update, :destroy] do
