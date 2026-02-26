@@ -85,9 +85,9 @@ module Api
 
       # PATCH /api/v1/time_entries/:id
       def update
-        # Only allow editing own entries unless admin
-        unless current_user.admin? || @time_entry.user_id == current_user.id
-          return render json: { error: "You can only edit your own time entries" }, status: :forbidden
+        unless @time_entry.editable_by?(current_user)
+          message = @time_entry.locked? ? "This time entry is locked and cannot be edited" : "You can only edit your own time entries"
+          return render json: { error: message }, status: :forbidden
         end
 
         # Capture changes for audit log
@@ -128,9 +128,9 @@ module Api
 
       # DELETE /api/v1/time_entries/:id
       def destroy
-        # Only allow deleting own entries unless admin
-        unless current_user.admin? || @time_entry.user_id == current_user.id
-          return render json: { error: "You can only delete your own time entries" }, status: :forbidden
+        unless @time_entry.deletable_by?(current_user)
+          message = @time_entry.locked? ? "This time entry is locked and cannot be deleted" : "You can only delete your own time entries"
+          return render json: { error: message }, status: :forbidden
         end
 
         # Capture info before deletion for audit log
@@ -202,6 +202,7 @@ module Api
             id: entry.tax_return.id,
             tax_year: entry.tax_return.tax_year
           } : nil,
+          locked_at: entry.locked_at&.iso8601,
           created_at: entry.created_at.iso8601,
           updated_at: entry.updated_at.iso8601
         }
