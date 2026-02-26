@@ -9,7 +9,7 @@ module Api
 
       # GET /api/v1/clients
       def index
-        clients = Client.includes(:tax_returns, :service_types, tax_returns: [:workflow_stage, :assigned_to])
+        clients = Client.includes(:tax_returns, :service_types, :client_contacts, tax_returns: [:workflow_stage, :assigned_to])
                         .order(created_at: :desc)
 
         # Search
@@ -40,9 +40,9 @@ module Api
         end
 
         # Filter by service-only clients (has_tax_returns = false means service-only)
-        if params[:service_only].present?
-          # service_only=true means has_tax_returns=false
-          clients = clients.where(has_tax_returns: params[:service_only] == 'true' ? false : true)
+        # Only filter when service_only=true; service_only=false means "show all" (no filter)
+        if params[:service_only] == 'true'
+          clients = clients.where(has_tax_returns: false)
         end
         
         # Also support has_tax_returns param directly
@@ -72,6 +72,7 @@ module Api
         client = Client.includes(
           :dependents,
           :service_types,
+          :client_contacts,
           tax_returns: [:workflow_stage, :income_sources, :workflow_events, :assigned_to]
         ).find(params[:id])
 
@@ -92,6 +93,8 @@ module Api
               end
             end
 
+            create_contacts_for_client(client)
+
             # Only create a tax return if client has tax returns
             if client.has_tax_returns
               initial_stage = WorkflowStage.find_by(slug: "intake_received") ||
@@ -105,7 +108,7 @@ module Api
 
               # Log workflow event
               tax_return.workflow_events.create!(
-                event_type: "status_change",
+                event_type: "status_changed",
                 new_value: initial_stage&.name,
                 description: "Client created via quick create"
               )
@@ -149,17 +152,12 @@ module Api
 
         ActiveRecord::Base.transaction do
           if client.update(client_params)
-            # Update service types if provided
+            create_contacts_for_client(client) if client.client_type == "business" && client.client_contacts.empty?
+
+            # Update service types if provided (atomic via Rails association setter)
             if params[:client].key?(:service_type_ids)
               new_service_type_ids = (params[:client][:service_type_ids] || []).map(&:to_i)
-              
-              # Remove old associations
-              client.client_service_types.destroy_all
-              
-              # Add new associations
-              new_service_type_ids.each do |st_id|
-                client.client_service_types.create!(service_type_id: st_id)
-              end
+              client.service_type_ids = new_service_type_ids
             end
 
             # Calculate what actually changed
@@ -209,26 +207,28 @@ module Api
           :spouse_name, :spouse_dob, :denied_eic_actc, :denied_eic_actc_year,
           :has_crypto_transactions, :wants_direct_deposit, :bank_routing_number,
           :bank_account_number, :bank_account_type, :client_type, :business_name, 
-          :has_tax_returns, :is_service_only  # Accept both for backward compatibility
+          :has_tax_returns
         )
-        # Map is_service_only to has_tax_returns if provided (inverted logic)
-        if permitted.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
-          permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(permitted.delete(:is_service_only))
+        # Map legacy is_service_only param to has_tax_returns (inverted logic)
+        # Read from raw params since we don't permit the renamed field
+        if params[:client]&.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
+          permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(params[:client][:is_service_only])
         end
-        permitted.except(:is_service_only)
+        permitted
       end
 
       def quick_create_client_params
         permitted = params.require(:client).permit(
           :first_name, :last_name, :date_of_birth, :email, :phone,
           :filing_status, :is_new_client, :client_type, :business_name, 
-          :has_tax_returns, :is_service_only  # Accept both for backward compatibility
+          :has_tax_returns
         )
-        # Map is_service_only to has_tax_returns if provided (inverted logic)
-        if permitted.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
-          permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(permitted.delete(:is_service_only))
+        # Map legacy is_service_only param to has_tax_returns (inverted logic)
+        # Read from raw params since we don't permit the renamed field
+        if params[:client]&.key?(:is_service_only) && !permitted.key?(:has_tax_returns)
+          permitted[:has_tax_returns] = !ActiveModel::Type::Boolean.new.cast(params[:client][:is_service_only])
         end
-        permitted.except(:is_service_only).tap do |p|
+        permitted.tap do |p|
           # Set defaults for quick create
           p[:is_new_client] = true if p[:is_new_client].nil?
           p[:client_type] ||= 'individual'
@@ -255,6 +255,7 @@ module Api
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color }
           end,
+          contacts: client.client_contacts.order(is_primary: :desc, created_at: :asc).map { |contact| contact_summary(contact) },
           tax_return: latest_return ? {
             id: latest_return.id,
             tax_year: latest_return.tax_year,
@@ -293,6 +294,7 @@ module Api
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color, description: st.description }
           end,
+          contacts: client.client_contacts.order(is_primary: :desc, created_at: :asc).map { |contact| contact_summary(contact) },
           created_at: client.created_at,
           updated_at: client.updated_at,
           dependents: client.dependents.map do |dep|
@@ -335,6 +337,57 @@ module Api
               end
             }
           end
+        }
+      end
+
+      def create_contacts_for_client(client)
+        return unless client.client_type == "business"
+
+        contacts = contacts_payload
+        if contacts.any?
+          contacts.each_with_index do |contact, index|
+            contact[:is_primary] = true if index.zero? && contacts.none? { |c| c[:is_primary] }
+            client.client_contacts.create!(contact)
+          end
+        else
+          client.client_contacts.create!(
+            first_name: client.first_name,
+            last_name: client.last_name,
+            email: client.email,
+            phone: client.phone,
+            role: "Primary",
+            is_primary: true
+          )
+        end
+      end
+
+      def contacts_payload
+        raw = params.dig(:client, :contacts)
+        return [] unless raw.is_a?(Array)
+
+        raw.map do |contact|
+          permitted = if contact.is_a?(ActionController::Parameters)
+            contact.permit(:first_name, :last_name, :email, :phone, :role, :is_primary)
+          else
+            ActionController::Parameters
+              .new(contact)
+              .permit(:first_name, :last_name, :email, :phone, :role, :is_primary)
+          end
+
+          permitted.to_h
+        end
+      end
+
+      def contact_summary(contact)
+        {
+          id: contact.id,
+          first_name: contact.first_name,
+          last_name: contact.last_name,
+          full_name: contact.full_name,
+          email: contact.email,
+          phone: contact.phone,
+          role: contact.role,
+          is_primary: contact.is_primary
         }
       end
     end

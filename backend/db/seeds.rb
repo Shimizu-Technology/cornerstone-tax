@@ -196,6 +196,86 @@ service_types_data.each do |st_data|
 end
 
 # ============================================
+# Operation Templates (Configurable)
+# ============================================
+puts "Creating operation templates..."
+
+operation_templates_data = [
+  {
+    name: "Biweekly Payroll Processing",
+    description: "Standard payroll operations cycle for biweekly payroll clients.",
+    category: "payroll",
+    recurrence_type: "biweekly",
+    auto_generate: true,
+    tasks: [
+      { title: "Receive hours/input from client", evidence_required: false },
+      { title: "Validate hours/overtime/adjustments", evidence_required: false },
+      { title: "Process payroll", evidence_required: false },
+      { title: "Internal review/approval", evidence_required: false },
+      { title: "Deliver checks / confirm disbursement", evidence_required: true },
+      { title: "Drop FIT and related checks to Treasurer of Guam", evidence_required: true },
+      { title: "Confirm filing/payment receipts recorded", evidence_required: true },
+      { title: "Send payroll completion update to client", evidence_required: false }
+    ]
+  },
+  {
+    name: "Monthly Bookkeeping Close",
+    description: "Recurring month-end bookkeeping and reporting checklist.",
+    category: "bookkeeping",
+    recurrence_type: "monthly",
+    auto_generate: true,
+    tasks: [
+      { title: "Collect missing documents/transactions", evidence_required: false },
+      { title: "Reconcile bank and credit card accounts", evidence_required: false },
+      { title: "Post adjusting entries", evidence_required: false },
+      { title: "Review financial reports internally", evidence_required: false },
+      { title: "Deliver monthly summary to client", evidence_required: true }
+    ]
+  },
+  {
+    name: "Quarterly Compliance Checklist",
+    description: "Quarterly filing and compliance operational checklist.",
+    category: "compliance",
+    recurrence_type: "quarterly",
+    auto_generate: true,
+    tasks: [
+      { title: "Compile quarterly data package", evidence_required: false },
+      { title: "Validate filing/payment obligations", evidence_required: false },
+      { title: "Submit required filings", evidence_required: true },
+      { title: "Record confirmation numbers/receipts", evidence_required: true },
+      { title: "Send compliance update to client", evidence_required: false }
+    ]
+  }
+]
+
+operation_templates_data.each do |template_data|
+  template = OperationTemplate.find_or_initialize_by(name: template_data[:name])
+  template.assign_attributes(
+    description: template_data[:description],
+    category: template_data[:category],
+    recurrence_type: template_data[:recurrence_type],
+    auto_generate: template_data[:auto_generate],
+    is_active: true
+  )
+  template.save!
+  puts "  ✓ #{template.name}"
+
+  template_data[:tasks].each_with_index do |task_data, index|
+    task = OperationTemplateTask.find_or_initialize_by(
+      operation_template: template,
+      title: task_data[:title]
+    )
+    task.assign_attributes(
+      position: index + 1,
+      evidence_required: task_data[:evidence_required],
+      is_active: true
+    )
+    task.save!
+  end
+  puts "    └─ #{template_data[:tasks].count} tasks"
+end
+
+# ============================================
 # Staff Users (Development only)
 # ============================================
 if Rails.env.development? || Rails.env.test?
@@ -238,4 +318,6 @@ puts "   - #{TimeCategory.count} time categories"
 puts "   - #{ScheduleTimePreset.count} schedule time presets"
 puts "   - #{ServiceType.count} service types"
 puts "   - #{ServiceTask.count} service tasks"
+puts "   - #{OperationTemplate.count} operation templates"
+puts "   - #{OperationTemplateTask.count} operation template tasks"
 puts "   - #{User.count} users" if Rails.env.development? || Rails.env.test?

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAuthContext } from '../../contexts/AuthContext'
 import { AnimatePresence } from 'framer-motion'
@@ -7,12 +7,21 @@ import {
   SignedIn,
   UserButton,
 } from '@clerk/clerk-react'
+import { api } from '../../lib/api'
 
-const navigation = [
+interface NavItem {
+  name: string
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  adminOnly?: boolean
+}
+
+const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/admin', icon: HomeIcon },
   { name: 'Clients', href: '/admin/clients', icon: UsersIcon },
   { name: 'Tax Returns', href: '/admin/returns', icon: DocumentIcon },
   { name: 'Activity', href: '/admin/activity', icon: ActivityIcon },
+  { name: 'Operations', href: '/admin/operations', icon: ChecklistIcon },
   { name: 'Time Tracking', href: '/admin/time', icon: ClockIcon },
   { name: 'Schedule', href: '/admin/schedule', icon: CalendarIcon },
   { name: 'Users', href: '/admin/users', icon: TeamIcon, adminOnly: true },
@@ -84,6 +93,14 @@ function SettingsIcon({ className }: { className?: string }) {
   )
 }
 
+function ChecklistIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5h11M9 12h11M9 19h11M5 5l1.5 1.5L8 5m-3 7l1.5 1.5L8 12m-3 7l1.5 1.5L8 19" />
+    </svg>
+  )
+}
+
 function MenuIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -100,10 +117,52 @@ function XIcon({ className }: { className?: string }) {
   )
 }
 
+// Loading skeleton for nav items to prevent flash during permission check
+function NavSkeleton() {
+  return (
+    <>
+      {[...Array(6)].map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3 px-4 py-3 rounded-xl animate-pulse"
+        >
+          <div className="w-5 h-5 bg-gray-200 rounded" />
+          <div className="h-4 bg-gray-200 rounded w-24" />
+        </div>
+      ))}
+    </>
+  )
+}
+
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [isLoadingUser, setIsLoadingUser] = useState(true)
   const location = useLocation()
   const { isClerkEnabled } = useAuthContext()
+
+  // Fetch current user to check admin status
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await api.getCurrentUser()
+        if (response.data?.user) {
+          setIsAdmin(response.data.user.is_admin)
+        }
+      } catch (error) {
+        console.error('Failed to fetch current user:', error)
+        // On API failure, show all nav items (route guards will enforce access)
+        // This prevents hiding admin items due to transient network issues
+        setIsAdmin(true)
+      } finally {
+        setIsLoadingUser(false)
+      }
+    }
+    fetchCurrentUser()
+  }, [])
+
+  // Filter navigation based on admin status (CST-26: enforce adminOnly flag)
+  const filteredNavigation = navigation.filter(item => !item.adminOnly || isAdmin)
 
   const isActive = (path: string) => {
     if (path === '/admin') {
@@ -116,7 +175,7 @@ export default function AdminLayout() {
     <div className="min-h-screen bg-secondary">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:shadow-lg focus:rounded focus:outline-none"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-100 focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:shadow-lg focus:rounded focus:outline-none"
       >
         Skip to main content
       </a>
@@ -151,21 +210,25 @@ export default function AdminLayout() {
           </button>
         </div>
         <nav className="mt-4 px-3 space-y-1">
-          {navigation.map((item) => (
-            <Link
-              key={item.name}
-              to={item.href}
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                isActive(item.href)
-                  ? 'bg-primary text-white shadow-md'
-                  : 'text-gray-700 hover:bg-secondary-dark'
-              }`}
-            >
-              <item.icon className="w-5 h-5" />
-              {item.name}
-            </Link>
-          ))}
+          {isLoadingUser ? (
+            <NavSkeleton />
+          ) : (
+            filteredNavigation.map((item) => (
+              <Link
+                key={item.name}
+                to={item.href}
+                onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                  isActive(item.href)
+                    ? 'bg-primary text-white shadow-md'
+                    : 'text-gray-700 hover:bg-secondary-dark'
+                }`}
+              >
+                <item.icon className="w-5 h-5" />
+                {item.name}
+              </Link>
+            ))
+          )}
         </nav>
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-secondary-dark">
           <Link
@@ -182,8 +245,8 @@ export default function AdminLayout() {
 
       {/* Desktop sidebar */}
       <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-72 lg:flex-col">
-        <div className="flex flex-col flex-grow bg-white border-r border-secondary-dark pt-4 pb-4 overflow-y-auto">
-          <div className="flex items-center justify-center flex-shrink-0 px-4 pb-4 border-b border-secondary-dark mb-2">
+        <div className="flex flex-col grow bg-white border-r border-secondary-dark pt-4 pb-4 overflow-y-auto">
+          <div className="flex items-center justify-center shrink-0 px-4 pb-4 border-b border-secondary-dark mb-2">
             <Link to="/" className="flex items-center justify-center">
               <img 
                 src="/logo.jpeg" 
@@ -193,20 +256,24 @@ export default function AdminLayout() {
             </Link>
           </div>
           <nav className="mt-8 flex-1 px-3 space-y-1">
-            {navigation.map((item) => (
-              <Link
-                key={item.name}
-                to={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                  isActive(item.href)
-                    ? 'bg-primary text-white shadow-md'
-                    : 'text-gray-700 hover:bg-secondary-dark'
-                }`}
-              >
-                <item.icon className="w-5 h-5" />
-                {item.name}
-              </Link>
-            ))}
+            {isLoadingUser ? (
+              <NavSkeleton />
+            ) : (
+              filteredNavigation.map((item) => (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                    isActive(item.href)
+                      ? 'bg-primary text-white shadow-md'
+                      : 'text-gray-700 hover:bg-secondary-dark'
+                  }`}
+                >
+                  <item.icon className="w-5 h-5" />
+                  {item.name}
+                </Link>
+              ))
+            )}
           </nav>
           <div className="px-4 py-4 border-t border-secondary-dark mx-3">
             <Link
