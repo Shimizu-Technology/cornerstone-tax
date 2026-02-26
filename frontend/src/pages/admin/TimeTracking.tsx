@@ -192,6 +192,11 @@ export default function TimeTracking() {
   
   // Summary
   const [totalHours, setTotalHours] = useState(0)
+
+  // Period lock state (CST-43)
+  const [currentWeekLocked, setCurrentWeekLocked] = useState(false)
+  const [currentWeekLockId, setCurrentWeekLockId] = useState<number | null>(null)
+  const [lockingWeek, setLockingWeek] = useState(false)
   
   // Modal state
   const [showModal, setShowModal] = useState(false)
@@ -228,6 +233,22 @@ export default function TimeTracking() {
     if (currentUserId && entry.user.id === currentUserId) return 'You'
     return name
   }
+
+  const currentWeekStartIso = useCallback((): string => {
+    const weekStart = new Date(currentDate)
+    weekStart.setDate(currentDate.getDate() - currentDate.getDay())
+    return formatDateISO(weekStart)
+  }, [currentDate])
+
+  const dateIsInLockedWeek = useCallback((dateLike: Date | string): boolean => {
+    if (!currentWeekLocked) return false
+    const date = typeof dateLike === 'string' ? new Date(`${dateLike}T00:00:00`) : dateLike
+    const weekStart = new Date(currentDate)
+    weekStart.setDate(currentDate.getDate() - currentDate.getDay())
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekStart.getDate() + 6)
+    return date >= new Date(weekStart.toDateString()) && date <= new Date(weekEnd.toDateString())
+  }, [currentDate, currentWeekLocked])
 
   // Load time entries
   const loadEntries = useCallback(async () => {
@@ -313,6 +334,54 @@ export default function TimeTracking() {
     }
   }, [])
   
+  const loadWeekLockStatus = useCallback(async () => {
+    try {
+      const response = await api.getTimePeriodLockStatus(currentWeekStartIso())
+      if (response.data) {
+        setCurrentWeekLocked(response.data.locked)
+        setCurrentWeekLockId(response.data.lock?.id ?? null)
+      }
+    } catch {
+      // best-effort only
+    }
+  }, [currentWeekStartIso])
+
+  const finalizeWeek = async () => {
+    if (!isAdmin) return
+    if (!confirm('Finalize and lock this week? No add/edit/delete will be allowed for this week.')) return
+
+    setLockingWeek(true)
+    try {
+      const res = await api.lockTimePeriod(currentWeekStartIso(), 'Finalized from Time Tracking screen')
+      if (res.error) {
+        setError(res.error)
+        return
+      }
+      await loadWeekLockStatus()
+      await loadEntries()
+    } finally {
+      setLockingWeek(false)
+    }
+  }
+
+  const unlockWeek = async () => {
+    if (!isAdmin || !currentWeekLockId) return
+    if (!confirm('Unlock this week? This re-opens add/edit/delete for this period.')) return
+
+    setLockingWeek(true)
+    try {
+      const res = await api.unlockTimePeriod(currentWeekLockId)
+      if (res.error) {
+        setError(res.error)
+        return
+      }
+      await loadWeekLockStatus()
+      await loadEntries()
+    } finally {
+      setLockingWeek(false)
+    }
+  }
+
   // Load report data
   const loadReport = useCallback(async () => {
     setReportLoading(true)
@@ -354,6 +423,10 @@ export default function TimeTracking() {
   useEffect(() => {
     loadOptions()
   }, [loadOptions])
+
+  useEffect(() => {
+    loadWeekLockStatus()
+  }, [loadWeekLockStatus])
   
   useEffect(() => {
     if (activeTab === 'reports') {
@@ -413,6 +486,11 @@ export default function TimeTracking() {
 
   // Modal handlers
   const openNewEntry = (date?: Date, prefillStart?: string, prefillEnd?: string, prefillNotes?: string) => {
+    if (dateIsInLockedWeek(date || currentDate)) {
+      setError('This time period is locked and cannot be modified')
+      return
+    }
+
     setEditingEntry(null)
     setFormData({
       work_date: formatDateISO(date || currentDate),
@@ -442,6 +520,11 @@ export default function TimeTracking() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (dateIsInLockedWeek(formData.work_date)) {
+      setError('This time period is locked and cannot be modified')
+      return
+    }
+
     setSaving(true)
     setError(null)
 
@@ -480,6 +563,11 @@ export default function TimeTracking() {
   }
 
   const handleDelete = async (entry: TimeEntryItem) => {
+    if (dateIsInLockedWeek(entry.work_date)) {
+      setError('This time period is locked and cannot be modified')
+      return
+    }
+
     if (!confirm('Are you sure you want to delete this time entry?')) return
 
     try {
@@ -547,7 +635,9 @@ export default function TimeTracking() {
         {activeTab === 'entries' && (
           <button
             onClick={() => openNewEntry()}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors min-h-[44px]"
+            disabled={currentWeekLocked}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors min-h-[44px] disabled:opacity-60 disabled:cursor-not-allowed"
+            title={currentWeekLocked ? 'This week is locked' : 'Log Time'}
           >
             <PlusIcon />
             <span>Log Time</span>
@@ -779,6 +869,38 @@ export default function TimeTracking() {
         </div>
       </div>
 
+      {/* Week Lock Controls */}
+      <div className={`rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${currentWeekLocked ? 'bg-amber-50 border-amber-200' : 'bg-white border-neutral-warm'}`}>
+        <div className="text-sm">
+          {currentWeekLocked ? (
+            <span className="text-amber-700 font-medium">This week is finalized and locked. Adding, editing, and deleting time entries is disabled.</span>
+          ) : (
+            <span className="text-primary-dark">This week is currently open for time entry changes.</span>
+          )}
+        </div>
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            {!currentWeekLocked ? (
+              <button
+                onClick={finalizeWeek}
+                disabled={lockingWeek}
+                className="px-3 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-dark disabled:opacity-60"
+              >
+                {lockingWeek ? 'Locking...' : 'Finalize Week'}
+              </button>
+            ) : (
+              <button
+                onClick={unlockWeek}
+                disabled={lockingWeek}
+                className="px-3 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60"
+              >
+                {lockingWeek ? 'Unlocking...' : 'Unlock Week'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Error Display */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-800">
@@ -882,7 +1004,9 @@ export default function TimeTracking() {
                     ))}
                     <button
                       onClick={() => openNewEntry(date)}
-                      className="w-full p-1 sm:p-2 text-xs text-primary-dark font-medium hover:text-primary hover:bg-neutral-warm rounded transition-colors"
+                      disabled={currentWeekLocked}
+                      className="w-full p-1 sm:p-2 text-xs text-primary-dark font-medium hover:text-primary hover:bg-neutral-warm rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={currentWeekLocked ? 'This week is locked' : 'Add time entry'}
                     >
                       + Add
                     </button>

@@ -11,6 +11,7 @@ class User < ApplicationRecord
   has_many :created_schedules, class_name: "Schedule", foreign_key: "created_by_id", dependent: :nullify
   has_many :uploaded_documents, class_name: "Document", foreign_key: "uploaded_by_id", dependent: :nullify
   has_many :created_transmittals, class_name: "Transmittal", foreign_key: "created_by_id", dependent: :nullify
+  has_many :time_period_locks, foreign_key: "locked_by_id", dependent: :nullify
 
   validates :clerk_id, presence: true, uniqueness: true
   validates :email, presence: true

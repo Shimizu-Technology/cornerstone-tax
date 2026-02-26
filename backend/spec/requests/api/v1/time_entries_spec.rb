@@ -156,6 +156,51 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
     end
   end
 
+  # ── PERIOD LOCK BEHAVIOR ─────────────────────────────────────────────
+  describe "period locks" do
+    let(:week_start) { Date.current.beginning_of_week(:sunday) }
+    let!(:period_lock) do
+      create(:time_period_lock, start_date: week_start, end_date: week_start + 6.days, locked_by: admin)
+    end
+
+    it "blocks create inside locked week" do
+      post "/api/v1/time_entries",
+           params: {
+             time_entry: {
+               work_date: week_start.iso8601,
+               start_time: "09:00",
+               end_time: "17:00",
+               description: "locked period create"
+             }
+           },
+           headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:forbidden)
+      expect(json[:error]).to eq("This time period is locked and cannot be modified")
+    end
+
+    it "blocks update inside locked week" do
+      entry = create(:time_entry, user: employee, work_date: week_start)
+
+      patch "/api/v1/time_entries/#{entry.id}",
+            params: { time_entry: { description: "nope" } },
+            headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:forbidden)
+      expect(json[:error]).to eq("This time period is locked and cannot be modified")
+    end
+
+    it "blocks destroy inside locked week" do
+      entry = create(:time_entry, user: employee, work_date: week_start)
+
+      delete "/api/v1/time_entries/#{entry.id}",
+             headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:forbidden)
+      expect(json[:error]).to eq("This time period is locked and cannot be modified")
+    end
+  end
+
   # ── SHOW ─────────────────────────────────────────────────────────────
   describe "GET /api/v1/time_entries/:id" do
     let!(:entry) { create(:time_entry, user: employee) }
