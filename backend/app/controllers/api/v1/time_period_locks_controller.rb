@@ -9,7 +9,12 @@ module Api
       # GET /api/v1/time_period_locks?week=YYYY-MM-DD
       def index
         if params[:week].present?
-          week_start, week_end = TimePeriodLock.week_bounds_for(Date.parse(params[:week]))
+          begin
+            week_start, week_end = TimePeriodLock.week_bounds_for(Date.parse(params[:week]))
+          rescue Date::Error, ArgumentError
+            return render json: { error: "Invalid date format" }, status: :bad_request
+          end
+
           lock = TimePeriodLock.where(start_date: week_start, end_date: week_end).includes(:locked_by).first
 
           render json: {

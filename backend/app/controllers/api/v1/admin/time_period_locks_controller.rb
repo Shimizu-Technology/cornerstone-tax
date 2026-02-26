@@ -10,10 +10,18 @@ module Api
         # POST /api/v1/admin/time_period_locks
         def create
           if params[:week].present?
-            start_date, end_date = TimePeriodLock.week_bounds_for(Date.parse(params[:week]))
+            begin
+              start_date, end_date = TimePeriodLock.week_bounds_for(Date.parse(params[:week]))
+            rescue Date::Error, ArgumentError
+              return render json: { error: "Invalid date format" }, status: :bad_request
+            end
           else
-            start_date = Date.parse(lock_params[:start_date])
-            end_date = lock_params[:end_date].present? ? Date.parse(lock_params[:end_date]) : start_date + 6.days
+            begin
+              start_date = Date.parse(lock_params[:start_date])
+              end_date = lock_params[:end_date].present? ? Date.parse(lock_params[:end_date]) : start_date + 6.days
+            rescue Date::Error, ArgumentError
+              return render json: { error: "Invalid date format" }, status: :bad_request
+            end
           end
 
           lock = TimePeriodLock.new(

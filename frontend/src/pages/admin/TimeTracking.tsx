@@ -635,9 +635,9 @@ export default function TimeTracking() {
         {activeTab === 'entries' && (
           <button
             onClick={() => openNewEntry()}
-            disabled={viewMode === 'week' && currentWeekLocked}
+            disabled={currentWeekLocked}
             className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors min-h-[44px] disabled:opacity-60 disabled:cursor-not-allowed"
-            title={viewMode === 'week' && currentWeekLocked ? 'This week is locked' : 'Log Time'}
+            title={currentWeekLocked ? 'This week is locked' : 'Log Time'}
           >
             <PlusIcon />
             <span>Log Time</span>
@@ -870,38 +870,36 @@ export default function TimeTracking() {
       </div>
 
       {/* Week Lock Controls */}
-      {viewMode === 'week' && (
-        <div className={`rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${currentWeekLocked ? 'bg-amber-50 border-amber-200' : 'bg-white border-neutral-warm'}`}>
-          <div className="text-sm">
-            {currentWeekLocked ? (
-              <span className="text-amber-700 font-medium">This week is finalized and locked. Adding, editing, and deleting time entries is disabled.</span>
-            ) : (
-              <span className="text-primary-dark">This week is currently open for time entry changes.</span>
-            )}
-          </div>
-          {isAdmin && (
-            <div className="flex items-center gap-2">
-              {!currentWeekLocked ? (
-                <button
-                  onClick={finalizeWeek}
-                  disabled={lockingWeek}
-                  className="px-3 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-dark disabled:opacity-60"
-                >
-                  {lockingWeek ? 'Locking...' : 'Finalize Week'}
-                </button>
-              ) : (
-                <button
-                  onClick={unlockWeek}
-                  disabled={lockingWeek}
-                  className="px-3 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60"
-                >
-                  {lockingWeek ? 'Unlocking...' : 'Unlock Week'}
-                </button>
-              )}
-            </div>
+      <div className={`rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${currentWeekLocked ? 'bg-amber-50 border-amber-200' : 'bg-white border-neutral-warm'}`}>
+        <div className="text-sm">
+          {currentWeekLocked ? (
+            <span className="text-amber-700 font-medium">This week is finalized and locked. Adding, editing, and deleting time entries is disabled.</span>
+          ) : (
+            <span className="text-primary-dark">This week is currently open for time entry changes.</span>
           )}
         </div>
-      )}
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            {!currentWeekLocked ? (
+              <button
+                onClick={finalizeWeek}
+                disabled={lockingWeek}
+                className="px-3 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-dark disabled:opacity-60"
+              >
+                {lockingWeek ? 'Locking...' : 'Finalize Week'}
+              </button>
+            ) : (
+              <button
+                onClick={unlockWeek}
+                disabled={lockingWeek}
+                className="px-3 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60"
+              >
+                {lockingWeek ? 'Unlocking...' : 'Unlock Week'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Error Display */}
       {error && (
