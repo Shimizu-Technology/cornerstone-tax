@@ -16,6 +16,45 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
     JSON.parse(response.body, symbolize_names: true)
   end
 
+  # ── CREATE ───────────────────────────────────────────────────────────
+  describe "POST /api/v1/time_entries" do
+    let(:valid_params) do
+      {
+        time_entry: {
+          work_date: Date.current.iso8601,
+          start_time: "09:00",
+          end_time: "17:00",
+          description: "Created from spec"
+        }
+      }
+    end
+
+    it "allows employee to create own entry" do
+      post "/api/v1/time_entries", params: valid_params, headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig(:time_entry, :user, :id)).to eq(employee.id)
+    end
+
+    it "allows admin to create entry for another staff user" do
+      post "/api/v1/time_entries",
+           params: valid_params.deep_merge(time_entry: { user_id: other_employee.id }),
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig(:time_entry, :user, :id)).to eq(other_employee.id)
+    end
+
+    it "blocks non-admin from creating for another user" do
+      post "/api/v1/time_entries",
+           params: valid_params.deep_merge(time_entry: { user_id: other_employee.id }),
+           headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:forbidden)
+      expect(json[:error]).to eq("Only admins can create entries for other users")
+    end
+  end
+
   # ── UPDATE ───────────────────────────────────────────────────────────
   describe "PATCH /api/v1/time_entries/:id" do
     let!(:entry) { create(:time_entry, user: employee) }

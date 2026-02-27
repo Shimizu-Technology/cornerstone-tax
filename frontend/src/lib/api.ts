@@ -1202,6 +1202,7 @@ export const api = {
     client_id?: number;
     tax_return_id?: number;
     break_minutes?: number | null;
+    user_id?: number;
     service_type_id?: number;
     service_task_id?: number;
     operation_task_id?: number;
