@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_26_145500) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_27_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -251,6 +251,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_145500) do
     t.index ["is_active"], name: "index_operation_templates_on_is_active"
     t.index ["name"], name: "index_operation_templates_on_name", unique: true
     t.index ["recurrence_type"], name: "index_operation_templates_on_recurrence_type"
+  end
+
+  create_table "payroll_import_batches", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "employee_count"
+    t.text "error_message"
+    t.string "idempotency_key", null: false
+    t.jsonb "payload", default: {}, null: false
+    t.jsonb "reconciliation_details", default: {}
+    t.string "source_payroll_run_id", null: false
+    t.string "status", default: "pending", null: false
+    t.decimal "total_gross", precision: 12, scale: 2
+    t.decimal "total_net", precision: 12, scale: 2
+    t.decimal "total_tax", precision: 12, scale: 2
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_payroll_import_batches_on_created_at"
+    t.index ["idempotency_key"], name: "index_payroll_import_batches_on_idempotency_key", unique: true
+    t.index ["source_payroll_run_id"], name: "index_payroll_import_batches_on_source_payroll_run_id"
+    t.index ["status"], name: "index_payroll_import_batches_on_status"
   end
 
   create_table "schedule_time_presets", force: :cascade do |t|

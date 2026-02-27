@@ -23,6 +23,13 @@ class Rack::Attack
     end
   end
 
+  # CST-47: Limit payroll ingest to 30 per minute per IP
+  throttle("payroll_ingest/ip", limit: 30, period: 1.minute) do |req|
+    if req.path == "/api/v1/payroll/ingest" && req.post?
+      req.ip
+    end
+  end
+
   # --- Custom Response ---
 
   self.throttled_responder = lambda do |request|
