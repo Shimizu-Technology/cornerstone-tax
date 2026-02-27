@@ -208,6 +208,7 @@ export default function TimeTracking() {
     description: '',
     time_category_id: '',
     client_id: '',
+    user_id: '',
     break_minutes: null as number | null
   })
   const [saving, setSaving] = useState(false)
@@ -452,6 +453,7 @@ export default function TimeTracking() {
         description: notes,
         time_category_id: '',
         client_id: '',
+        user_id: currentUserId?.toString() || '',
         break_minutes: null
       })
       setShowModal(true)
@@ -499,6 +501,7 @@ export default function TimeTracking() {
       description: prefillNotes || '',
       time_category_id: '',
       client_id: '',
+      user_id: currentUserId?.toString() || '',
       break_minutes: null
     })
     setShowModal(true)
@@ -513,6 +516,7 @@ export default function TimeTracking() {
       description: entry.description || '',
       time_category_id: entry.time_category?.id.toString() || '',
       client_id: entry.client?.id.toString() || '',
+      user_id: entry.user.id.toString(),
       break_minutes: entry.break_minutes
     })
     setShowModal(true)
@@ -522,6 +526,11 @@ export default function TimeTracking() {
     e.preventDefault()
     if (dateIsInLockedWeek(formData.work_date)) {
       setError('This time period is locked and cannot be modified')
+      return
+    }
+
+    if (!editingEntry && isAdmin && !formData.user_id) {
+      setError('Please select an entry owner')
       return
     }
 
@@ -536,6 +545,7 @@ export default function TimeTracking() {
         description: formData.description || undefined,
         time_category_id: formData.time_category_id ? parseInt(formData.time_category_id) : undefined,
         client_id: formData.client_id ? parseInt(formData.client_id) : undefined,
+        user_id: !editingEntry && isAdmin && formData.user_id ? parseInt(formData.user_id) : undefined,
         break_minutes: formData.break_minutes
       }
 
@@ -562,9 +572,15 @@ export default function TimeTracking() {
     }
   }
 
+  const canDeleteEntry = (entry: TimeEntryItem): boolean => {
+    if (dateIsInLockedWeek(entry.work_date) || !!entry.locked_at) return false
+    if (isAdmin) return true
+    return currentUserId === entry.user.id
+  }
+
   const handleDelete = async (entry: TimeEntryItem) => {
-    if (dateIsInLockedWeek(entry.work_date)) {
-      setError('This time period is locked and cannot be modified')
+    if (!canDeleteEntry(entry)) {
+      setError('This time entry cannot be deleted (locked/finalized or insufficient permissions)')
       return
     }
 
@@ -576,6 +592,8 @@ export default function TimeTracking() {
         setError(response.error)
         return
       }
+      setShowModal(false)
+      setEditingEntry(null)
       loadEntries()
     } catch {
       setError('Failed to delete time entry')
@@ -1090,9 +1108,9 @@ export default function TimeTracking() {
                       </button>
                       <button
                         onClick={() => handleDelete(entry)}
-                        disabled={!!entry.locked_at}
-                        className={`p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${entry.locked_at ? 'text-gray-300 cursor-not-allowed' : 'text-primary-dark hover:text-red-600 hover:bg-red-50'}`}
-                        title={entry.locked_at ? 'This entry is locked' : 'Delete entry'}
+                        disabled={!canDeleteEntry(entry)}
+                        className={`p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${!canDeleteEntry(entry) ? 'text-gray-300 cursor-not-allowed' : 'text-primary-dark hover:text-red-600 hover:bg-red-50'}`}
+                        title={!canDeleteEntry(entry) ? 'This entry is locked/finalized or cannot be deleted' : 'Delete entry'}
                       >
                         <TrashIcon />
                       </button>
@@ -1194,6 +1212,27 @@ export default function TimeTracking() {
                   <span className="text-lg font-bold text-primary">{calculatedHours.toFixed(2)}h</span>
                 </div>
 
+                {/* Entry Owner (admin create only) */}
+                {isAdmin && !editingEntry && (
+                  <div>
+                    <label className="block text-sm font-medium text-primary-dark mb-1">
+                      Entry Owner
+                    </label>
+                    <select
+                      value={formData.user_id}
+                      onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
+                      className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    >
+                      <option value="">Select user...</option>
+                      {users.map(user => (
+                        <option key={user.id} value={user.id}>
+                          {(user.full_name || user.display_name || user.email)} ({user.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {/* Break Duration */}
                 <div>
                   <label className="block text-sm font-medium text-primary-dark mb-1">
@@ -1292,23 +1331,39 @@ export default function TimeTracking() {
 
               </fieldset>
                 {/* Actions */}
-                <div className="flex justify-end gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="px-4 py-2 text-primary-dark font-medium hover:bg-neutral-warm rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  {!(editingEntry?.locked_at) && (
+                <div className="flex justify-between items-center gap-3 pt-4">
+                  <div>
+                    {editingEntry && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(editingEntry)}
+                        disabled={!canDeleteEntry(editingEntry)}
+                        className={`px-4 py-2 rounded-lg transition-colors ${canDeleteEntry(editingEntry) ? 'text-red-600 hover:bg-red-50' : 'text-gray-300 cursor-not-allowed'}`}
+                        title={canDeleteEntry(editingEntry) ? 'Delete this time entry' : 'This entry is locked/finalized or cannot be deleted'}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3">
                     <button
-                      type="submit"
-                      disabled={saving}
-                      className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                      type="button"
+                      onClick={() => setShowModal(false)}
+                      className="px-4 py-2 text-primary-dark font-medium hover:bg-neutral-warm rounded-lg transition-colors"
                     >
-                      {saving ? 'Saving...' : (editingEntry ? 'Update' : 'Save')}
+                      Cancel
                     </button>
-                  )}
+                    {!(editingEntry?.locked_at) && (
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                      >
+                        {saving ? 'Saving...' : (editingEntry ? 'Update' : 'Save')}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </form>
             </div>
