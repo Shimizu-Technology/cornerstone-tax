@@ -32,7 +32,10 @@ module Api
         previous = snapshot(@task)
 
         if @task.update(operation_task_params)
-          normalize_completion_fields!
+          unless normalize_completion_fields!
+            return render json: { error: @task.errors.full_messages.join(", ") }, status: :unprocessable_entity
+          end
+
           log_update(previous, @task)
           render json: { operation_task: serialize_task(@task) }
         else
@@ -146,14 +149,21 @@ module Api
       end
 
       def normalize_completion_fields!
-        return unless @task.saved_change_to_status?
+        return true unless @task.saved_change_to_status?
 
         if @task.status == "done"
-          # Use update! to run validations (evidence_required check)
-          @task.update!(completed_at: Time.current, completed_by_id: current_user.id) if @task.completed_at.blank?
-        elsif @task.status != "done" && (@task.completed_at.present? || @task.completed_by_id.present?)
-          @task.update!(completed_at: nil, completed_by_id: nil)
+          return true unless @task.completed_at.blank?
+
+          # Keep validations for done state (evidence_required, etc.)
+          return @task.update(completed_at: Time.current, completed_by_id: current_user.id)
         end
+
+        if @task.completed_at.present? || @task.completed_by_id.present?
+          # Clearing completion metadata should not rerun validations.
+          @task.update_columns(completed_at: nil, completed_by_id: nil, updated_at: Time.current)
+        end
+
+        true
       end
 
       def snapshot(task)
