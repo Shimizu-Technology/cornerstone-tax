@@ -110,7 +110,7 @@ module Api
           time_category_id: @time_entry.time_category_id
         }
 
-        if @time_entry.update(time_entry_params)
+        if @time_entry.update(time_entry_params.except(:user_id))
           # Log the audit event with changes
           new_values = {
             hours: @time_entry.hours.to_f,
