@@ -93,6 +93,9 @@ Rails.application.routes.draw do
       # Service types (active only, for dropdowns)
       resources :service_types, only: [:index]
 
+      # Payroll ingest (shared-secret auth, service-to-service)
+      post "payroll/ingest", to: "payroll_ingest#create"
+
       # Admin-only routes
       namespace :admin do
         resources :workflow_stages do
@@ -129,6 +132,9 @@ Rails.application.routes.draw do
             end
           end
         end
+
+        # Payroll import batches (read-only admin visibility)
+        resources :payroll_import_batches, only: [:index, :show]
 
         # System settings
         resource :settings, only: [:show, :update]
