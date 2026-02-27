@@ -12,7 +12,8 @@ module Api
       # Idempotent endpoint: re-posting with the same idempotency_key returns
       # the existing batch without modification.
       def create
-        existing = PayrollImportBatch.find_by(idempotency_key: ingest_params[:idempotency_key])
+        normalized = normalized_ingest
+        existing = PayrollImportBatch.find_by(idempotency_key: normalized[:idempotency_key])
 
         if existing
           render json: { payroll_import_batch: serialize(existing), replayed: true }, status: :ok
@@ -20,13 +21,13 @@ module Api
         end
 
         batch = PayrollImportBatch.new(
-          idempotency_key: ingest_params[:idempotency_key],
-          source_payroll_run_id: ingest_params[:source_payroll_run_id],
-          payload: ingest_params[:payload],
-          total_gross: ingest_params[:total_gross],
-          total_net: ingest_params[:total_net],
-          total_tax: ingest_params[:total_tax],
-          employee_count: ingest_params[:employee_count],
+          idempotency_key: normalized[:idempotency_key],
+          source_payroll_run_id: normalized[:source_payroll_run_id],
+          payload: normalized[:payload],
+          total_gross: normalized[:total_gross],
+          total_net: normalized[:total_net],
+          total_tax: normalized[:total_tax],
+          employee_count: normalized[:employee_count],
           status: "pending"
         )
 
@@ -44,15 +45,75 @@ module Api
       private
 
       def ingest_params
-        params.require(:payroll_import).permit(
-          :idempotency_key,
-          :source_payroll_run_id,
-          :total_gross,
-          :total_net,
-          :total_tax,
-          :employee_count,
-          payload: {}
-        )
+        # Backward compatible: support nested { payroll_import: ... }
+        # and flat CPR payload shape.
+        if params[:payroll_import].present?
+          params.require(:payroll_import).permit(
+            :idempotency_key,
+            :source_payroll_run_id,
+            :total_gross,
+            :total_net,
+            :total_tax,
+            :employee_count,
+            payload: {}
+          )
+        else
+          params.permit(
+            :idempotency_key,
+            :source,
+            :version,
+            :submitted_at,
+            pay_period: {},
+            company: {},
+            totals: {},
+            line_items: [
+              :payroll_item_id,
+              :employee_id,
+              :employee_name,
+              :employment_type,
+              :gross_pay,
+              :net_pay,
+              :withholding_tax,
+              :social_security_tax,
+              :medicare_tax,
+              :additional_withholding,
+              :employer_social_security_tax,
+              :employer_medicare_tax,
+              :retirement_payment,
+              :roth_retirement_payment,
+              :ytd_gross,
+              :ytd_social_security_tax,
+              :ytd_medicare_tax,
+              :ytd_withholding_tax
+            ]
+          )
+        end
+      end
+
+      def normalized_ingest
+        ip = ingest_params.to_h.deep_symbolize_keys
+        if params[:payroll_import].present?
+          return {
+            idempotency_key: ip[:idempotency_key],
+            source_payroll_run_id: ip[:source_payroll_run_id],
+            payload: (ip[:payload] || {}),
+            total_gross: ip[:total_gross],
+            total_net: ip[:total_net],
+            total_tax: ip[:total_tax],
+            employee_count: ip[:employee_count]
+          }
+        end
+
+        totals = ip[:totals] || {}
+        {
+          idempotency_key: ip[:idempotency_key],
+          source_payroll_run_id: (ip.dig(:pay_period, :id) || ip[:idempotency_key]).to_s,
+          payload: { line_items: (ip[:line_items] || []), pay_period: ip[:pay_period] || {}, company: ip[:company] || {}, source: ip[:source], version: ip[:version], submitted_at: ip[:submitted_at] },
+          total_gross: totals[:gross_pay] || totals[:total_gross],
+          total_net: totals[:net_pay] || totals[:total_net],
+          total_tax: totals[:total_tax_liability] || totals[:total_tax],
+          employee_count: totals[:employee_count]
+        }
       end
 
       def reconcile(batch)

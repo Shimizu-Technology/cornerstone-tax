@@ -67,6 +67,25 @@ RSpec.describe "Api::V1::PayrollIngest", type: :request do
     end
 
     context "with valid authentication" do
+      it "accepts flat CPR payload shape" do
+        flat_payload = {
+          idempotency_key: "idem-flat-#{SecureRandom.hex(6)}",
+          source: "cornerstone-payroll",
+          pay_period: { id: 555, start_date: Date.current.beginning_of_month.iso8601, end_date: Date.current.end_of_month.iso8601, pay_date: Date.current.iso8601 },
+          company: { id: 1, name: "Local Co" },
+          totals: { employee_count: 1, gross_pay: 1200.0, net_pay: 1000.0, total_tax_liability: 283.6 },
+          line_items: [
+            { gross_pay: 1200.0, net_pay: 1000.0, withholding_tax: 100.0, social_security_tax: 74.4, medicare_tax: 17.4, employer_social_security_tax: 74.4, employer_medicare_tax: 17.4 }
+          ]
+        }
+
+        post "/api/v1/payroll/ingest", params: flat_payload.to_json, headers: secret_headers
+
+        expect(response).to have_http_status(:created)
+        body = JSON.parse(response.body)
+        expect(body.dig("payroll_import_batch", "status")).to eq("reconciled")
+      end
+
       it "creates a new batch with reconciled status" do
         post "/api/v1/payroll/ingest",
           params: valid_payload.to_json,

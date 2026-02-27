@@ -13,8 +13,9 @@ class PayrollReconciliationService
   end
 
   def initialize(payload:, provided_totals:)
-    @employees = payload.fetch("employees", [])
-    @provided = provided_totals.transform_keys(&:to_s)
+    payload_hash = (payload || {}).deep_stringify_keys
+    @employees = payload_hash.fetch("employees", payload_hash.fetch("line_items", []))
+    @provided = provided_totals.to_h.deep_stringify_keys
   end
 
   def call
@@ -50,8 +51,17 @@ class PayrollReconciliationService
     {
       "total_gross"    => @employees.sum { |e| BigDecimal(e.fetch("gross_pay", 0).to_s) },
       "total_net"      => @employees.sum { |e| BigDecimal(e.fetch("net_pay", 0).to_s) },
-      "total_tax"      => @employees.sum { |e| BigDecimal(e.fetch("tax_withheld", 0).to_s) },
+      "total_tax"      => @employees.sum { |e| total_tax_for_employee(e) },
       "employee_count" => BigDecimal(@employees.size)
     }
+  end
+
+  def total_tax_for_employee(employee_hash)
+    if employee_hash.key?("tax_withheld")
+      return BigDecimal(employee_hash.fetch("tax_withheld", 0).to_s)
+    end
+
+    fields = %w[withholding_tax social_security_tax medicare_tax employer_social_security_tax employer_medicare_tax additional_withholding]
+    fields.sum { |k| BigDecimal(employee_hash.fetch(k, 0).to_s) }
   end
 end
