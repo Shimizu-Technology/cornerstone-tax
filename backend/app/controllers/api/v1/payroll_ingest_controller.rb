@@ -38,8 +38,13 @@ module Api
 
         reconcile(batch)
 
-        batch.save!
-        render json: { payroll_import_batch: serialize(batch), replayed: false }, status: :created
+        begin
+          batch.save!
+          render json: { payroll_import_batch: serialize(batch), replayed: false }, status: :created
+        rescue ActiveRecord::RecordNotUnique
+          existing = PayrollImportBatch.find_by!(idempotency_key: normalized[:idempotency_key])
+          render json: { payroll_import_batch: serialize(existing), replayed: true }, status: :ok
+        end
       end
 
       private
