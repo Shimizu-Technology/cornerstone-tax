@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class CreatePayrollImportBatches < ActiveRecord::Migration[8.0]
+class CreatePayrollImportBatches < ActiveRecord::Migration[8.1]
   def change
     create_table :payroll_import_batches do |t|
       t.string :idempotency_key, null: false
