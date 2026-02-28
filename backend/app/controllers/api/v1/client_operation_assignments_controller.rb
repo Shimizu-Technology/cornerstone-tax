@@ -16,9 +16,16 @@ module Api
 
       # POST /api/v1/clients/:client_id/operation_assignments
       def create
-        assignment = @client.client_operation_assignments.new(
-          assignment_params.merge(created_by: current_user)
-        )
+        attrs = assignment_params.merge(created_by: current_user)
+        template = OperationTemplate.find_by(id: attrs[:operation_template_id])
+        if template&.name == PayrollChecklistTemplateService::DEFAULT_TEMPLATE_NAME
+          attrs[:auto_generate] = true if attrs[:auto_generate].nil?
+          attrs[:cadence_type] = "biweekly"
+          attrs[:cadence_interval] = 2
+          attrs[:cadence_anchor] ||= attrs[:starts_on] || Date.current
+        end
+
+        assignment = @client.client_operation_assignments.new(attrs)
 
         if assignment.save
           render json: { assignment: serialize_assignment(assignment) }, status: :created
@@ -57,7 +64,8 @@ module Api
           :auto_generate,
           :assignment_status,
           :starts_on,
-          :ends_on
+          :ends_on,
+          excluded_template_task_ids: []
         )
       end
 
@@ -71,6 +79,7 @@ module Api
           assignment_status: assignment.assignment_status,
           starts_on: assignment.starts_on,
           ends_on: assignment.ends_on,
+          excluded_template_task_ids: assignment.excluded_template_task_ids || [],
           created_by_id: assignment.created_by_id,
           created_at: assignment.created_at.iso8601,
           updated_at: assignment.updated_at.iso8601

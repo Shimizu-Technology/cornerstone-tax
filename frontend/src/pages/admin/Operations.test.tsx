@@ -4,36 +4,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OperationsPage from './Operations'
 
 const apiMocks = vi.hoisted(() => ({
-  getUsers: vi.fn(),
-  getOperationTasks: vi.fn(),
-  getMyOperationTasks: vi.fn(),
-  updateOperationTask: vi.fn(),
-  completeOperationTask: vi.fn(),
-  reopenOperationTask: vi.fn(),
+  getPayrollChecklistBoard: vi.fn(),
+  getPayrollChecklistPeriod: vi.fn(),
+  createPayrollChecklistPeriod: vi.fn(),
+  togglePayrollChecklistItem: vi.fn(),
+  updatePayrollChecklistItem: vi.fn(),
+  completePayrollChecklistPeriod: vi.fn(),
+  reopenPayrollChecklistPeriod: vi.fn(),
 }))
 
 vi.mock('../../lib/api', () => ({
   api: apiMocks,
 }))
-
-const baseTask = {
-  operation_cycle_id: 11,
-  cycle_label: 'Cycle A',
-  operation_template_name: 'Template A',
-  description: null,
-  position: 1,
-  assigned_to: null,
-  due_at: null,
-  started_at: null,
-  completed_at: null,
-  completed_by: null,
-  evidence_note: null,
-  notes: null,
-  linked_time_entry_id: null,
-  linked_time_entry: null,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-}
 
 function renderPage() {
   return render(
@@ -45,96 +27,107 @@ function renderPage() {
 
 describe('OperationsPage', () => {
   beforeEach(() => {
-    localStorage.clear()
     vi.clearAllMocks()
 
-    apiMocks.getUsers.mockResolvedValue({
+    apiMocks.getPayrollChecklistBoard.mockResolvedValue({
       data: {
-        users: [
+        periods: [
           {
-            id: 1,
-            email: 'staff@example.com',
-            first_name: 'Staff',
-            last_name: 'User',
-            display_name: 'Staff User',
-            full_name: 'Staff User',
-            role: 'employee',
+            start: '2026-02-01',
+            end: '2026-02-14',
+            label: 'Feb 1–14',
           },
         ],
-      },
-    })
-
-    apiMocks.getOperationTasks.mockResolvedValue({
-      data: {
-        operation_tasks: [
+        rows: [
           {
-            ...baseTask,
-            id: 101,
-            operation_template_task_id: 501,
             client_id: 301,
             client_name: 'Acme Co',
-            title: 'Blocked Task',
-            status: 'not_started',
-            evidence_required: false,
-            unmet_prerequisites: [{ id: 88, title: 'Prep', status: 'not_started' }],
+            cells: [
+              {
+                period_start: '2026-02-01',
+                period_end: '2026-02-14',
+                checklist_period_id: 101,
+                done_count: 1,
+                total_count: 3,
+                status: 'open',
+              },
+            ],
           },
         ],
       },
     })
 
-    apiMocks.getMyOperationTasks.mockResolvedValue({
-      data: { operation_tasks: [] },
+    apiMocks.getPayrollChecklistPeriod.mockResolvedValue({
+      data: {
+        period: {
+          id: 101,
+          client_id: 301,
+          client_name: 'Acme Co',
+          start: '2026-02-01',
+          end: '2026-02-14',
+          pay_date: null,
+          status: 'open',
+          done_count: 1,
+          total_count: 3,
+        },
+        items: [
+          {
+            id: 9001,
+            key: 'get_hours',
+            label: 'Get hours from client',
+            position: 1,
+            required: true,
+            done: false,
+            completed_at: null,
+            completed_by: null,
+            note: '',
+            proof_url: null,
+          },
+        ],
+      },
     })
-    apiMocks.updateOperationTask.mockResolvedValue({ data: { operation_task: {} } })
-    apiMocks.completeOperationTask.mockResolvedValue({ data: { operation_task: {} } })
-    apiMocks.reopenOperationTask.mockResolvedValue({ data: { operation_task: {} } })
+
+    apiMocks.togglePayrollChecklistItem.mockResolvedValue({ data: { item: {} } })
+    apiMocks.updatePayrollChecklistItem.mockResolvedValue({ data: { item: {} } })
+    apiMocks.createPayrollChecklistPeriod.mockResolvedValue({ data: { period: { id: 102 } } })
+    apiMocks.completePayrollChecklistPeriod.mockResolvedValue({ data: { period: { id: 101, status: 'completed' } } })
+    apiMocks.reopenPayrollChecklistPeriod.mockResolvedValue({ data: { period: { id: 101, status: 'open' } } })
   })
 
-  it('renders blocked prerequisite state and disables forward actions', async () => {
+  it('renders board with client rows and period cells', async () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Blocked Task')).toBeInTheDocument()
+      expect(screen.getByText('Acme Co')).toBeInTheDocument()
     })
-
-    expect(screen.getByText(/Waiting on:/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Mark Done' })).toBeDisabled()
+    expect(screen.getByText('1/3')).toBeInTheDocument()
   })
 
-  it('saves and restores quick filters from localStorage', async () => {
+  it('opens period drawer and shows checklist steps', async () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Save Quick Filter' })).toBeInTheDocument()
+      expect(screen.getByText('1/3')).toBeInTheDocument()
     })
 
-    fireEvent.change(screen.getByPlaceholderText('Save current filter set'), {
-      target: { value: 'Morning Queue' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Quick Filter' }))
-
-    expect(screen.getByRole('button', { name: 'Morning Queue' })).toBeInTheDocument()
-    expect(localStorage.getItem('operations.savedQuickFilters.v1')).toContain('Morning Queue')
-
-    // Simulate fresh render and verify saved filters are rehydrated.
-    renderPage()
+    fireEvent.click(screen.getByText('1/3'))
     await waitFor(() => {
-      expect(screen.getAllByRole('button', { name: 'Morning Queue' }).length).toBeGreaterThan(0)
+      expect(apiMocks.getPayrollChecklistPeriod).toHaveBeenCalledWith(101)
+      expect(screen.getByText(/Get hours from client/i)).toBeInTheDocument()
     })
   })
 
-  it('uses my tasks endpoint for My Tasks quick preset', async () => {
+  it('refreshes board when range button clicked', async () => {
     renderPage()
 
     await waitFor(() => {
-      expect(apiMocks.getOperationTasks).toHaveBeenCalled()
+      expect(apiMocks.getPayrollChecklistBoard).toHaveBeenCalled()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'My Tasks Today' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Board' }))
 
     await waitFor(() => {
-      expect(apiMocks.getMyOperationTasks).toHaveBeenCalled()
+      expect(apiMocks.getPayrollChecklistBoard).toHaveBeenCalledTimes(2)
     })
   })
 })

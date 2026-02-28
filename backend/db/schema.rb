@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_27_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_28_011100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -46,10 +46,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_27_100000) do
   create_table "client_operation_assignments", force: :cascade do |t|
     t.string "assignment_status", default: "active", null: false
     t.boolean "auto_generate", default: true, null: false
+    t.date "cadence_anchor"
+    t.integer "cadence_interval"
+    t.string "cadence_type", default: "monthly", null: false
     t.bigint "client_id", null: false
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
     t.date "ends_on"
+    t.integer "excluded_template_task_ids", default: [], null: false, array: true
     t.bigint "operation_template_id", null: false
     t.date "starts_on"
     t.datetime "updated_at", null: false
@@ -72,6 +76,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_27_100000) do
   end
 
   create_table "clients", force: :cascade do |t|
+    t.datetime "archived_at"
     t.string "bank_account_number_encrypted"
     t.string "bank_account_type"
     t.string "bank_routing_number_encrypted"
@@ -96,6 +101,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_27_100000) do
     t.string "spouse_name"
     t.datetime "updated_at", null: false
     t.boolean "wants_direct_deposit", default: false
+    t.index ["archived_at"], name: "index_clients_on_archived_at"
     t.index ["client_type"], name: "index_clients_on_client_type"
     t.index ["email"], name: "index_clients_on_email"
     t.index ["has_tax_returns"], name: "index_clients_on_has_tax_returns"
@@ -166,6 +172,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_27_100000) do
     t.bigint "generated_by_id"
     t.string "generation_mode", default: "manual", null: false
     t.bigint "operation_template_id", null: false
+    t.date "pay_date"
     t.date "period_end", null: false
     t.date "period_start", null: false
     t.string "status", default: "active", null: false
@@ -177,6 +184,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_27_100000) do
     t.index ["client_operation_assignment_id"], name: "index_operation_cycles_on_client_operation_assignment_id"
     t.index ["generated_by_id"], name: "index_operation_cycles_on_generated_by_id"
     t.index ["operation_template_id"], name: "index_operation_cycles_on_operation_template_id"
+    t.index ["pay_date"], name: "index_operation_cycles_on_pay_date"
     t.index ["status"], name: "index_operation_cycles_on_status"
   end
 
@@ -195,6 +203,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_27_100000) do
     t.bigint "operation_cycle_id", null: false
     t.bigint "operation_template_task_id", null: false
     t.integer "position", default: 0, null: false
+    t.string "proof_url"
     t.datetime "started_at"
     t.string "status", default: "not_started", null: false
     t.string "title", null: false

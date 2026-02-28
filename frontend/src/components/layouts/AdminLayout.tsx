@@ -21,7 +21,7 @@ const navigation: NavItem[] = [
   { name: 'Clients', href: '/admin/clients', icon: UsersIcon },
   { name: 'Tax Returns', href: '/admin/returns', icon: DocumentIcon },
   { name: 'Activity', href: '/admin/activity', icon: ActivityIcon },
-  { name: 'Operations', href: '/admin/operations', icon: ChecklistIcon },
+  { name: 'Payroll Checklist', href: '/admin/operations', icon: ChecklistIcon },
   { name: 'Time Tracking', href: '/admin/time', icon: ClockIcon },
   { name: 'Schedule', href: '/admin/schedule', icon: CalendarIcon },
   { name: 'Users', href: '/admin/users', icon: TeamIcon, adminOnly: true },

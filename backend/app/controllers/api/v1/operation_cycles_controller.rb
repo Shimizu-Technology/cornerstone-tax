@@ -110,6 +110,7 @@ module Api
           client_operation_assignment_id: cycle.client_operation_assignment_id,
           period_start: cycle.period_start,
           period_end: cycle.period_end,
+          pay_date: cycle.pay_date,
           cycle_label: cycle.cycle_label,
           generation_mode: cycle.generation_mode,
           status: cycle.status,
@@ -144,6 +145,7 @@ module Api
           notes: task.notes,
           evidence_required: task.evidence_required,
           evidence_note: task.evidence_note,
+          proof_url: task.proof_url,
           unmet_prerequisites: task.unmet_prerequisite_tasks.map do |dep_task|
             {
               id: dep_task.id,

@@ -653,6 +653,7 @@ export interface ClientOperationAssignment {
   assignment_status: 'active' | 'paused';
   starts_on: string | null;
   ends_on: string | null;
+  excluded_template_task_ids: number[];
   created_by_id: number | null;
   created_at: string;
   updated_at: string;
@@ -677,6 +678,7 @@ export interface OperationTaskItem {
   completed_by: { id: number; name: string } | null;
   evidence_required: boolean;
   evidence_note: string | null;
+  proof_url?: string | null;
   notes: string | null;
   unmet_prerequisites: Array<{
     id: number;
@@ -730,6 +732,54 @@ export interface OperationCyclesResponse {
     total_count: number;
     total_pages: number;
   };
+}
+
+export interface PayrollChecklistPeriodCell {
+  period_start: string;
+  period_end: string;
+  checklist_period_id: number | null;
+  done_count: number;
+  total_count: number;
+  status: 'open' | 'completed';
+}
+
+export interface PayrollChecklistBoardResponse {
+  periods: Array<{
+    start: string;
+    end: string;
+    label: string;
+  }>;
+  rows: Array<{
+    client_id: number;
+    client_name: string;
+    cells: PayrollChecklistPeriodCell[];
+  }>;
+}
+
+export interface PayrollChecklistPeriodDetailResponse {
+  period: {
+    id: number;
+    client_id: number;
+    client_name: string;
+    start: string;
+    end: string;
+    pay_date: string | null;
+    status: 'open' | 'completed';
+    done_count: number;
+    total_count: number;
+  };
+  items: Array<{
+    id: number;
+    key: string;
+    label: string;
+    position: number;
+    required: boolean;
+    done: boolean;
+    completed_at: string | null;
+    completed_by: { id: number; name: string } | null;
+    note: string | null;
+    proof_url: string | null;
+  }>;
 }
 
 // API functions
@@ -947,6 +997,7 @@ export const api = {
     assignment_status?: 'active' | 'paused';
     starts_on?: string;
     ends_on?: string;
+    excluded_template_task_ids?: number[];
   }) =>
     fetchApi<{ assignment: ClientOperationAssignment }>(`/api/v1/clients/${clientId}/operation_assignments`, {
       method: 'POST',
@@ -958,6 +1009,7 @@ export const api = {
     assignment_status: 'active' | 'paused';
     starts_on: string | null;
     ends_on: string | null;
+    excluded_template_task_ids: number[];
   }>) =>
     fetchApi<{ assignment: ClientOperationAssignment }>(`/api/v1/client_operation_assignments/${assignmentId}`, {
       method: 'PATCH',
@@ -992,6 +1044,51 @@ export const api = {
 
   getOperationCycle: (cycleId: number) =>
     fetchApi<{ operation_cycle: OperationCycle }>(`/api/v1/operation_cycles/${cycleId}`),
+
+  // Payroll Checklist Board (facade API)
+  getPayrollChecklistBoard: (params?: { start?: string; end?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.start) searchParams.set('start', params.start);
+    if (params?.end) searchParams.set('end', params.end);
+    const query = searchParams.toString();
+    return fetchApi<PayrollChecklistBoardResponse>(`/api/v1/payroll_checklists/board${query ? `?${query}` : ''}`);
+  },
+
+  getPayrollChecklistPeriod: (periodId: number) =>
+    fetchApi<PayrollChecklistPeriodDetailResponse>(`/api/v1/payroll_checklists/periods/${periodId}`),
+
+  createPayrollChecklistPeriod: (data: {
+    client_id: number;
+    start: string;
+    end: string;
+    pay_date?: string;
+  }) =>
+    fetchApi<{ period: PayrollChecklistPeriodDetailResponse['period'] }>('/api/v1/payroll_checklists/periods', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  togglePayrollChecklistItem: (itemId: number, done: boolean) =>
+    fetchApi<{ item: PayrollChecklistPeriodDetailResponse['items'][0] }>(`/api/v1/payroll_checklists/items/${itemId}/toggle`, {
+      method: 'PATCH',
+      body: JSON.stringify({ done }),
+    }),
+
+  updatePayrollChecklistItem: (itemId: number, data: { note?: string; proof_url?: string }) =>
+    fetchApi<{ item: PayrollChecklistPeriodDetailResponse['items'][0] }>(`/api/v1/payroll_checklists/items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  completePayrollChecklistPeriod: (periodId: number) =>
+    fetchApi<{ period: { id: number; status: 'completed' } }>(`/api/v1/payroll_checklists/periods/${periodId}/complete`, {
+      method: 'POST',
+    }),
+
+  reopenPayrollChecklistPeriod: (periodId: number) =>
+    fetchApi<{ period: { id: number; status: 'open' } }>(`/api/v1/payroll_checklists/periods/${periodId}/reopen`, {
+      method: 'POST',
+    }),
 
   // Operation Tasks
   updateOperationTask: (taskId: number, data: Partial<{
