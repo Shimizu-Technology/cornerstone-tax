@@ -50,6 +50,16 @@ RSpec.describe GenerateOperationCycleService, type: :service do
     )
   end
 
+  let!(:assignment) do
+    ClientOperationAssignment.create!(
+      client: client,
+      operation_template: template,
+      auto_generate: true,
+      assignment_status: "active",
+      created_by: admin
+    )
+  end
+
   describe "#call" do
     it "creates cycle and tasks with expected metadata" do
       period_start = Date.current.beginning_of_month
@@ -122,6 +132,23 @@ RSpec.describe GenerateOperationCycleService, type: :service do
 
       expect(result.success?).to be(false)
       expect(result.errors.join).to include("Operation template is not active")
+    end
+
+    it "skips excluded template tasks for assignment" do
+      assignment.update!(excluded_template_task_ids: [ task_b.id ])
+
+      result = described_class.new(
+        client: client,
+        operation_template: template,
+        assignment: assignment,
+        period_start: Date.current.beginning_of_month,
+        period_end: Date.current.end_of_month,
+        generation_mode: "manual",
+        generated_by: admin
+      ).call
+
+      expect(result.success?).to be(true)
+      expect(result.cycle.operation_tasks.pluck(:operation_template_task_id)).to eq([ task_a.id ])
     end
   end
 end

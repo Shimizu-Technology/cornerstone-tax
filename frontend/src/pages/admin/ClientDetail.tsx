@@ -4,9 +4,8 @@ import { api } from '../../lib/api'
 import type {
   ServiceType,
   ClientServiceType,
-  UserSummary,
   OperationCycle,
-  OperationTaskItem,
+  OperationTemplateTask,
   ClientOperationAssignment,
   CurrentUser,
 } from '../../lib/api'
@@ -200,9 +199,8 @@ export default function ClientDetailPage() {
     is_primary: false,
   })
 
-  // Operations checklist
+  // Payroll checklist
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
-  const [staffUsers, setStaffUsers] = useState<UserSummary[]>([])
   const [operationTemplates, setOperationTemplates] = useState<{ id: number; name: string; is_active: boolean }[]>([])
   const [operationAssignments, setOperationAssignments] = useState<ClientOperationAssignment[]>([])
   const [operationCycles, setOperationCycles] = useState<OperationCycle[]>([])
@@ -210,13 +208,6 @@ export default function ClientDetailPage() {
   const [selectedCycle, setSelectedCycle] = useState<OperationCycle | null>(null)
   const [operationsLoading, setOperationsLoading] = useState(false)
   const [operationsError, setOperationsError] = useState<string | null>(null)
-  const [savingTaskId, setSavingTaskId] = useState<number | null>(null)
-  const [taskDrafts, setTaskDrafts] = useState<Record<number, {
-    status: OperationTaskItem['status']
-    assigned_to_id: string
-    notes: string
-    evidence_note: string
-  }>>({})
   const [generateForm, setGenerateForm] = useState({
     operation_template_id: '',
     period_start: '',
@@ -229,6 +220,11 @@ export default function ClientDetailPage() {
   })
   const [generatingCycle, setGeneratingCycle] = useState(false)
   const [creatingAssignment, setCreatingAssignment] = useState(false)
+  const [editingAssignmentId, setEditingAssignmentId] = useState<number | null>(null)
+  const [loadingAssignmentId, setLoadingAssignmentId] = useState<number | null>(null)
+  const [savingAssignmentId, setSavingAssignmentId] = useState<number | null>(null)
+  const [templateTasksByTemplateId, setTemplateTasksByTemplateId] = useState<Record<number, OperationTemplateTask[]>>({})
+  const [assignmentExclusionDrafts, setAssignmentExclusionDrafts] = useState<Record<number, number[]>>({})
 
   const loadAuditLogs = useCallback(async () => {
     if (!id) return
@@ -248,9 +244,8 @@ export default function ClientDetailPage() {
     setOperationsError(null)
     try {
       const clientId = parseInt(id)
-      const [userResult, usersResult, templatesResult, assignmentsResult, cyclesResult] = await Promise.all([
+      const [userResult, templatesResult, assignmentsResult, cyclesResult] = await Promise.all([
         api.getCurrentUser(),
-        api.getUsers(),
         api.getOperationTemplates(true),
         api.getClientOperationAssignments(clientId),
         api.getClientOperationCycles(clientId),
@@ -258,9 +253,6 @@ export default function ClientDetailPage() {
 
       if (userResult.data) {
         setCurrentUser(userResult.data.user)
-      }
-      if (usersResult.data) {
-        setStaffUsers(usersResult.data.users.filter(u => u.role === 'admin' || u.role === 'employee'))
       }
       if (templatesResult.data) {
         setOperationTemplates(
@@ -287,34 +279,32 @@ export default function ClientDetailPage() {
       }
 
       const firstError =
-        userResult.error || usersResult.error || templatesResult.error || assignmentsResult.error || cyclesResult.error
+        userResult.error || templatesResult.error || assignmentsResult.error || cyclesResult.error
       if (firstError) {
         setOperationsError(firstError)
       }
     } catch (err) {
       console.error('Failed to load operations data:', err)
-      setOperationsError('Failed to load operations checklist data')
+      setOperationsError('Failed to load payroll checklist data')
     } finally {
       setOperationsLoading(false)
     }
   }, [id])
+
+  useEffect(() => {
+    setAssignmentExclusionDrafts(
+      operationAssignments.reduce((acc, assignment) => {
+        acc[assignment.id] = assignment.excluded_template_task_ids || []
+        return acc
+      }, {} as Record<number, number[]>)
+    )
+  }, [operationAssignments])
 
   const loadCycleDetail = useCallback(async (cycleId: number) => {
     const result = await api.getOperationCycle(cycleId)
     if (result.data) {
       const cycle = result.data.operation_cycle
       setSelectedCycle(cycle)
-      setTaskDrafts(
-        (cycle.tasks || []).reduce((acc, task) => {
-          acc[task.id] = {
-            status: task.status,
-            assigned_to_id: task.assigned_to?.id ? String(task.assigned_to.id) : '',
-            notes: task.notes || '',
-            evidence_note: task.evidence_note || '',
-          }
-          return acc
-        }, {} as Record<number, { status: OperationTaskItem['status']; assigned_to_id: string; notes: string; evidence_note: string }>)
-      )
       setOperationsError(null)
     } else if (result.error) {
       setOperationsError(result.error)
@@ -446,9 +436,72 @@ export default function ClientDetailPage() {
     }
   }
 
+  const handleToggleAssignmentEditor = async (assignment: ClientOperationAssignment) => {
+    if (editingAssignmentId === assignment.id) {
+      setEditingAssignmentId(null)
+      return
+    }
+
+    setEditingAssignmentId(assignment.id)
+    const templateId = assignment.operation_template_id
+    if (templateTasksByTemplateId[templateId]) return
+
+    setLoadingAssignmentId(assignment.id)
+    try {
+      const result = await api.getOperationTemplateTasks(templateId, true)
+      if (result.data) {
+        setTemplateTasksByTemplateId(prev => ({ ...prev, [templateId]: result.data!.tasks }))
+      } else if (result.error) {
+        setOperationsError(result.error)
+      }
+    } catch (err) {
+      console.error('Failed to load template tasks for assignment:', err)
+      setOperationsError('Failed to load assignment checklist steps')
+    } finally {
+      setLoadingAssignmentId(null)
+    }
+  }
+
+  const handleToggleAssignmentStep = (assignmentId: number, templateTaskId: number, enabled: boolean) => {
+    setAssignmentExclusionDrafts(prev => {
+      const current = prev[assignmentId] || []
+      const nextExcludedIds = enabled
+        ? current.filter(id => id !== templateTaskId)
+        : Array.from(new Set([ ...current, templateTaskId ]))
+
+      return {
+        ...prev,
+        [assignmentId]: nextExcludedIds,
+      }
+    })
+  }
+
+  const handleSaveAssignmentSteps = async (assignmentId: number) => {
+    const excludedIds = assignmentExclusionDrafts[assignmentId] || []
+    setSavingAssignmentId(assignmentId)
+    setOperationsError(null)
+
+    try {
+      const result = await api.updateClientOperationAssignment(assignmentId, {
+        excluded_template_task_ids: excludedIds,
+      })
+
+      if (result.data) {
+        await loadOperations()
+      } else if (result.error) {
+        setOperationsError(result.error)
+      }
+    } catch (err) {
+      console.error('Failed to save assignment checklist applicability:', err)
+      setOperationsError('Failed to save checklist applicability')
+    } finally {
+      setSavingAssignmentId(null)
+    }
+  }
+
   const handleGenerateCycle = async () => {
     if (!client || !generateForm.operation_template_id || !generateForm.period_start || !generateForm.period_end) {
-      setOperationsError('Template and period dates are required to generate a cycle')
+      setOperationsError('Template and period dates are required to generate a payroll period')
       return
     }
 
@@ -468,87 +521,9 @@ export default function ClientDetailPage() {
       }
     } catch (err) {
       console.error('Failed to generate cycle:', err)
-      setOperationsError('Failed to generate cycle')
+      setOperationsError('Failed to generate payroll period')
     } finally {
       setGeneratingCycle(false)
-    }
-  }
-
-  const handleTaskDraftChange = (taskId: number, patch: Partial<{
-    status: OperationTaskItem['status']
-    assigned_to_id: string
-    notes: string
-    evidence_note: string
-  }>) => {
-    setTaskDrafts(prev => ({
-      ...prev,
-      [taskId]: {
-        ...prev[taskId],
-        ...patch,
-      },
-    }))
-  }
-
-  const handleSaveTask = async (taskId: number) => {
-    const draft = taskDrafts[taskId]
-    if (!draft) return
-    setSavingTaskId(taskId)
-    setOperationsError(null)
-    try {
-      const result = await api.updateOperationTask(taskId, {
-        status: draft.status,
-        assigned_to_id: draft.assigned_to_id ? parseInt(draft.assigned_to_id) : null,
-        notes: draft.notes,
-        evidence_note: draft.evidence_note,
-      })
-      if (result.data && selectedCycleId) {
-        await loadCycleDetail(selectedCycleId)
-      } else if (result.error) {
-        setOperationsError(result.error)
-      }
-    } catch (err) {
-      console.error('Failed to update task:', err)
-      setOperationsError('Failed to update task')
-    } finally {
-      setSavingTaskId(null)
-    }
-  }
-
-  const handleCompleteTask = async (taskId: number) => {
-    const draft = taskDrafts[taskId]
-    const evidence = draft?.evidence_note?.trim() || undefined
-    setSavingTaskId(taskId)
-    setOperationsError(null)
-    try {
-      const result = await api.completeOperationTask(taskId, evidence)
-      if (result.data && selectedCycleId) {
-        await loadCycleDetail(selectedCycleId)
-      } else if (result.error) {
-        setOperationsError(result.error)
-      }
-    } catch (err) {
-      console.error('Failed to complete task:', err)
-      setOperationsError('Failed to complete task')
-    } finally {
-      setSavingTaskId(null)
-    }
-  }
-
-  const handleReopenTask = async (taskId: number) => {
-    setSavingTaskId(taskId)
-    setOperationsError(null)
-    try {
-      const result = await api.reopenOperationTask(taskId)
-      if (result.data && selectedCycleId) {
-        await loadCycleDetail(selectedCycleId)
-      } else if (result.error) {
-        setOperationsError(result.error)
-      }
-    } catch (err) {
-      console.error('Failed to reopen task:', err)
-      setOperationsError('Failed to reopen task')
-    } finally {
-      setSavingTaskId(null)
     }
   }
 
@@ -911,16 +886,16 @@ export default function ClientDetailPage() {
             )}
           </div>
 
-          {/* Operations Checklist */}
+          {/* Payroll Checklist */}
           <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Operations Checklist</h2>
-                <p className="text-sm text-gray-500">Run recurring client work from one place.</p>
+                <h2 className="text-lg font-semibold text-gray-900">Payroll Checklist</h2>
+                <p className="text-sm text-gray-500">Track payroll-period steps for this client in one place.</p>
               </div>
               {activeCycle && (
                 <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 self-start">
-                  Active Cycle: {activeCycle.cycle_label}
+                  Active Period: {activeCycle.cycle_label}
                 </span>
               )}
             </div>
@@ -940,19 +915,87 @@ export default function ClientDetailPage() {
                 {/* Assignment Management */}
                 {currentUser?.is_admin && (
                   <div className="p-4 border border-secondary-dark rounded-xl bg-secondary/20">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Template Assignments</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Checklist Setup</h3>
                     <div className="space-y-2 mb-3">
                       {operationAssignments.length === 0 ? (
-                        <p className="text-sm text-gray-500 italic">No templates assigned to this client yet.</p>
+                        <p className="text-sm text-gray-500 italic">No payroll checklist template assigned to this client yet.</p>
                       ) : (
                         operationAssignments.map(assignment => (
-                          <div key={assignment.id} className="flex items-center justify-between text-sm">
-                            <span className="font-medium text-gray-800">{assignment.operation_template_name || `Template #${assignment.operation_template_id}`}</span>
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              assignment.assignment_status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {assignment.assignment_status}
-                            </span>
+                          <div key={assignment.id} className="border border-secondary-dark rounded-lg p-3 bg-white">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-gray-800">
+                                  {assignment.operation_template_name || `Template #${assignment.operation_template_id}`}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  assignment.assignment_status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {assignment.assignment_status}
+                                </span>
+                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                                  {assignment.excluded_template_task_ids.length} disabled step{assignment.excluded_template_task_ids.length === 1 ? '' : 's'}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleAssignmentEditor(assignment)}
+                                className="min-h-11 px-3 py-2 rounded-lg border border-secondary-dark text-xs font-medium text-primary hover:bg-secondary"
+                              >
+                                {editingAssignmentId === assignment.id ? 'Close Steps' : 'Edit Applicable Steps'}
+                              </button>
+                            </div>
+
+                            {editingAssignmentId === assignment.id && (
+                              <div className="mt-3 pt-3 border-t border-secondary-dark space-y-2">
+                                <p className="text-xs text-gray-500">
+                                  Turn steps on only if they apply to this client. Disabled steps are excluded from newly generated payroll periods.
+                                </p>
+                                {loadingAssignmentId === assignment.id ? (
+                                  <div className="py-4 flex justify-center">
+                                    <div className="animate-spin w-5 h-5 border-2 border-primary border-t-transparent rounded-full" />
+                                  </div>
+                                ) : (
+                                  <>
+                                    {(templateTasksByTemplateId[assignment.operation_template_id] || []).length === 0 ? (
+                                      <p className="text-sm text-gray-500 italic">No steps found for this template.</p>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        {(templateTasksByTemplateId[assignment.operation_template_id] || []).map(task => {
+                                          const excludedIds = assignmentExclusionDrafts[assignment.id] || []
+                                          const enabled = !excludedIds.includes(task.id)
+                                          return (
+                                            <label key={task.id} className="flex items-start gap-2 text-sm">
+                                              <input
+                                                type="checkbox"
+                                                checked={enabled}
+                                                onChange={(e) => handleToggleAssignmentStep(assignment.id, task.id, e.target.checked)}
+                                                className="mt-1"
+                                              />
+                                              <span>
+                                                {task.title}
+                                                {!task.is_active && (
+                                                  <span className="ml-2 text-xs text-amber-700">(inactive template step)</span>
+                                                )}
+                                              </span>
+                                            </label>
+                                          )
+                                        })}
+                                      </div>
+                                    )}
+                                    <div className="pt-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSaveAssignmentSteps(assignment.id)}
+                                        disabled={savingAssignmentId === assignment.id}
+                                        className="min-h-11 px-3 py-2 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary-dark disabled:opacity-50"
+                                      >
+                                        {savingAssignmentId === assignment.id ? 'Saving...' : 'Save Step Setup'}
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ))
                       )}
@@ -963,7 +1006,7 @@ export default function ClientDetailPage() {
                         onChange={(e) => setAssignmentForm(prev => ({ ...prev, operation_template_id: e.target.value }))}
                         className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
                       >
-                        <option value="">Assign template...</option>
+                        <option value="">Assign payroll checklist template...</option>
                         {unassignedTemplateOptions.map(template => (
                           <option key={template.id} value={template.id}>{template.name}</option>
                         ))}
@@ -982,7 +1025,7 @@ export default function ClientDetailPage() {
                         disabled={creatingAssignment || !assignmentForm.operation_template_id}
                         className="min-h-11 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
                       >
-                        {creatingAssignment ? 'Assigning...' : 'Assign Template'}
+                        {creatingAssignment ? 'Assigning...' : 'Assign Checklist'}
                       </button>
                     </div>
                   </div>
@@ -991,14 +1034,14 @@ export default function ClientDetailPage() {
                 {/* Manual Generate */}
                 {currentUser?.is_admin && (
                   <div className="p-4 border border-secondary-dark rounded-xl">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Generate Cycle</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Generate Payroll Period</h3>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                       <select
                         value={generateForm.operation_template_id}
                         onChange={(e) => setGenerateForm(prev => ({ ...prev, operation_template_id: e.target.value }))}
                         className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
                       >
-                        <option value="">Template...</option>
+                        <option value="">Checklist template...</option>
                         {operationAssignments.filter(a => a.assignment_status === 'active').map(assignment => (
                           <option key={assignment.id} value={assignment.operation_template_id}>
                             {assignment.operation_template_name || `Template #${assignment.operation_template_id}`}
@@ -1034,14 +1077,14 @@ export default function ClientDetailPage() {
                   </div>
                 )}
 
-                {/* Cycle History / Picker */}
+                {/* Payroll Period History / Picker */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-gray-900">Cycle History</h3>
-                    <span className="text-xs text-gray-500">{operationCycles.length} cycle{operationCycles.length !== 1 ? 's' : ''}</span>
+                    <h3 className="text-sm font-semibold text-gray-900">Payroll Period History</h3>
+                    <span className="text-xs text-gray-500">{operationCycles.length} period{operationCycles.length !== 1 ? 's' : ''}</span>
                   </div>
                   {operationCycles.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">No cycles yet. Generate one to start tracking operations tasks.</p>
+                      <p className="text-sm text-gray-500 italic">No payroll periods yet. Generate one to start tracking checklist steps.</p>
                   ) : (
                     <select
                       value={selectedCycleId || ''}
@@ -1057,149 +1100,43 @@ export default function ClientDetailPage() {
                   )}
                 </div>
 
-                {/* Task List */}
+                {/* Checklist Steps Summary (daily checkoffs happen on Payroll Checklist Board) */}
                 {selectedCycle && (
                   <div className="space-y-3">
-                    <h3 className="text-sm font-semibold text-gray-900">Tasks for {selectedCycle.cycle_label}</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">Checklist Steps for {selectedCycle.cycle_label}</h3>
                     {cycleTasks.length === 0 ? (
-                      <p className="text-sm text-gray-500 italic">No tasks generated for this cycle.</p>
+                      <p className="text-sm text-gray-500 italic">No checklist steps generated for this payroll period.</p>
                     ) : (
-                      cycleTasks.map(task => {
-                        const draft = taskDrafts[task.id] || {
-                          status: task.status,
-                          assigned_to_id: task.assigned_to?.id ? String(task.assigned_to.id) : '',
-                          notes: task.notes || '',
-                          evidence_note: task.evidence_note || '',
-                        }
-                        const logNotes = `Ops task: ${task.title} (${selectedCycle.cycle_label})`
-                        const logTimeLink =
-                          `/admin/time?prefill=true&client_id=${client.id}&operation_task_id=${task.id}&notes=${encodeURIComponent(logNotes)}`
-                        const savingThisTask = savingTaskId === task.id
-                        const hasUnmetPrerequisites = task.unmet_prerequisites.length > 0
-                        const blockedByPrerequisites =
-                          hasUnmetPrerequisites && (draft.status === 'in_progress' || draft.status === 'done')
-                        return (
-                          <div key={task.id} className="border border-secondary-dark rounded-xl p-4">
-                            <div className="flex items-start justify-between gap-2 mb-3">
-                              <div>
-                                <p className="font-medium text-gray-900">{task.position}. {task.title}</p>
-                                {task.description && <p className="text-sm text-gray-500">{task.description}</p>}
-                                <div className="flex flex-wrap items-center gap-2 mt-1">
-                                  <span className={`text-xs px-2 py-0.5 rounded ${
-                                    task.status === 'done'
-                                      ? 'bg-emerald-100 text-emerald-700'
-                                      : task.status === 'blocked'
-                                        ? 'bg-red-100 text-red-700'
-                                        : task.status === 'in_progress'
-                                          ? 'bg-blue-100 text-blue-700'
-                                          : 'bg-gray-100 text-gray-700'
-                                  }`}>
-                                    {task.status.replace('_', ' ')}
-                                  </span>
-                                  {task.evidence_required && (
-                                    <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Evidence required</span>
-                                  )}
-                                  {task.due_at && (
-                                    <span className="text-xs text-gray-500">Due: {formatDateTime(task.due_at)}</span>
-                                  )}
-                                  {task.linked_time_entry && (
-                                    <span className="text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                                      Linked time: {task.linked_time_entry.hours.toFixed(2)}h on {formatDate(task.linked_time_entry.work_date)}
-                                    </span>
-                                  )}
-                                  {hasUnmetPrerequisites && (
-                                    <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700">
-                                      Waiting on prerequisites
-                                    </span>
-                                  )}
-                                </div>
-                                {hasUnmetPrerequisites && (
-                                  <p className="text-xs text-red-700 mt-1">
-                                    Unmet: {task.unmet_prerequisites.map(dep => dep.title).join(', ')}
-                                  </p>
-                                )}
-                              </div>
-                              <Link
-                                to={logTimeLink}
-                                className="text-xs text-primary hover:text-primary-dark font-medium min-h-11 inline-flex items-center"
-                              >
-                                Log Time
-                              </Link>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                              <select
-                                value={draft.status}
-                                onChange={(e) => handleTaskDraftChange(task.id, { status: e.target.value as OperationTaskItem['status'] })}
-                                className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
-                              >
-                                <option value="not_started">Not Started</option>
-                                <option value="in_progress">In Progress</option>
-                                <option value="blocked">Blocked</option>
-                                <option value="done">Done</option>
-                              </select>
-                              <select
-                                value={draft.assigned_to_id}
-                                onChange={(e) => handleTaskDraftChange(task.id, { assigned_to_id: e.target.value })}
-                                className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
-                              >
-                                <option value="">Unassigned</option>
-                                {staffUsers.map(user => (
-                                  <option key={user.id} value={user.id}>{user.full_name}</option>
-                                ))}
-                              </select>
-                              <input
-                                type="text"
-                                value={draft.notes}
-                                onChange={(e) => handleTaskDraftChange(task.id, { notes: e.target.value })}
-                                placeholder="Task notes"
-                                className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
-                              />
-                              <input
-                                type="text"
-                                value={draft.evidence_note}
-                                onChange={(e) => handleTaskDraftChange(task.id, { evidence_note: e.target.value })}
-                                placeholder={task.evidence_required ? 'Evidence note (required for done)' : 'Evidence note (optional)'}
-                                className="px-3 py-2 border border-secondary-dark rounded-lg text-sm"
-                              />
-                            </div>
-
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleSaveTask(task.id)}
-                                disabled={savingThisTask || blockedByPrerequisites}
-                                className="min-h-11 px-3 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary-dark disabled:opacity-50"
-                              >
-                                {savingThisTask ? 'Saving...' : 'Save'}
-                              </button>
-                              {task.status !== 'done' ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleCompleteTask(task.id)}
-                                  disabled={
-                                    savingThisTask ||
-                                    hasUnmetPrerequisites ||
-                                    (task.evidence_required && !draft.evidence_note.trim())
-                                  }
-                                  className="min-h-11 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                                >
-                                  Complete
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleReopenTask(task.id)}
-                                  disabled={savingThisTask}
-                                  className="min-h-11 px-3 py-2 rounded-lg text-sm font-medium bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
-                                >
-                                  Reopen
-                                </button>
-                              )}
-                            </div>
+                      <div className="border border-secondary-dark rounded-xl p-4 bg-white space-y-3">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <div className="rounded-lg bg-secondary px-3 py-2">
+                            <p className="text-xs text-gray-500">Total</p>
+                            <p className="text-sm font-semibold text-gray-900">{cycleTasks.length}</p>
                           </div>
-                        )
-                      })
+                          <div className="rounded-lg bg-emerald-50 px-3 py-2">
+                            <p className="text-xs text-emerald-700">Done</p>
+                            <p className="text-sm font-semibold text-emerald-800">{cycleTasks.filter(t => t.status === 'done').length}</p>
+                          </div>
+                          <div className="rounded-lg bg-amber-50 px-3 py-2">
+                            <p className="text-xs text-amber-700">In Progress</p>
+                            <p className="text-sm font-semibold text-amber-800">{cycleTasks.filter(t => t.status === 'in_progress').length}</p>
+                          </div>
+                          <div className="rounded-lg bg-red-50 px-3 py-2">
+                            <p className="text-xs text-red-700">Blocked</p>
+                            <p className="text-sm font-semibold text-red-800">{cycleTasks.filter(t => t.status === 'blocked').length}</p>
+                          </div>
+                        </div>
+
+                        <p className="text-sm text-gray-600">
+                          Use the Payroll Checklist Board for simple checkbox updates, notes, and proof on each step.
+                        </p>
+                        <Link
+                          to="/admin/operations"
+                          className="min-h-11 inline-flex items-center px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark"
+                        >
+                          Open Payroll Checklist Board
+                        </Link>
+                      </div>
                     )}
                   </div>
                 )}

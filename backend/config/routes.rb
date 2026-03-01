@@ -93,6 +93,25 @@ Rails.application.routes.draw do
       # Service types (active only, for dropdowns)
       resources :service_types, only: [:index]
 
+      # Payroll checklist facade endpoints
+      get "payroll_checklists/board", to: "payroll_checklists#board"
+      resources :payroll_checklists, only: [] do
+        collection do
+          post "periods", to: "payroll_checklist_periods#create"
+        end
+      end
+      resources :payroll_checklist_periods, path: "payroll_checklists/periods", only: [:show] do
+        member do
+          post :complete
+          post :reopen
+        end
+      end
+      resources :payroll_checklist_items, path: "payroll_checklists/items", only: [:update] do
+        member do
+          patch :toggle
+        end
+      end
+
       # Payroll ingest (shared-secret auth, service-to-service)
       post "payroll/ingest", to: "payroll_ingest#create"
 

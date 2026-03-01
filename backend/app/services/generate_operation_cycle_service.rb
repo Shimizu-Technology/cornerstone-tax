@@ -6,7 +6,7 @@ class GenerateOperationCycleService
     def duplicate? = duplicate
   end
 
-  def initialize(client:, operation_template:, period_start:, period_end:, generation_mode:, generated_by:, assignment: nil)
+  def initialize(client:, operation_template:, period_start:, period_end:, generation_mode:, generated_by:, assignment: nil, pay_date: nil)
     @client = client
     @operation_template = operation_template
     @assignment = assignment
@@ -14,6 +14,7 @@ class GenerateOperationCycleService
     @period_end = period_end
     @generation_mode = generation_mode
     @generated_by = generated_by
+    @pay_date = pay_date
     @errors = []
   end
 
@@ -40,6 +41,7 @@ class GenerateOperationCycleService
         client_operation_assignment: @assignment,
         period_start: @period_start,
         period_end: @period_end,
+        pay_date: @pay_date,
         cycle_label: cycle_label,
         generation_mode: @generation_mode,
         generated_by: @generated_by,
@@ -66,7 +68,9 @@ class GenerateOperationCycleService
   private
 
   def build_tasks!(cycle)
-    template_tasks = @operation_template.operation_template_tasks.ordered
+    excluded_task_ids = Array(@assignment&.excluded_template_task_ids).map(&:to_i)
+    template_tasks = @operation_template.operation_template_tasks.active.ordered
+    template_tasks = template_tasks.where.not(id: excluded_task_ids) if excluded_task_ids.any?
 
     template_tasks.each do |template_task|
       cycle.operation_tasks.create!(

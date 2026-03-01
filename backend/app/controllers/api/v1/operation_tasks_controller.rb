@@ -144,7 +144,8 @@ module Api
           :assigned_to_id,
           :due_at,
           :notes,
-          :evidence_note
+          :evidence_note,
+          :proof_url
         )
       end
 
@@ -221,6 +222,7 @@ module Api
           } : nil,
           evidence_required: task.evidence_required,
           evidence_note: task.evidence_note,
+          proof_url: task.proof_url,
           notes: task.notes,
           unmet_prerequisites: task.unmet_prerequisite_tasks.map do |dep_task|
             {

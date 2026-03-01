@@ -57,6 +57,20 @@ RSpec.describe "Api::V1::ClientOperationAssignments", type: :request do
     )
   end
 
+  let!(:template_task_a) do
+    template.operation_template_tasks.create!(
+      title: "Step A",
+      position: 1
+    )
+  end
+
+  let!(:template_task_b) do
+    template.operation_template_tasks.create!(
+      title: "Step B",
+      position: 2
+    )
+  end
+
   let!(:assignment) do
     ClientOperationAssignment.create!(
       client: client,
@@ -105,7 +119,8 @@ RSpec.describe "Api::V1::ClientOperationAssignments", type: :request do
              assignment: {
                operation_template_id: create_template.id,
                assignment_status: "active",
-               starts_on: Date.current.to_s
+              starts_on: Date.current.to_s,
+              excluded_template_task_ids: []
              }
            }.to_json,
            headers: auth_headers_for(admin)
@@ -155,6 +170,37 @@ RSpec.describe "Api::V1::ClientOperationAssignments", type: :request do
 
       expect(response).to have_http_status(:unprocessable_entity)
       expect(JSON.parse(response.body)["error"]).to include("must be on or after start date")
+    end
+
+    it "updates excluded template task ids for admin users" do
+      stub_clerk_for(admin)
+
+      patch "/api/v1/client_operation_assignments/#{assignment.id}",
+            params: { assignment: { excluded_template_task_ids: [ template_task_b.id ] } }.to_json,
+            headers: auth_headers_for(admin)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("assignment", "excluded_template_task_ids")).to eq([ template_task_b.id ])
+      expect(assignment.reload.excluded_template_task_ids).to eq([ template_task_b.id ])
+    end
+
+    it "rejects excluded task ids that do not belong to assignment template" do
+      other_template = OperationTemplate.create!(
+        name: "Assignments Other Template #{SecureRandom.hex(4)}",
+        category: "general",
+        recurrence_type: "monthly",
+        auto_generate: true,
+        created_by: admin
+      )
+      other_task = other_template.operation_template_tasks.create!(title: "Other Step", position: 1)
+      stub_clerk_for(admin)
+
+      patch "/api/v1/client_operation_assignments/#{assignment.id}",
+            params: { assignment: { excluded_template_task_ids: [ other_task.id ] } }.to_json,
+            headers: auth_headers_for(admin)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(JSON.parse(response.body)["error"]).to include("invalid template tasks")
     end
 
     it "rejects non-admin users" do
