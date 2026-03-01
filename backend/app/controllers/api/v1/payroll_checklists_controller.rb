@@ -62,6 +62,7 @@ module Api
           template_task_ids = (template_tasks_by_template_id[preferred_template_id] || []).map(&:id)
           excluded = Array(assignment.excluded_template_task_ids).map(&:to_i)
           expected_total = (template_task_ids - excluded).size
+          expected_total = PayrollChecklistTemplateService::DEFAULT_STEPS.size if expected_total.zero?
 
           cells = periods.map do |period|
             cycle = cycles_by_key[[client.id, preferred_template_id, period[:start], period[:end]]]
