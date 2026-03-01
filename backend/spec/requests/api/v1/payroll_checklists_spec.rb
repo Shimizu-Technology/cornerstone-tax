@@ -70,14 +70,14 @@ RSpec.describe "Api::V1::PayrollChecklists", type: :request do
       expect(body["rows"].map { |row| row["client_id"] }).to include(client.id)
     end
 
-    it "auto-creates missing periods for auto-generate assignments" do
+    it "does not auto-create periods on board load" do
       assignment.update!(auto_generate: true, cadence_anchor: Date.current.beginning_of_month)
       stub_clerk_for(admin)
 
       expect {
         get "/api/v1/payroll_checklists/board?start=#{Date.current.beginning_of_month}&end=#{Date.current.beginning_of_month + 13.days}",
             headers: auth_headers_for(admin)
-      }.to change(OperationCycle, :count).by(1)
+      }.not_to change(OperationCycle, :count)
     end
 
     it "includes clients assigned to non-default payroll templates" do
@@ -199,6 +199,28 @@ RSpec.describe "Api::V1::PayrollChecklists", type: :request do
       post "/api/v1/payroll_checklists/periods/#{period.id}/reopen", headers: auth_headers_for(admin)
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body).dig("period", "status")).to eq("open")
+    end
+
+    it "allows staff users to toggle unassigned checklist items" do
+      period = GenerateOperationCycleService.new(
+        client: client,
+        operation_template: template,
+        assignment: assignment,
+        period_start: Date.current.beginning_of_month,
+        period_end: Date.current.beginning_of_month + 13.days,
+        generation_mode: "manual",
+        generated_by: admin
+      ).call.cycle
+      item = period.operation_tasks.first
+      item.update!(assigned_to_id: nil, status: "not_started")
+
+      stub_clerk_for(employee)
+      patch "/api/v1/payroll_checklists/items/#{item.id}/toggle",
+            params: { done: true }.to_json,
+            headers: auth_headers_for(employee)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("item", "done")).to eq(true)
     end
   end
 end

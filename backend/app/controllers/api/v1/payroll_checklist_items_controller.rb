@@ -57,10 +57,9 @@ module Api
       end
 
       def authorize_item_update!
-        return if current_user.admin?
-        return if @item.assigned_to_id.present? && @item.assigned_to_id == current_user.id
+        return if current_user.staff?
 
-        render json: { error: "Only admins or the assigned staff member can update this checklist item" }, status: :forbidden
+        render json: { error: "Staff access required" }, status: :forbidden
       end
 
       def item_params

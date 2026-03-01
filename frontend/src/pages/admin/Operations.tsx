@@ -32,6 +32,7 @@ export default function OperationsPage() {
   const [creatingPeriod, setCreatingPeriod] = useState(false)
   const [completingPeriod, setCompletingPeriod] = useState(false)
   const [reopeningPeriod, setReopeningPeriod] = useState(false)
+  const [expandedItemDetails, setExpandedItemDetails] = useState<Record<number, boolean>>({})
 
   const [itemDrafts, setItemDrafts] = useState<Record<number, { note: string; proof_url: string }>>({})
 
@@ -73,6 +74,7 @@ export default function OperationsPage() {
       const result = await api.getPayrollChecklistPeriod(periodId)
       if (result.data) {
         setPeriodDetail(result.data)
+        setExpandedItemDetails({})
         setItemDrafts(
           result.data.items.reduce((acc, item) => {
             acc[item.id] = { note: item.note || '', proof_url: item.proof_url || '' }
@@ -90,12 +92,40 @@ export default function OperationsPage() {
     }
   }, [])
 
+  const createPeriodForCell = useCallback(async (cell: SelectedCell) => {
+    setCreatingPeriod(true)
+    setDrawerError(null)
+    try {
+      const result = await api.createPayrollChecklistPeriod({
+        client_id: cell.clientId,
+        start: cell.periodStart,
+        end: cell.periodEnd,
+      })
+      if (result.data) {
+        await loadBoard()
+        return result.data.period.id
+      }
+      if (result.error) {
+        setDrawerError(result.error)
+      }
+      return null
+    } catch (err) {
+      console.error('Failed to create payroll period:', err)
+      setDrawerError('Failed to create payroll period')
+      return null
+    } finally {
+      setCreatingPeriod(false)
+    }
+  }, [loadBoard])
+
   const openCell = async (cell: SelectedCell) => {
     setSelectedCell(cell)
     setPeriodDetail(null)
     setDrawerError(null)
-    if (cell.periodId) {
-      await loadPeriodDetail(cell.periodId)
+    const periodId = cell.periodId || await createPeriodForCell(cell)
+    if (periodId) {
+      setSelectedCell(prev => prev ? { ...prev, periodId } : prev)
+      await loadPeriodDetail(periodId)
     }
   }
 
@@ -103,31 +133,6 @@ export default function OperationsPage() {
     setSelectedCell(null)
     setPeriodDetail(null)
     setDrawerError(null)
-  }
-
-  const handleCreatePeriod = async () => {
-    if (!selectedCell) return
-    setCreatingPeriod(true)
-    setDrawerError(null)
-    try {
-      const result = await api.createPayrollChecklistPeriod({
-        client_id: selectedCell.clientId,
-        start: selectedCell.periodStart,
-        end: selectedCell.periodEnd,
-      })
-      if (result.data) {
-        await loadBoard()
-        await loadPeriodDetail(result.data.period.id)
-        setSelectedCell(prev => prev ? { ...prev, periodId: result.data!.period.id } : prev)
-      } else if (result.error) {
-        setDrawerError(result.error)
-      }
-    } catch (err) {
-      console.error('Failed to create payroll period:', err)
-      setDrawerError('Failed to create payroll period')
-    } finally {
-      setCreatingPeriod(false)
-    }
   }
 
   const handleToggleItem = async (item: ChecklistItem, done: boolean) => {
@@ -156,6 +161,13 @@ export default function OperationsPage() {
         ...prev[itemId],
         ...patch,
       },
+    }))
+  }
+
+  const toggleItemDetails = (itemId: number) => {
+    setExpandedItemDetails(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId],
     }))
   }
 
@@ -223,13 +235,26 @@ export default function OperationsPage() {
     }
   }
 
+  const handleRetryCreatePeriod = async () => {
+    if (!selectedCell) return
+    if (selectedCell.periodId) {
+      await loadPeriodDetail(selectedCell.periodId)
+      return
+    }
+    const periodId = await createPeriodForCell(selectedCell)
+    if (periodId) {
+      setSelectedCell(prev => prev ? { ...prev, periodId } : prev)
+      await loadPeriodDetail(periodId)
+    }
+  }
+
   const rows = useMemo(() => board?.rows || [], [board])
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark tracking-tight">Payroll Checklist Board</h1>
-        <p className="text-text-muted mt-1">Rows are clients, columns are payroll periods. Click a cell to check off steps.</p>
+        <p className="text-text-muted mt-1">Rows are clients, columns are payroll periods. Click any cell to check off steps.</p>
       </div>
 
       <div className="bg-white rounded-2xl border border-neutral-warm shadow-sm p-4 sm:p-5">
@@ -289,6 +314,15 @@ export default function OperationsPage() {
                   <td className="p-3 font-medium text-primary-dark sticky left-0 bg-white z-10">{row.client_name}</td>
                   {row.cells.map(cell => (
                     <td key={`${row.client_id}-${cell.period_start}`} className="p-3">
+                      {(() => {
+                        const isCompleted = cell.status === 'completed'
+                        const isInProgress = !isCompleted && cell.done_count > 0
+                        const cellClasses = isCompleted
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                          : isInProgress
+                            ? 'border-amber-300 bg-amber-50 text-amber-800'
+                            : 'border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100'
+                        return (
                       <button
                         type="button"
                         onClick={() => openCell({
@@ -298,19 +332,17 @@ export default function OperationsPage() {
                           periodEnd: cell.period_end,
                           periodId: cell.checklist_period_id,
                         })}
-                        className={`w-full min-h-11 px-3 py-2 rounded-lg border text-left ${
-                          cell.status === 'completed'
-                            ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                            : 'border-neutral-warm bg-white hover:bg-secondary text-primary-dark'
-                        }`}
+                        className={`w-full min-h-14 px-3 py-2 rounded-lg border text-left ${cellClasses}`}
                       >
-                        <div className="font-medium">
+                        <div className="text-lg font-semibold leading-tight">
                           {cell.done_count}/{cell.total_count}
                         </div>
                         <div className="text-xs opacity-80">
-                          {cell.checklist_period_id ? (cell.status === 'completed' ? 'Completed' : 'Open') : 'Not created'}
+                          {cell.status === 'completed' ? 'Done' : 'Open'}
                         </div>
                       </button>
+                        )
+                      })()}
                     </td>
                   ))}
                 </tr>
@@ -339,17 +371,9 @@ export default function OperationsPage() {
               </div>
             )}
 
-            {!selectedCell.periodId ? (
+            {creatingPeriod ? (
               <div className="space-y-3">
-                <p className="text-sm text-text-muted">No payroll period exists yet for this client/date range.</p>
-                <button
-                  type="button"
-                  onClick={handleCreatePeriod}
-                  disabled={creatingPeriod}
-                  className="min-h-11 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
-                >
-                  {creatingPeriod ? 'Creating...' : 'Create Payroll Period'}
-                </button>
+                <p className="text-sm text-text-muted">Creating payroll period...</p>
               </div>
             ) : drawerLoading ? (
               <div className="py-10 flex justify-center">
@@ -368,15 +392,16 @@ export default function OperationsPage() {
                   {periodDetail.items.map(item => {
                     const draft = itemDrafts[item.id] || { note: '', proof_url: '' }
                     const saving = savingItemId === item.id
+                    const detailsExpanded = !!expandedItemDetails[item.id]
                     return (
                       <div key={item.id} className="border border-neutral-warm rounded-lg p-3 space-y-2">
-                        <label className="flex items-start gap-3">
+                        <label className="min-h-11 flex items-start gap-3">
                           <input
                             type="checkbox"
                             checked={item.done}
                             onChange={(e) => handleToggleItem(item, e.target.checked)}
                             disabled={saving}
-                            className="mt-1"
+                            className="mt-1 h-5 w-5"
                           />
                           <div className="flex-1">
                             <p className="font-medium text-primary-dark">{item.position}. {item.label}</p>
@@ -387,28 +412,39 @@ export default function OperationsPage() {
                             )}
                           </div>
                         </label>
-                        <input
-                          type="text"
-                          value={draft.note}
-                          onChange={(e) => handleItemDraftChange(item.id, { note: e.target.value })}
-                          placeholder="Note"
-                          className="w-full px-3 py-2 border border-neutral-warm rounded-lg text-sm"
-                        />
-                        <input
-                          type="url"
-                          value={draft.proof_url}
-                          onChange={(e) => handleItemDraftChange(item.id, { proof_url: e.target.value })}
-                          placeholder="Proof URL (optional)"
-                          className="w-full px-3 py-2 border border-neutral-warm rounded-lg text-sm"
-                        />
                         <button
                           type="button"
-                          onClick={() => handleSaveItem(item.id)}
-                          disabled={saving}
-                          className="min-h-11 px-3 py-2 rounded-lg bg-secondary text-primary-dark text-sm font-medium hover:bg-secondary-dark disabled:opacity-50"
+                          onClick={() => toggleItemDetails(item.id)}
+                          className="text-sm text-primary hover:text-primary-dark underline"
                         >
-                          {saving ? 'Saving...' : 'Save Note/Proof'}
+                          {detailsExpanded ? 'Hide note/proof' : 'Add note/proof'}
                         </button>
+                        {detailsExpanded && (
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              value={draft.note}
+                              onChange={(e) => handleItemDraftChange(item.id, { note: e.target.value })}
+                              placeholder="Note"
+                              className="w-full px-3 py-2 border border-neutral-warm rounded-lg text-sm"
+                            />
+                            <input
+                              type="url"
+                              value={draft.proof_url}
+                              onChange={(e) => handleItemDraftChange(item.id, { proof_url: e.target.value })}
+                              placeholder="Proof URL (optional)"
+                              className="w-full px-3 py-2 border border-neutral-warm rounded-lg text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveItem(item.id)}
+                              disabled={saving}
+                              className="min-h-11 px-3 py-2 rounded-lg bg-secondary text-primary-dark text-sm font-medium hover:bg-secondary-dark disabled:opacity-50"
+                            >
+                              {saving ? 'Saving...' : 'Save note/proof'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -434,15 +470,26 @@ export default function OperationsPage() {
                       {reopeningPeriod ? 'Reopening...' : 'Reopen Period'}
                     </button>
                   )}
-                  <Link
-                    to={`/admin/clients/${selectedCell.clientId}`}
-                    className="min-h-11 inline-flex items-center px-4 py-2 rounded-lg border border-neutral-warm text-sm font-medium text-primary hover:bg-secondary"
-                  >
-                    Open Client
-                  </Link>
                 </div>
+                <Link
+                  to={`/admin/clients/${selectedCell.clientId}`}
+                  className="text-sm text-primary hover:text-primary-dark underline"
+                >
+                  Open client details
+                </Link>
               </div>
-            ) : null}
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-text-muted">Unable to open this period yet.</p>
+                <button
+                  type="button"
+                  onClick={handleRetryCreatePeriod}
+                  className="min-h-11 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark"
+                >
+                  Retry opening period
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

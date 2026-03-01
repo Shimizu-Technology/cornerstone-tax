@@ -8,39 +8,49 @@ module Api
 
       # GET /api/v1/payroll_checklists/board?start=YYYY-MM-DD&end=YYYY-MM-DD
       def board
-        default_template = PayrollChecklistTemplateService.ensure_default_template!(created_by: current_user)
         start_date = parse_date(params[:start]) || Date.current.beginning_of_month
         end_date = parse_date(params[:end]) || Date.current.end_of_month
         if end_date < start_date
           return render json: { error: "end must be on or after start" }, status: :unprocessable_entity
         end
 
-        payroll_template_ids = OperationTemplate.where(category: "payroll", is_active: true).pluck(:id)
-        payroll_template_ids = [default_template.id] if payroll_template_ids.empty?
-
-        periods = build_periods(start_date, end_date, period_anchor_for(payroll_template_ids, start_date))
-        active_auto_assignments = ClientOperationAssignment
-          .includes(:client, :operation_template)
-          .where(operation_template_id: payroll_template_ids, assignment_status: "active", auto_generate: true)
-
-        EnsurePayrollChecklistPeriodsService.new(
-          assignments: active_auto_assignments,
-          period_starts: periods.map { |period| period[:start] },
-          generated_by: current_user
-        ).call
-
+        periods = build_periods(start_date, end_date)
         assignments = ClientOperationAssignment
-          .where(operation_template_id: payroll_template_ids)
+          .includes(:operation_template)
+          .joins(:operation_template)
+          .where(assignment_status: "active")
+          .where(operation_templates: { category: "payroll", is_active: true })
           .order(created_at: :desc)
           .group_by(&:client_id)
           .transform_values { |list| list.first }
+        client_ids = assignments.keys
+        payroll_template_ids = assignments.values.map(&:operation_template_id).uniq
+
+        if client_ids.empty?
+          return render json: {
+            periods: periods.map do |period|
+              {
+                start: period[:start].iso8601,
+                end: period[:end].iso8601,
+                label: period_label(period[:start], period[:end])
+              }
+            end,
+            rows: []
+          }
+        end
 
         cycles = OperationCycle
           .includes(:operation_tasks)
-          .where(operation_template_id: payroll_template_ids, period_start: periods.first[:start]..periods.last[:start], period_end: periods.first[:end]..periods.last[:end])
+          .where(client_id: client_ids, operation_template_id: payroll_template_ids, period_start: periods.first[:start]..periods.last[:start])
         cycles_by_key = cycles.index_by { |cycle| [cycle.client_id, cycle.operation_template_id, cycle.period_start, cycle.period_end] }
+        cycle_counts = cycles.each_with_object({}) do |cycle, memo|
+          tasks = cycle.operation_tasks.to_a
+          memo[cycle.id] = {
+            done_count: tasks.count { |task| task.status == "done" },
+            total_count: tasks.size
+          }
+        end
 
-        client_ids = (assignments.keys + cycles.pluck(:client_id)).uniq
         clients = Client.where(id: client_ids).order(:last_name, :first_name)
         template_tasks_by_template_id = OperationTemplateTask
           .where(operation_template_id: payroll_template_ids, is_active: true)
@@ -48,22 +58,15 @@ module Api
 
         rows = clients.map do |client|
           assignment = assignments[client.id]
-          preferred_template_id =
-            assignment&.operation_template_id ||
-            cycles.select { |cycle| cycle.client_id == client.id }.max_by(&:period_start)&.operation_template_id ||
-            default_template.id
+          preferred_template_id = assignment.operation_template_id
           template_task_ids = (template_tasks_by_template_id[preferred_template_id] || []).map(&:id)
-          excluded = if assignment&.operation_template_id == preferred_template_id
-            Array(assignment.excluded_template_task_ids).map(&:to_i)
-          else
-            []
-          end
+          excluded = Array(assignment.excluded_template_task_ids).map(&:to_i)
           expected_total = (template_task_ids - excluded).size
 
           cells = periods.map do |period|
             cycle = cycles_by_key[[client.id, preferred_template_id, period[:start], period[:end]]]
-            done_count = cycle ? cycle.operation_tasks.where(status: "done").count : 0
-            total_count = cycle ? cycle.operation_tasks.count : expected_total
+            done_count = cycle ? cycle_counts.dig(cycle.id, :done_count) : 0
+            total_count = cycle ? cycle_counts.dig(cycle.id, :total_count) : expected_total
 
             {
               period_start: period[:start].iso8601,
@@ -104,31 +107,16 @@ module Api
         nil
       end
 
-      def build_periods(start_date, end_date, anchor_date)
+      def build_periods(start_date, end_date)
         periods = []
-        cursor = aligned_period_start(anchor_date, start_date)
+        cursor = start_date
 
         while cursor <= end_date
-          period_end = [cursor + 13.days, end_date].min
-          full_period_end = cursor + 13.days
-          periods << { start: cursor, end: full_period_end } if full_period_end >= start_date
+          periods << { start: cursor, end: cursor + 13.days }
           cursor += 14.days
         end
 
         periods
-      end
-
-      def period_anchor_for(template_ids, start_date)
-        assignment_anchor = ClientOperationAssignment.where(operation_template_id: template_ids).where.not(cadence_anchor: nil).minimum(:cadence_anchor)
-        assignment_anchor || Date.new(start_date.year, 1, 1)
-      end
-
-      def aligned_period_start(anchor_date, start_date)
-        anchor = anchor_date.to_date
-        return anchor if start_date <= anchor
-
-        periods_since_anchor = ((start_date - anchor) / 14.0).floor
-        anchor + (periods_since_anchor * 14)
       end
 
       def period_label(start_date, end_date)

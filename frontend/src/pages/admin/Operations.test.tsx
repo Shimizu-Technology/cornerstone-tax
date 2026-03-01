@@ -117,6 +117,81 @@ describe('OperationsPage', () => {
     })
   })
 
+  it('auto-creates a period when clicking an empty cell', async () => {
+    apiMocks.getPayrollChecklistBoard
+      .mockResolvedValueOnce({
+        data: {
+          periods: [
+            {
+              start: '2026-02-01',
+              end: '2026-02-14',
+              label: 'Feb 1–14',
+            },
+          ],
+          rows: [
+            {
+              client_id: 301,
+              client_name: 'Acme Co',
+              cells: [
+                {
+                  period_start: '2026-02-01',
+                  period_end: '2026-02-14',
+                  checklist_period_id: null,
+                  done_count: 0,
+                  total_count: 3,
+                  status: 'open',
+                },
+              ],
+            },
+          ],
+        },
+      })
+      .mockResolvedValue({
+        data: {
+          periods: [
+            {
+              start: '2026-02-01',
+              end: '2026-02-14',
+              label: 'Feb 1–14',
+            },
+          ],
+          rows: [
+            {
+              client_id: 301,
+              client_name: 'Acme Co',
+              cells: [
+                {
+                  period_start: '2026-02-01',
+                  period_end: '2026-02-14',
+                  checklist_period_id: 102,
+                  done_count: 0,
+                  total_count: 3,
+                  status: 'open',
+                },
+              ],
+            },
+          ],
+        },
+      })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('0/3')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText('0/3'))
+
+    await waitFor(() => {
+      expect(apiMocks.createPayrollChecklistPeriod).toHaveBeenCalledWith({
+        client_id: 301,
+        start: '2026-02-01',
+        end: '2026-02-14',
+      })
+      expect(apiMocks.getPayrollChecklistPeriod).toHaveBeenCalledWith(102)
+    })
+  })
+
   it('refreshes board when range button clicked', async () => {
     renderPage()
 
