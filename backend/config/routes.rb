@@ -6,6 +6,7 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       # Authentication
+      get "auth/me", to: "auth#me"
       post "auth/me", to: "auth#me"
 
       # Intake form submission (public, no auth required)
@@ -18,7 +19,34 @@ Rails.application.routes.draw do
       resources :workflow_stages, only: [:index]
 
       # Admin/Employee routes (requires authentication)
-      resources :clients, only: [:index, :show, :create, :update]
+      resources :clients, only: [:index, :show, :create, :update] do
+        resources :contacts, controller: "client_contacts", only: [:index, :create, :update, :destroy]
+        resources :operation_assignments, controller: "client_operation_assignments", only: [:index, :create]
+        resources :operation_cycles, controller: "operation_cycles", only: [:index] do
+          collection do
+            post :generate
+          end
+        end
+      end
+      resources :client_operation_assignments, only: [:update]
+      resources :operation_templates, only: [:index, :create, :update, :destroy] do
+        resources :tasks, controller: "operation_template_tasks", only: [:index, :create] do
+          collection do
+            post :reorder
+          end
+        end
+      end
+      resources :operation_template_tasks, only: [:update, :destroy]
+      resources :operation_cycles, only: [:show]
+      resources :operation_tasks, only: [:index, :update] do
+        collection do
+          get :my_tasks
+        end
+        member do
+          post :complete
+          post :reopen
+        end
+      end
       resources :tax_returns, only: [:index, :show, :update] do
         member do
           post :assign
@@ -62,6 +90,31 @@ Rails.application.routes.draw do
       # Schedule time presets (active only, for schedule form)
       resources :schedule_time_presets, only: [:index]
 
+      # Service types (active only, for dropdowns)
+      resources :service_types, only: [:index]
+
+      # Payroll checklist facade endpoints
+      get "payroll_checklists/board", to: "payroll_checklists#board"
+      resources :payroll_checklists, only: [] do
+        collection do
+          post "periods", to: "payroll_checklist_periods#create"
+        end
+      end
+      resources :payroll_checklist_periods, path: "payroll_checklists/periods", only: [:show] do
+        member do
+          post :complete
+          post :reopen
+        end
+      end
+      resources :payroll_checklist_items, path: "payroll_checklists/items", only: [:update] do
+        member do
+          patch :toggle
+        end
+      end
+
+      # Payroll ingest (shared-secret auth, service-to-service)
+      post "payroll/ingest", to: "payroll_ingest#create"
+
       # Admin-only routes
       namespace :admin do
         resources :workflow_stages do
@@ -86,6 +139,21 @@ Rails.application.routes.draw do
             post :reorder
           end
         end
+
+        # Service types and tasks management
+        resources :service_types, only: [:index, :show, :create, :update, :destroy] do
+          collection do
+            post :reorder
+          end
+          resources :tasks, controller: 'service_tasks', only: [:index, :show, :create, :update, :destroy] do
+            collection do
+              post :reorder
+            end
+          end
+        end
+
+        # Payroll import batches (read-only admin visibility)
+        resources :payroll_import_batches, only: [:index, :show]
 
         # System settings
         resource :settings, only: [:show, :update]

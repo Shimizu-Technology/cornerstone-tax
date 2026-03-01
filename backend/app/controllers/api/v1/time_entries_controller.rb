@@ -70,7 +70,10 @@ module Api
           return render json: { error: "This time period is locked and cannot be modified" }, status: :forbidden
         end
 
-        @time_entry = current_user.time_entries.build(time_entry_params)
+        entry_owner = resolve_entry_owner
+        return unless entry_owner
+
+        @time_entry = entry_owner.time_entries.build(time_entry_params.except(:user_id))
 
         if @time_entry.save
           # Log the audit event
@@ -107,7 +110,7 @@ module Api
           time_category_id: @time_entry.time_category_id
         }
 
-        if @time_entry.update(time_entry_params)
+        if @time_entry.update(time_entry_params.except(:user_id))
           # Log the audit event with changes
           new_values = {
             hours: @time_entry.hours.to_f,
@@ -182,8 +185,27 @@ module Api
           :time_category_id,
           :client_id,
           :tax_return_id,
-          :break_minutes
+          :break_minutes,
+          :user_id
         )
+      end
+
+      def resolve_entry_owner
+        requested_user_id = time_entry_params[:user_id]
+        return current_user if requested_user_id.blank?
+
+        unless current_user.admin?
+          render json: { error: "Only admins can create entries for other users" }, status: :forbidden
+          return nil
+        end
+
+        user = User.staff.find_by(id: requested_user_id)
+        unless user
+          render json: { error: "Selected user is invalid" }, status: :unprocessable_entity
+          return nil
+        end
+
+        user
       end
 
       def period_locked_for_date?(date)

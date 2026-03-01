@@ -31,6 +31,7 @@ const Users = lazy(() => import("./pages/admin/Users"))
 const Settings = lazy(() => import("./pages/admin/Settings"))
 const TimeTracking = lazy(() => import("./pages/admin/TimeTracking"))
 const Schedule = lazy(() => import("./pages/admin/Schedule"))
+const Operations = lazy(() => import("./pages/admin/Operations"))
 
 // Loading fallback for lazy routes
 function AdminLoadingFallback() {
@@ -77,9 +78,19 @@ function App() {
           <Route path="returns" element={<Suspense fallback={<AdminLoadingFallback />}><TaxReturns /></Suspense>} />
           <Route path="returns/:id" element={<Suspense fallback={<AdminLoadingFallback />}><TaxReturnDetail /></Suspense>} />
           <Route path="activity" element={<Suspense fallback={<AdminLoadingFallback />}><Activity /></Suspense>} />
-          <Route path="users" element={<Suspense fallback={<AdminLoadingFallback />}><Users /></Suspense>} />
-          <Route path="settings" element={<Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>} />
+          {/* CST-27: Admin-only routes require admin role */}
+          <Route path="users" element={
+            <ProtectedRoute requiredRole="admin">
+              <Suspense fallback={<AdminLoadingFallback />}><Users /></Suspense>
+            </ProtectedRoute>
+          } />
+          <Route path="settings" element={
+            <ProtectedRoute requiredRole="admin">
+              <Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>
+            </ProtectedRoute>
+          } />
           <Route path="time" element={<Suspense fallback={<AdminLoadingFallback />}><TimeTracking /></Suspense>} />
+          <Route path="operations" element={<Suspense fallback={<AdminLoadingFallback />}><Operations /></Suspense>} />
           <Route path="schedule" element={<Suspense fallback={<AdminLoadingFallback />}><Schedule /></Suspense>} />
         </Route>
       </Routes>
