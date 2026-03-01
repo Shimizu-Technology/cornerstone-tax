@@ -12,20 +12,22 @@ module Api
       def toggle
         done = ActiveModel::Type::Boolean.new.cast(params[:done])
 
-        if done
-          @item.update_columns(
+        attrs = if done
+          {
             status: "done",
-            completed_at: Time.current,
-            completed_by_id: current_user.id,
-            updated_at: Time.current
-          )
+            completed_at: (@item.completed_at || Time.current),
+            completed_by_id: (@item.completed_by_id || current_user.id)
+          }
         else
-          @item.update_columns(
+          {
             status: "not_started",
             completed_at: nil,
-            completed_by_id: nil,
-            updated_at: Time.current
-          )
+            completed_by_id: nil
+          }
+        end
+
+        unless @item.update(attrs)
+          return render json: { error: @item.errors.full_messages.join(", ") }, status: :unprocessable_entity
         end
 
         AuditLog.log(
@@ -53,7 +55,11 @@ module Api
       private
 
       def set_item
-        @item = OperationTask.includes(:completed_by).find(params[:id])
+        @item = OperationTask
+          .includes(:completed_by, operation_cycle: :operation_template)
+          .joins(operation_cycle: :operation_template)
+          .where(operation_templates: { category: "payroll" })
+          .find(params[:id])
       end
 
       def authorize_item_update!

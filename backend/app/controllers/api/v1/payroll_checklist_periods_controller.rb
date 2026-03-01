@@ -64,7 +64,7 @@ module Api
 
       # POST /api/v1/payroll_checklists/periods/:id/complete
       def complete
-        unless @period.operation_tasks.where.not(status: "done").none?
+        unless @period.operation_tasks.all? { |task| task.status == "done" }
           return render json: { error: "All required checklist items must be completed before closing period" },
                         status: :unprocessable_entity
         end

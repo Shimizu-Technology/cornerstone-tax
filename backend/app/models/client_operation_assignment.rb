@@ -12,7 +12,7 @@ class ClientOperationAssignment < ApplicationRecord
   validates :assignment_status, inclusion: { in: ASSIGNMENT_STATUSES }
   validates :operation_template_id, uniqueness: { scope: :client_id }
   validate :date_range_is_valid
-  validate :excluded_template_tasks_belong_to_template
+  validate :excluded_template_tasks_belong_to_template, if: :should_validate_excluded_template_tasks?
 
   scope :active, -> { where(assignment_status: "active") }
   scope :paused, -> { where(assignment_status: "paused") }
@@ -35,5 +35,9 @@ class ClientOperationAssignment < ApplicationRecord
     return if invalid_ids.empty?
 
     errors.add(:excluded_template_task_ids, "contain invalid template tasks")
+  end
+
+  def should_validate_excluded_template_tasks?
+    will_save_change_to_excluded_template_task_ids? || new_record?
   end
 end

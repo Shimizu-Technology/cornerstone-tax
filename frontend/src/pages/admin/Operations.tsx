@@ -46,18 +46,22 @@ export default function OperationsPage() {
 
   useEffect(() => {
     const today = new Date()
-    const start = new Date(today.getFullYear(), today.getMonth(), 1)
-    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    const year = today.getUTCFullYear()
+    const month = today.getUTCMonth()
+    const start = new Date(Date.UTC(year, month, 1))
+    const end = new Date(Date.UTC(year, month + 1, 0))
     setStartDate(start.toISOString().slice(0, 10))
     setEndDate(end.toISOString().slice(0, 10))
   }, [])
 
-  const loadBoard = useCallback(async () => {
-    if (!startDate || !endDate) return
+  const loadBoard = useCallback(async (range?: { start?: string; end?: string }) => {
+    const start = range?.start ?? startDate
+    const end = range?.end ?? endDate
+    if (!start || !end) return
     setLoading(true)
     setError(null)
     try {
-      const result = await api.getPayrollChecklistBoard({ start: startDate, end: endDate })
+      const result = await api.getPayrollChecklistBoard({ start, end })
       if (result.data) {
         setBoard(result.data)
       } else if (result.error) {
@@ -257,10 +261,11 @@ export default function OperationsPage() {
         end: nextEnd,
       })
       if (result.data) {
-        if (endDate && nextEnd > endDate) {
-          setEndDate(nextEnd)
+        const nextBoardEnd = endDate && nextEnd > endDate ? nextEnd : endDate
+        if (nextBoardEnd && nextBoardEnd !== endDate) {
+          setEndDate(nextBoardEnd)
         }
-        await loadBoard()
+        await loadBoard({ end: nextBoardEnd || nextEnd })
         setSelectedCell(prev => prev ? {
           ...prev,
           periodStart: nextStart,
@@ -317,7 +322,7 @@ export default function OperationsPage() {
           />
           <button
             type="button"
-            onClick={loadBoard}
+            onClick={() => { void loadBoard() }}
             className="min-h-11 px-4 py-2 rounded-xl text-sm font-medium bg-primary text-white hover:bg-primary-dark"
           >
             Refresh Board
