@@ -14,6 +14,12 @@ interface SelectedCell {
 
 type ChecklistItem = PayrollChecklistPeriodDetailResponse['items'][0]
 
+function addDaysToIsoDate(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
 export default function OperationsPage() {
   useEffect(() => {
     document.title = 'Payroll Checklist Board | Cornerstone Admin'
@@ -32,6 +38,8 @@ export default function OperationsPage() {
   const [creatingPeriod, setCreatingPeriod] = useState(false)
   const [completingPeriod, setCompletingPeriod] = useState(false)
   const [reopeningPeriod, setReopeningPeriod] = useState(false)
+  const [creatingNextPeriod, setCreatingNextPeriod] = useState(false)
+  const [compactMode, setCompactMode] = useState(false)
   const [expandedItemDetails, setExpandedItemDetails] = useState<Record<number, boolean>>({})
 
   const [itemDrafts, setItemDrafts] = useState<Record<number, { note: string; proof_url: string }>>({})
@@ -235,6 +243,42 @@ export default function OperationsPage() {
     }
   }
 
+  const handleCreateNextPeriod = async () => {
+    if (!selectedCell) return
+
+    const nextStart = addDaysToIsoDate(selectedCell.periodEnd, 1)
+    const nextEnd = addDaysToIsoDate(nextStart, 13)
+    setCreatingNextPeriod(true)
+    setDrawerError(null)
+    try {
+      const result = await api.createPayrollChecklistPeriod({
+        client_id: selectedCell.clientId,
+        start: nextStart,
+        end: nextEnd,
+      })
+      if (result.data) {
+        if (endDate && nextEnd > endDate) {
+          setEndDate(nextEnd)
+        }
+        await loadBoard()
+        setSelectedCell(prev => prev ? {
+          ...prev,
+          periodStart: nextStart,
+          periodEnd: nextEnd,
+          periodId: result.data!.period.id,
+        } : prev)
+        await loadPeriodDetail(result.data.period.id)
+      } else if (result.error) {
+        setDrawerError(result.error)
+      }
+    } catch (err) {
+      console.error('Failed to create next payroll period:', err)
+      setDrawerError('Failed to create next payroll period')
+    } finally {
+      setCreatingNextPeriod(false)
+    }
+  }
+
   const handleRetryCreatePeriod = async () => {
     if (!selectedCell) return
     if (selectedCell.periodId) {
@@ -278,6 +322,13 @@ export default function OperationsPage() {
           >
             Refresh Board
           </button>
+          <button
+            type="button"
+            onClick={() => setCompactMode(prev => !prev)}
+            className="min-h-11 px-4 py-2 rounded-xl text-sm font-medium border border-neutral-warm text-primary-dark hover:bg-secondary"
+          >
+            {compactMode ? 'Standard Mode' : 'Compact Mode'}
+          </button>
         </div>
       </div>
 
@@ -297,12 +348,12 @@ export default function OperationsPage() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-neutral-warm shadow-sm overflow-auto">
-          <table className="min-w-full text-sm">
+          <table className={`min-w-full ${compactMode ? 'text-xs' : 'text-sm'}`}>
             <thead className="bg-secondary">
               <tr>
                 <th className="text-left p-3 font-semibold text-primary-dark sticky left-0 bg-secondary z-10">Client</th>
                 {board.periods.map(period => (
-                  <th key={`${period.start}-${period.end}`} className="text-left p-3 font-semibold text-primary-dark min-w-[170px]">
+                  <th key={`${period.start}-${period.end}`} className={`text-left p-3 font-semibold text-primary-dark ${compactMode ? 'min-w-[130px]' : 'min-w-[170px]'}`}>
                     {period.label}
                   </th>
                 ))}
@@ -332,9 +383,9 @@ export default function OperationsPage() {
                           periodEnd: cell.period_end,
                           periodId: cell.checklist_period_id,
                         })}
-                        className={`w-full min-h-14 px-3 py-2 rounded-lg border text-left ${cellClasses}`}
+                        className={`w-full ${compactMode ? 'min-h-11' : 'min-h-14'} px-3 py-2 rounded-lg border text-left ${cellClasses}`}
                       >
-                        <div className="text-lg font-semibold leading-tight">
+                        <div className={`${compactMode ? 'text-base' : 'text-lg'} font-semibold leading-tight`}>
                           {cell.done_count}/{cell.total_count}
                         </div>
                         <div className="text-xs opacity-80">
@@ -470,6 +521,14 @@ export default function OperationsPage() {
                       {reopeningPeriod ? 'Reopening...' : 'Reopen Period'}
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={handleCreateNextPeriod}
+                    disabled={creatingNextPeriod}
+                    className="min-h-11 px-4 py-2 rounded-lg border border-neutral-warm text-sm font-medium text-primary hover:bg-secondary disabled:opacity-50"
+                  >
+                    {creatingNextPeriod ? 'Creating Next...' : 'Create Next Period'}
+                  </button>
                 </div>
                 <Link
                   to={`/admin/clients/${selectedCell.clientId}`}

@@ -205,4 +205,39 @@ describe('OperationsPage', () => {
       expect(apiMocks.getPayrollChecklistBoard).toHaveBeenCalledTimes(2)
     })
   })
+
+  it('creates next period from drawer quick action', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('1/3')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText('1/3'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create Next Period' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Next Period' }))
+
+    await waitFor(() => {
+      expect(apiMocks.createPayrollChecklistPeriod).toHaveBeenCalledWith({
+        client_id: 301,
+        start: '2026-02-15',
+        end: '2026-02-28',
+      })
+    })
+  })
+
+  it('toggles compact mode label', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Compact Mode' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compact Mode' }))
+    expect(screen.getByRole('button', { name: 'Standard Mode' })).toBeInTheDocument()
+  })
 })
