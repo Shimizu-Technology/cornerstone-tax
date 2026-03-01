@@ -53,7 +53,11 @@ module Api
       private
 
       def set_item
-        @item = OperationTask.includes(:completed_by).find(params[:id])
+        @item = OperationTask
+          .joins(operation_cycle: :operation_template)
+          .where(operation_templates: { category: "payroll" })
+          .includes(:completed_by)
+          .find(params[:id])
       end
 
       def authorize_item_update!

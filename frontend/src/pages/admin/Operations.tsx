@@ -46,10 +46,16 @@ export default function OperationsPage() {
 
   useEffect(() => {
     const today = new Date()
-    const start = new Date(today.getFullYear(), today.getMonth(), 1)
-    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-    setStartDate(start.toISOString().slice(0, 10))
-    setEndDate(end.toISOString().slice(0, 10))
+    const year = today.getFullYear()
+    const month = today.getMonth()
+    const startDay = 1
+    const endDay = new Date(year, month + 1, 0).getDate()
+    
+    const startStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`
+    const endStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
+    
+    setStartDate(startStr)
+    setEndDate(endStr)
   }, [])
 
   const loadBoard = useCallback(async () => {
@@ -257,10 +263,6 @@ export default function OperationsPage() {
         end: nextEnd,
       })
       if (result.data) {
-        if (endDate && nextEnd > endDate) {
-          setEndDate(nextEnd)
-        }
-        await loadBoard()
         setSelectedCell(prev => prev ? {
           ...prev,
           periodStart: nextStart,
@@ -268,6 +270,11 @@ export default function OperationsPage() {
           periodId: result.data!.period.id,
         } : prev)
         await loadPeriodDetail(result.data.period.id)
+        if (endDate && nextEnd > endDate) {
+          setEndDate(nextEnd)
+        } else {
+          await loadBoard()
+        }
       } else if (result.error) {
         setDrawerError(result.error)
       }
