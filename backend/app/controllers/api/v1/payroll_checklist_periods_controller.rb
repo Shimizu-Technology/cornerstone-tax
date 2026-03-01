@@ -98,7 +98,11 @@ module Api
       end
 
       def set_period
-        @period = OperationCycle.includes(:client, operation_tasks: :completed_by).find(params[:id])
+        @period = OperationCycle
+          .includes(:client, operation_tasks: :completed_by)
+          .joins(:operation_template)
+          .where(operation_templates: { category: "payroll" })
+          .find(params[:id])
       end
 
       def serialize_period_details(period)
@@ -107,7 +111,7 @@ module Api
             done_count: period.operation_tasks.count { |item| item.status == "done" },
             total_count: period.operation_tasks.size
           ),
-          items: period.operation_tasks.ordered.map { |item| serialize_item(item) }
+          items: period.operation_tasks.sort_by(&:position).map { |item| serialize_item(item) }
         }
       end
 

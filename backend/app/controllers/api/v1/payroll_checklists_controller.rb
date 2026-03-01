@@ -3,6 +3,7 @@
 module Api
   module V1
     class PayrollChecklistsController < BaseController
+      MAX_BOARD_PERIODS = 52
       before_action :authenticate_user!
       before_action :require_staff!
 
@@ -112,7 +113,7 @@ module Api
         periods = []
         cursor = start_date
 
-        while cursor <= end_date
+        while cursor <= end_date && periods.length < MAX_BOARD_PERIODS
           periods << { start: cursor, end: cursor + 13.days }
           cursor += 14.days
         end

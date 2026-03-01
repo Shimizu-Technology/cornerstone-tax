@@ -42,7 +42,10 @@ module Api
 
       # PATCH /api/v1/payroll_checklists/items/:id
       def update
-        @item.update!(item_params)
+        unless @item.update(item_params)
+          return render json: { error: @item.errors.full_messages.join(", ") }, status: :unprocessable_entity
+        end
+
         AuditLog.log(
           auditable: @item,
           action: "updated",
@@ -63,9 +66,11 @@ module Api
       end
 
       def authorize_item_update!
-        return if current_user.staff?
+        return if current_user.admin?
+        return if @item.assigned_to_id.blank? && current_user.staff?
+        return if @item.assigned_to_id.present? && @item.assigned_to_id == current_user.id
 
-        render json: { error: "Staff access required" }, status: :forbidden
+        render json: { error: "Only admins or assigned staff can update this checklist item" }, status: :forbidden
       end
 
       def item_params
