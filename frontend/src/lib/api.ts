@@ -46,7 +46,28 @@ async function fetchApi<T>(
       return { data: undefined as unknown as T };
     }
 
-    const data = await response.json();
+    // Safely parse JSON — guard against empty or non-JSON responses
+    let data;
+    const responseText = await response.text();
+    try {
+      data = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      console.error('API Error: Failed to parse response as JSON', {
+        status: response.status,
+        body: responseText.substring(0, 200),
+      });
+      return {
+        error: `Server returned an invalid response (${response.status})`,
+        errors: ['The server may be temporarily unavailable. Please try again.'],
+      };
+    }
+
+    if (data === null && !responseText) {
+      return {
+        error: `Server returned an empty response (${response.status})`,
+        errors: ['The server may be temporarily unavailable. Please try again.'],
+      };
+    }
 
     if (!response.ok) {
       // Handle 401 specifically

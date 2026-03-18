@@ -148,3 +148,228 @@ input[type="button"],
 .animate-fadeInUp {
   animation: fadeInUp 0.4s ease-out forwards;
 }
+
+/* ===== Print Styles for Client Intake Form ===== */
+
+.print-intake-form {
+  display: none;
+}
+
+@media print {
+  /* 
+   * Hide the entire app UI and reset its space so it doesn't
+   * create blank pages. Then make the print form visible.
+   */
+  #root {
+    display: none !important;
+  }
+
+  .print-intake-form {
+    display: block !important;
+    position: relative;
+    width: 100%;
+    margin: 0;
+    padding: 0.4in 0.45in;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 10pt;
+    color: #1a1a1a;
+    line-height: 1.4;
+    background: white;
+  }
+
+  /* Two-column layout to match their physical form */
+  .print-columns {
+    display: flex;
+    gap: 20pt;
+  }
+
+  .print-col-left,
+  .print-col-right {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .print-col-left {
+    padding-right: 10pt;
+    border-right: 0.5pt solid #ccc;
+  }
+
+  .print-col-right {
+    padding-left: 10pt;
+  }
+
+  /* Title */
+  .print-title {
+    font-size: 15pt;
+    font-weight: 700;
+    margin: 0 0 10pt;
+    padding-bottom: 6pt;
+    border-bottom: 1.5pt solid #333;
+  }
+
+  /* Field rows — label: value on one line */
+  .print-field {
+    margin-bottom: 4pt;
+  }
+
+  .print-field-label {
+    font-weight: 700;
+    font-size: 9.5pt;
+  }
+
+  .print-field-value {
+    font-size: 10pt;
+    margin-left: 3pt;
+  }
+
+  /* Divider line between sections */
+  .print-divider {
+    border-top: 0.5pt solid #bbb;
+    margin: 8pt 0;
+  }
+
+  /* Filing status row */
+  .print-filing-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4pt 8pt;
+    margin-bottom: 3pt;
+  }
+
+  .print-status-option {
+    font-size: 8.5pt;
+    padding: 3pt 6pt;
+    border: 0.5pt solid #ccc;
+  }
+
+  .print-status-selected {
+    font-weight: 700;
+    background-color: #333;
+    color: white;
+    border-color: #333;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Q&A blocks */
+  .print-qa {
+    margin-bottom: 5pt;
+  }
+
+  .print-q {
+    font-size: 9.5pt;
+    margin: 0;
+    line-height: 1.35;
+  }
+
+  /* Section titles */
+  .print-section-title {
+    font-size: 11pt;
+    font-weight: 700;
+    margin: 0 0 5pt;
+    padding-bottom: 3pt;
+    border-bottom: 1pt solid #999;
+  }
+
+  .print-small-note {
+    font-size: 8pt;
+    color: #666;
+    margin: 2pt 0;
+    font-style: italic;
+  }
+
+  /* Dependent table */
+  .print-dep-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.5pt;
+    margin-top: 5pt;
+  }
+
+  .print-dep-table th,
+  .print-dep-table td {
+    padding: 3pt 4pt;
+    text-align: left;
+    border: 0.5pt solid #ccc;
+  }
+
+  .print-dep-table th {
+    background-color: #f0f0f0;
+    font-weight: 700;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.2pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Income source groups */
+  .print-income-group {
+    margin-bottom: 6pt;
+  }
+
+  .print-income-item {
+    font-size: 9.5pt;
+    margin: 0 0 2pt 10pt;
+  }
+
+  /* Authorization text */
+  .print-auth-text {
+    font-size: 9pt;
+    line-height: 1.35;
+    margin: 0 0 8pt;
+  }
+
+  /* Signature lines */
+  .print-sig-line {
+    display: flex;
+    align-items: flex-end;
+    gap: 5pt;
+    margin-bottom: 14pt;
+  }
+
+  .print-sig-blank {
+    flex: 1;
+    border-bottom: 0.5pt solid #333;
+    min-height: 14pt;
+  }
+
+  /* Office use only box */
+  .print-office-box {
+    border: 1pt solid #333;
+    padding: 6pt 8pt;
+    margin-top: 6pt;
+  }
+
+  .print-office-title {
+    font-size: 9.5pt;
+    font-weight: 700;
+    margin: 0 0 5pt;
+    text-transform: uppercase;
+  }
+
+  .print-checkbox-row {
+    display: flex;
+    gap: 14pt;
+    font-size: 9pt;
+    margin: 4pt 0;
+  }
+
+  /* Footer */
+  .print-footer {
+    margin-top: 8pt;
+    text-align: center;
+    font-size: 7.5pt;
+    color: #aaa;
+  }
+
+  .print-footer p {
+    margin: 0;
+  }
+
+  /* Force single page when possible */
+  @page {
+    margin: 0.25in;
+    size: letter;
+  }
+}
