@@ -91,6 +91,7 @@ module ClerkAuthenticatable
 
     unless @current_user&.client_id.present?
       render_forbidden("No client profile linked to this account")
+      return
     end
   end
 

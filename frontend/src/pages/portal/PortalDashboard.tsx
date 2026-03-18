@@ -90,9 +90,9 @@ export default function PortalDashboard() {
       {data.action_items.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-400 px-1">Action Needed</h2>
-          {data.action_items.map((item, i) => (
+          {data.action_items.map((item) => (
             <Link
-              key={i}
+              key={`${item.tax_return_id}-${item.type}`}
               to={`/portal/returns/${item.tax_return_id}`}
               className={`block rounded-xl p-4 border transition-all hover:shadow-md ${
                 item.type === 'documents_needed'

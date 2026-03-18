@@ -55,6 +55,8 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    if (roleFetched && userRole !== null) return
+
     try {
       const email = clerkUser.primaryEmailAddress?.emailAddress
         || clerkUser.emailAddresses?.[0]?.emailAddress
@@ -67,7 +69,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setRoleFetched(true)
     }
-  }, [isLoaded, isSignedIn, clerkUser])
+  }, [isLoaded, isSignedIn, clerkUser, roleFetched, userRole])
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
