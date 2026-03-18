@@ -37,6 +37,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
   const [roleFetched, setRoleFetched] = useState(false)
   const fetchedRef = useRef(false)
   const fetchRoleRef = useRef<((retryCount?: number) => Promise<void>) | undefined>(undefined)
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   useEffect(() => {
     setAuthTokenGetter(async () => {
@@ -74,7 +75,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
       fetchedRef.current = false
       if (retryCount < 2) {
         const delay = (retryCount + 1) * 1500
-        setTimeout(() => fetchRoleRef.current?.(retryCount + 1), delay)
+        retryTimerRef.current = setTimeout(() => fetchRoleRef.current?.(retryCount + 1), delay)
       } else {
         setUserRole(null)
         setRoleFetched(true)
@@ -90,10 +91,12 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
     if (isLoaded && isSignedIn) {
       fetchRole()
     } else if (isLoaded && !isSignedIn) {
+      clearTimeout(retryTimerRef.current)
       fetchedRef.current = false
       setUserRole(null)
       setRoleFetched(true)
     }
+    return () => clearTimeout(retryTimerRef.current)
   }, [isLoaded, isSignedIn, fetchRole])
 
   return (

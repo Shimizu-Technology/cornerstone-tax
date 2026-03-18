@@ -82,11 +82,24 @@ export default function PortalDocuments() {
     loadDocuments()
   }, [loadDocuments])
 
+  const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
+  const MAX_FILE_SIZE = 50 * 1024 * 1024
+
   const uploadFile = async (file: File) => {
     if (!selectedReturnId) return
 
     setUploadError(null)
     setUploadSuccess(null)
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setUploadError('Only PDF, JPEG, and PNG files are accepted.')
+      return
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setUploadError('File size exceeds the 50MB limit.')
+      return
+    }
+
     setUploading(true)
 
     try {
