@@ -41,6 +41,7 @@ export default function ClientList() {
   const [clients, setClients] = useState<Client[]>([])
   const [meta, setMeta] = useState<Meta | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -72,6 +73,7 @@ export default function ClientList() {
 
   async function loadClients() {
     setLoading(true)
+    setError(null)
     try {
       const result = await api.getClients({ 
         page, 
@@ -83,9 +85,13 @@ export default function ClientList() {
       if (result.data) {
         setClients(result.data.clients as Client[])
         setMeta(result.data.meta)
+      } else if (result.error) {
+        setError(result.error)
+        console.error('Failed to load clients:', result.error, result.errors)
       }
-    } catch (error) {
-      console.error('Failed to load clients:', error)
+    } catch (err) {
+      setError('Failed to load clients. Please try again.')
+      console.error('Failed to load clients:', err)
     } finally {
       setLoading(false)
     }
@@ -230,6 +236,22 @@ export default function ClientList() {
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
           </div>
+        ) : error ? (
+          <div className="px-6 py-16 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <p className="text-gray-900 font-medium mb-2">Failed to load clients</p>
+            <p className="text-gray-500 text-sm mb-4">{error}</p>
+            <button
+              onClick={loadClients}
+              className="text-primary hover:text-primary-dark font-medium"
+            >
+              Try again →
+            </button>
+          </div>
         ) : clients.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
@@ -314,9 +336,9 @@ export default function ClientList() {
                         <p className="text-sm text-gray-500">{client.phone}</p>
                       </td>
                       <td className="px-6 py-4">
-                        {client.service_types.length > 0 ? (
+                        {(client.service_types ?? []).length > 0 ? (
                           <div className="flex flex-wrap gap-1">
-                            {client.service_types.slice(0, 2).map(st => (
+                            {(client.service_types ?? []).slice(0, 2).map(st => (
                               <span 
                                 key={st.id}
                                 className="px-2 py-0.5 rounded text-xs font-medium text-white"
@@ -325,9 +347,9 @@ export default function ClientList() {
                                 {st.name.length > 12 ? st.name.slice(0, 12) + '...' : st.name}
                               </span>
                             ))}
-                            {client.service_types.length > 2 && (
+                            {(client.service_types ?? []).length > 2 && (
                               <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-600">
-                                +{client.service_types.length - 2}
+                                +{(client.service_types ?? []).length - 2}
                               </span>
                             )}
                           </div>
@@ -396,7 +418,7 @@ export default function ClientList() {
                           {client.is_service_only && (
                             <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Service Only</span>
                           )}
-                          {client.service_types.slice(0, 2).map(st => (
+                          {(client.service_types ?? []).slice(0, 2).map(st => (
                             <span 
                               key={st.id}
                               className="px-2 py-0.5 rounded text-xs font-medium text-white"

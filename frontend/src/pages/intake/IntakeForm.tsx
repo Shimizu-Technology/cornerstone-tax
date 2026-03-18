@@ -175,11 +175,15 @@ export default function IntakeForm() {
             payer_name: employer,
             notes: '',
           })),
-        ...formData.form_1099_types.map((type) => ({
-          source_type: type,
-          payer_name: formData.form_1099_payer_names[type] || '',
-          notes: '',
-        })),
+        ...formData.form_1099_types.flatMap((type) =>
+          (formData.form_1099_payer_names[type] || [])
+            .filter((name) => name.trim())
+            .map((payer) => ({
+              source_type: type,
+              payer_name: payer,
+              notes: '',
+            }))
+        ),
       ],
     };
 
@@ -905,19 +909,41 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
     const current = formData.form_1099_types;
     if (current.includes(type)) {
       updateField('form_1099_types', current.filter((t) => t !== type));
-      // Clean up payer name when unchecking
       const updatedNames = { ...formData.form_1099_payer_names };
       delete updatedNames[type];
       updateField('form_1099_payer_names', updatedNames);
     } else {
       updateField('form_1099_types', [...current, type]);
+      updateField('form_1099_payer_names', {
+        ...formData.form_1099_payer_names,
+        [type]: [''],
+      });
     }
   };
 
-  const updatePayerName = (type: string, name: string) => {
+  const updatePayerName = (type: string, index: number, name: string) => {
+    const current = [...(formData.form_1099_payer_names[type] || [''])];
+    current[index] = name;
     updateField('form_1099_payer_names', {
       ...formData.form_1099_payer_names,
-      [type]: name,
+      [type]: current,
+    });
+  };
+
+  const addPayer = (type: string) => {
+    const current = formData.form_1099_payer_names[type] || [''];
+    updateField('form_1099_payer_names', {
+      ...formData.form_1099_payer_names,
+      [type]: [...current, ''],
+    });
+  };
+
+  const removePayer = (type: string, index: number) => {
+    const current = formData.form_1099_payer_names[type] || [''];
+    const updated = current.filter((_, i) => i !== index);
+    updateField('form_1099_payer_names', {
+      ...formData.form_1099_payer_names,
+      [type]: updated.length > 0 ? updated : [''],
     });
   };
 
@@ -988,26 +1014,51 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
           ))}
         </div>
 
-        {/* Payer name fields for selected 1099 types (CST-1) */}
         {formData.form_1099_types.length > 0 && (
-          <div className="mt-4 space-y-3 p-4 bg-gray-50 rounded-xl">
+          <div className="mt-4 space-y-4 p-4 bg-gray-50 rounded-xl">
             <p className="text-sm font-medium text-gray-700">
-              Please provide the payer name for each selected form:
+              Please provide the payer name(s) for each selected form:
             </p>
             {formData.form_1099_types.map((type) => {
               const typeLabel = FORM_1099_TYPES.find((t) => t.value === type)?.label || type;
+              const payers = formData.form_1099_payer_names[type] || [''];
               return (
-                <div key={type}>
-                  <label className="block text-sm text-gray-600 mb-1">
-                    {typeLabel} — Payer Name
+                <div key={type} className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-600">
+                    {typeLabel}
                   </label>
-                  <input
-                    type="text"
-                    value={formData.form_1099_payer_names[type] || ''}
-                    onChange={(e) => updatePayerName(type, e.target.value)}
-                    placeholder="Who paid you? (e.g., Company Name)"
-                    className={`w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent ${isKioskMode ? 'text-lg' : ''}`}
-                  />
+                  {payers.map((payer, index) => (
+                    <div key={index} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={payer}
+                        onChange={(e) => updatePayerName(type, index, e.target.value)}
+                        placeholder="Who paid you? (e.g., Company Name)"
+                        className={`flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent ${isKioskMode ? 'text-lg' : ''}`}
+                      />
+                      {payers.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removePayer(type, index)}
+                          className="px-3 text-red-500 hover:bg-red-50 rounded-lg"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => addPayer(type)}
+                    className={`text-primary font-medium text-sm flex items-center gap-1 hover:underline ${isKioskMode ? 'text-base py-1' : ''}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Another {typeLabel}
+                  </button>
                 </div>
               );
             })}
@@ -1169,9 +1220,16 @@ function StepDependents({ formData, setFormData, isKioskMode }: StepDependentsPr
 
   return (
     <div className="space-y-6">
-      <p className="text-gray-600">
-        Add any dependents you want to claim on your tax return.
-      </p>
+      <div>
+        <p className="text-gray-600">
+          Add any dependents you want to claim on your tax return.
+        </p>
+        <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+          <p className="text-blue-800 text-sm">
+            <strong>Note:</strong> You may still be able to claim your child as a dependent even if they are in college, depending on age, student status, support, and residency. If you're unsure, go ahead and add them — our team will verify eligibility during the review.
+          </p>
+        </div>
+      </div>
 
       {formData.dependents.length === 0 ? (
         <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-xl">
