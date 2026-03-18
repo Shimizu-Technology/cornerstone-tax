@@ -1,0 +1,114 @@
+# frozen_string_literal: true
+
+module Api
+  module V1
+    module Portal
+      class DocumentsController < BaseController
+        before_action :set_tax_return
+        before_action :set_document, only: [:download]
+
+        # GET /api/v1/portal/tax_returns/:tax_return_id/documents
+        def index
+          documents = @tax_return.documents.order(created_at: :desc)
+          render json: {
+            documents: documents.map { |doc| serialize_document(doc) }
+          }
+        end
+
+        # POST /api/v1/portal/tax_returns/:tax_return_id/documents/presign
+        def presign
+          unless S3Service.configured?
+            return render json: { error: "File uploads are not available at this time" }, status: :service_unavailable
+          end
+
+          filename = params[:filename]
+          content_type = params[:content_type] || "application/octet-stream"
+          file_size = params[:file_size].to_i
+
+          if filename.blank?
+            return render json: { error: "Filename is required" }, status: :unprocessable_entity
+          end
+
+          if file_size <= 0
+            return render json: { error: "File size is required" }, status: :unprocessable_entity
+          end
+
+          max_size = 50.megabytes
+          if file_size > max_size
+            return render json: { error: "File size exceeds maximum of 50MB" }, status: :unprocessable_entity
+          end
+
+          allowed_types = %w[application/pdf image/jpeg image/png]
+          unless allowed_types.include?(content_type)
+            return render json: { error: "Only PDF, JPEG, and PNG files are accepted" }, status: :unprocessable_entity
+          end
+
+          result = S3Service.presign_upload(
+            filename: filename,
+            content_type: content_type,
+            tax_return_id: @tax_return.id
+          )
+
+          render json: {
+            upload_url: result[:url],
+            s3_key: result[:s3_key],
+            expires_in: 3600
+          }
+        end
+
+        # POST /api/v1/portal/tax_returns/:tax_return_id/documents
+        def create
+          document = @tax_return.documents.build(document_params)
+          document.uploaded_by = current_user
+
+          if document.save
+            render json: { document: serialize_document(document) }, status: :created
+          else
+            render json: { errors: document.errors.full_messages }, status: :unprocessable_entity
+          end
+        end
+
+        # GET /api/v1/portal/tax_returns/:tax_return_id/documents/:id/download
+        def download
+          unless S3Service.configured?
+            return render json: { error: "File downloads are not available at this time" }, status: :service_unavailable
+          end
+
+          download_url = S3Service.presign_download(
+            s3_key: @document.s3_key,
+            filename: @document.filename,
+            expires_in: 3600
+          )
+
+          render json: { download_url: download_url, expires_in: 3600 }
+        end
+
+        private
+
+        def set_tax_return
+          @tax_return = current_client.tax_returns.find(params[:tax_return_id])
+        end
+
+        def set_document
+          @document = @tax_return.documents.find(params[:id])
+        end
+
+        def document_params
+          params.require(:document).permit(:filename, :s3_key, :content_type, :file_size, :document_type)
+        end
+
+        def serialize_document(doc)
+          {
+            id: doc.id,
+            filename: doc.filename,
+            document_type: doc.document_type,
+            content_type: doc.content_type,
+            file_size: doc.file_size,
+            uploaded_by: doc.uploaded_by&.full_name,
+            created_at: doc.created_at
+          }
+        end
+      end
+    end
+  end
+end

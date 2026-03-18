@@ -73,6 +73,8 @@ module Api
             role: user.role,
             is_admin: user.admin?,
             is_staff: user.staff?,
+            is_client: user.client?,
+            client_id: user.client_id,
             created_at: user.created_at
           }
         }

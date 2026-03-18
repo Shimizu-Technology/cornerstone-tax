@@ -97,6 +97,21 @@ Rails.application.routes.draw do
       # Service types (active only, for dropdowns)
       resources :service_types, only: [:index]
 
+      # Client Portal (requires client role)
+      namespace :portal do
+        get :dashboard, to: "dashboard#show"
+        resources :tax_returns, only: [:index, :show] do
+          resources :documents, only: [:index, :create] do
+            collection do
+              post :presign
+            end
+            member do
+              get :download
+            end
+          end
+        end
+      end
+
       # Payroll checklist facade endpoints
       get "payroll_checklists/board", to: "payroll_checklists#board"
       resources :payroll_checklists, only: [] do

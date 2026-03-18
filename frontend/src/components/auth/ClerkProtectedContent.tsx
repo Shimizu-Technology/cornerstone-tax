@@ -12,12 +12,14 @@ interface UserProfile {
   role: 'admin' | 'employee' | 'client'
   is_admin: boolean
   is_staff: boolean
+  is_client: boolean
+  client_id: number | null
   created_at: string
 }
 
 interface ClerkProtectedContentProps {
   children: React.ReactNode
-  requiredRole?: 'admin' | 'employee' | 'staff'
+  requiredRole?: 'admin' | 'employee' | 'staff' | 'client'
 }
 
 type AuthStatus = 'loading' | 'checking' | 'authorized' | 'unauthorized' | 'access_denied'
@@ -77,6 +79,7 @@ export default function ClerkProtectedContent({ children, requiredRole }: ClerkP
               const hasAccess = 
                 requiredRole === 'staff' ? user.is_staff :
                 requiredRole === 'admin' ? user.is_admin :
+                requiredRole === 'client' ? user.role === 'client' :
                 user.role === requiredRole
 
               if (!hasAccess) {

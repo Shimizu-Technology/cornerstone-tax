@@ -138,6 +138,8 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [archiving, setArchiving] = useState(false)
+  const [invitingToPortal, setInvitingToPortal] = useState(false)
+  const [portalInvited, setPortalInvited] = useState(false)
   
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false)
@@ -575,6 +577,31 @@ export default function ClientDetailPage() {
     }
   }
 
+  const handleInviteToPortal = async () => {
+    if (!client) return
+    if (!client.email) {
+      alert('This client needs an email address before they can be invited to the portal.')
+      return
+    }
+    const confirm = window.confirm(
+      `Invite ${client.full_name} to the client portal?\n\nAn email will be sent to ${client.email} with instructions to create their account.`
+    )
+    if (!confirm) return
+    setInvitingToPortal(true)
+    try {
+      const result = await api.inviteClientToPortal(client.id, client.email, client.first_name, client.last_name)
+      if (result.data) {
+        setPortalInvited(true)
+      } else if (result.error) {
+        alert(result.error)
+      }
+    } catch {
+      alert('Failed to send portal invite. Please try again.')
+    } finally {
+      setInvitingToPortal(false)
+    }
+  }
+
   const handleArchiveToggle = async () => {
     if (!client) return
     const action = client.archived_at ? 'unarchive' : 'archive'
@@ -735,6 +762,27 @@ export default function ClientDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-3 self-start flex-wrap">
+          {/* Invite to Portal */}
+          {!portalInvited && (
+            <button
+              onClick={handleInviteToPortal}
+              disabled={invitingToPortal}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-medium hover:bg-primary-dark transition-colors disabled:opacity-50"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              {invitingToPortal ? 'Sending...' : 'Invite to Portal'}
+            </button>
+          )}
+          {portalInvited && (
+            <span className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm font-medium">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Portal Invite Sent
+            </span>
+          )}
           <button
             onClick={() => window.print()}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-secondary-dark rounded-xl text-gray-600 font-medium hover:bg-secondary transition-colors"

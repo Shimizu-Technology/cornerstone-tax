@@ -62,8 +62,22 @@ module Api
           end
 
           # Validate role
-          unless %w[admin employee].include?(role)
-            return render json: { error: "Role must be admin or employee" }, status: :unprocessable_entity
+          unless %w[admin employee client].include?(role)
+            return render json: { error: "Role must be admin, employee, or client" }, status: :unprocessable_entity
+          end
+
+          # Client role requires a client_id
+          client_id = params[:client_id]
+          if role == "client"
+            if client_id.blank?
+              return render json: { error: "Client ID is required for client role" }, status: :unprocessable_entity
+            end
+            unless Client.exists?(client_id)
+              return render json: { error: "Client not found" }, status: :unprocessable_entity
+            end
+            if User.exists?(client_id: client_id)
+              return render json: { error: "This client already has a portal account" }, status: :unprocessable_entity
+            end
           end
 
           # Create the user (without clerk_id - they'll get linked when they sign up)
@@ -72,7 +86,8 @@ module Api
             first_name: first_name,
             last_name: last_name.presence,
             role: role,
-            clerk_id: "pending_#{SecureRandom.hex(8)}" # Temporary placeholder until they sign up
+            client_id: role == "client" ? client_id : nil,
+            clerk_id: "pending_#{SecureRandom.hex(8)}"
           )
 
           if @user.save
@@ -93,7 +108,7 @@ module Api
           end
 
           permitted = {}
-          permitted[:role] = params[:role] if params[:role].present? && %w[admin employee].include?(params[:role])
+          permitted[:role] = params[:role] if params[:role].present? && %w[admin employee client].include?(params[:role])
 
           if @user.update(permitted)
             render json: { user: serialize_user(@user) }
@@ -132,6 +147,8 @@ module Api
             display_name: user.display_name,
             full_name: user.full_name,
             role: user.role,
+            client_id: user.client_id,
+            client_name: user.client&.full_name,
             is_active: !user.clerk_id&.start_with?("pending_"),
             is_pending: user.clerk_id&.start_with?("pending_"),
             created_at: user.created_at.iso8601,
