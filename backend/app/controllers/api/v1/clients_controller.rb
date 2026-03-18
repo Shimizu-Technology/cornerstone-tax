@@ -134,6 +134,82 @@ module Api
         render json: { errors: [e.message] }, status: :unprocessable_entity
       end
 
+      # POST /api/v1/clients/bulk_import
+      def bulk_import
+        require 'csv'
+
+        csv_file = params[:file]
+        return render json: { error: "No file provided" }, status: :unprocessable_entity unless csv_file
+
+        results = { created: [], skipped: [], errors: [] }
+
+        begin
+          csv_text = csv_file.respond_to?(:read) ? csv_file.read : csv_file.to_s
+          CSV.parse(csv_text, headers: true, encoding: 'UTF-8') do |row|
+            email = row['email']&.strip&.downcase
+            full_name = row['full_name']&.strip
+
+            unless full_name.present?
+              results[:errors] << { email: email || '(blank)', reason: "full_name is required" }
+              next
+            end
+
+            # Parse full_name into first/last
+            name_parts = full_name.split(' ', 2)
+            first_name = name_parts[0] || full_name
+            last_name = name_parts[1] || ''
+
+            # Skip if email already exists
+            if email.present? && Client.exists?(email: email)
+              results[:skipped] << { email: email, name: full_name, reason: "Email already exists" }
+              next
+            end
+
+            client_type = row['client_type']&.strip&.downcase
+            client_type = 'individual' unless %w[individual business].include?(client_type)
+
+            # Parse service_types (comma-separated names)
+            service_type_names = (row['service_types'] || '').split(',').map(&:strip).reject(&:empty?)
+
+            client = Client.new(
+              first_name: first_name,
+              last_name: last_name.present? ? last_name : '.',
+              email: email,
+              phone: row['phone']&.strip,
+              client_type: client_type,
+              business_name: row['business_name']&.strip,
+              is_new_client: true,
+              has_tax_returns: true
+            )
+
+            ActiveRecord::Base.transaction do
+              client.save!
+
+              # Attach service types if provided
+              if service_type_names.any?
+                service_type_names.each do |st_name|
+                  st = ServiceType.where("LOWER(name) = ?", st_name.downcase).first
+                  client.client_service_types.create!(service_type: st) if st
+                end
+              end
+
+              results[:created] << { name: full_name, email: email || '(none)', client_type: client_type }
+            end
+          rescue ActiveRecord::RecordInvalid => e
+            results[:errors] << { email: email || '(blank)', name: full_name || '(blank)', reason: e.message }
+          rescue => e
+            results[:errors] << { email: email || '(blank)', reason: e.message }
+          end
+        rescue CSV::MalformedCSVError => e
+          return render json: { error: "Invalid CSV format: #{e.message}" }, status: :unprocessable_entity
+        end
+
+        render json: {
+          message: "Import complete: #{results[:created].count} created, #{results[:skipped].count} skipped, #{results[:errors].count} errors",
+          results: results
+        }
+      end
+
       # PATCH /api/v1/clients/:id
       def update
         client = Client.includes(:service_types).find(params[:id])
