@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams, useLocation } from 'react-router-dom';
-import type { IntakeFormData, Dependent } from '../../types/intake';
+import type { IntakeFormData, Dependent, PayerEntry } from '../../types/intake';
 import {
   defaultIntakeFormData,
   FILING_STATUS_OPTIONS,
@@ -177,10 +177,10 @@ export default function IntakeForm() {
           })),
         ...formData.form_1099_types.flatMap((type) =>
           (formData.form_1099_payer_names[type] || [])
-            .filter((name) => name.trim())
-            .map((payer) => ({
+            .filter((entry) => entry.name.trim())
+            .map((entry) => ({
               source_type: type,
-              payer_name: payer,
+              payer_name: entry.name,
               notes: '',
             }))
         ),
@@ -905,6 +905,8 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
     updateField('w2_employers', updated.length > 0 ? updated : ['']);
   };
 
+  const newPayer = (): PayerEntry => ({ id: crypto.randomUUID(), name: '' });
+
   const toggle1099Type = (type: string) => {
     const current = formData.form_1099_types;
     if (current.includes(type)) {
@@ -916,34 +918,33 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
       updateField('form_1099_types', [...current, type]);
       updateField('form_1099_payer_names', {
         ...formData.form_1099_payer_names,
-        [type]: [''],
+        [type]: [newPayer()],
       });
     }
   };
 
-  const updatePayerName = (type: string, index: number, name: string) => {
-    const current = [...(formData.form_1099_payer_names[type] || [''])];
-    current[index] = name;
+  const updatePayerName = (type: string, id: string, name: string) => {
+    const current = formData.form_1099_payer_names[type] || [newPayer()];
     updateField('form_1099_payer_names', {
       ...formData.form_1099_payer_names,
-      [type]: current,
+      [type]: current.map((p) => (p.id === id ? { ...p, name } : p)),
     });
   };
 
   const addPayer = (type: string) => {
-    const current = formData.form_1099_payer_names[type] || [''];
+    const current = formData.form_1099_payer_names[type] || [newPayer()];
     updateField('form_1099_payer_names', {
       ...formData.form_1099_payer_names,
-      [type]: [...current, ''],
+      [type]: [...current, newPayer()],
     });
   };
 
-  const removePayer = (type: string, index: number) => {
-    const current = formData.form_1099_payer_names[type] || [''];
-    const updated = current.filter((_, i) => i !== index);
+  const removePayer = (type: string, id: string) => {
+    const current = formData.form_1099_payer_names[type] || [newPayer()];
+    const updated = current.filter((p) => p.id !== id);
     updateField('form_1099_payer_names', {
       ...formData.form_1099_payer_names,
-      [type]: updated.length > 0 ? updated : [''],
+      [type]: updated.length > 0 ? updated : [newPayer()],
     });
   };
 
@@ -1021,25 +1022,25 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
             </p>
             {formData.form_1099_types.map((type) => {
               const typeLabel = FORM_1099_TYPES.find((t) => t.value === type)?.label || type;
-              const payers = formData.form_1099_payer_names[type] || [''];
+              const payers = formData.form_1099_payer_names[type] || [];
               return (
                 <div key={type} className="space-y-2">
                   <label className="block text-sm font-medium text-gray-600">
                     {typeLabel}
                   </label>
-                  {payers.map((payer, index) => (
-                    <div key={index} className="flex gap-2">
+                  {payers.map((payer) => (
+                    <div key={payer.id} className="flex gap-2">
                       <input
                         type="text"
-                        value={payer}
-                        onChange={(e) => updatePayerName(type, index, e.target.value)}
+                        value={payer.name}
+                        onChange={(e) => updatePayerName(type, payer.id, e.target.value)}
                         placeholder="Who paid you? (e.g., Company Name)"
                         className={`flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent ${isKioskMode ? 'text-lg' : ''}`}
                       />
                       {payers.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => removePayer(type, index)}
+                          onClick={() => removePayer(type, payer.id)}
                           className="px-3 text-red-500 hover:bg-red-50 rounded-lg"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -62,7 +62,7 @@ async function fetchApi<T>(
       };
     }
 
-    if (!data) {
+    if (data === null && !responseText) {
       return {
         error: `Server returned an empty response (${response.status})`,
         errors: ['The server may be temporarily unavailable. Please try again.'],

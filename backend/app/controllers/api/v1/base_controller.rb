@@ -27,7 +27,7 @@ module Api
       def internal_server_error(exception)
         Rails.logger.error("Unhandled exception: #{exception.class} - #{exception.message}")
         Rails.logger.error(exception.backtrace&.first(20)&.join("\n"))
-        render json: { error: 'Internal server error', errors: [exception.message] }, status: :internal_server_error
+        render json: { error: 'Internal server error', errors: ['An unexpected error occurred. Please try again later.'] }, status: :internal_server_error
       end
     end
   end
