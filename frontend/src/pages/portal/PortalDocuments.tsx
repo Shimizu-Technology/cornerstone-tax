@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../../lib/api'
 import type { PortalTaxReturnSummary, PortalDocument } from '../../lib/api'
 import { formatFileSize } from '../../lib/formatUtils'
@@ -49,17 +49,24 @@ export default function PortalDocuments() {
     loadReturns()
   }, [])
 
+  const activeReturnRef = useRef(selectedReturnId)
+
   const loadDocuments = useCallback(async () => {
     if (!selectedReturnId) return
+    activeReturnRef.current = selectedReturnId
+    setDocuments([])
     try {
       const result = await api.portalDocuments(selectedReturnId)
+      if (activeReturnRef.current !== selectedReturnId) return
       if (result.data) {
         setDocuments(result.data.documents)
       } else if (result.error) {
         setLoadError(result.error)
       }
     } catch {
-      setLoadError('Failed to load documents')
+      if (activeReturnRef.current === selectedReturnId) {
+        setLoadError('Failed to load documents')
+      }
     }
   }, [selectedReturnId])
 

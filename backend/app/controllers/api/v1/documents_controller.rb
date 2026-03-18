@@ -85,6 +85,16 @@ module Api
           return render json: { error: "Invalid S3 key" }, status: :unprocessable_entity
         end
 
+        content_type = document_params[:content_type]
+        filename = document_params[:filename]
+        allowed_types = %w[application/pdf image/jpeg image/png]
+        unless content_type.present? && allowed_types.include?(content_type)
+          return render json: { error: "Invalid content type" }, status: :unprocessable_entity
+        end
+        unless content_type_matches_extension?(content_type, filename.to_s)
+          return render json: { error: "Content type does not match file extension" }, status: :unprocessable_entity
+        end
+
         document = @tax_return.documents.build(document_params)
         document.uploaded_by = current_user
 
