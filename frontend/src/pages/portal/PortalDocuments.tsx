@@ -61,6 +61,8 @@ export default function PortalDocuments() {
     if (!selectedReturnId) return
     activeReturnRef.current = selectedReturnId
     setDocuments([])
+    setUploadError(null)
+    setUploadSuccess(null)
     try {
       const result = await api.portalDocuments(selectedReturnId)
       if (activeReturnRef.current !== selectedReturnId) return

@@ -104,7 +104,7 @@ class NotificationService
       return unless resend_configured?
 
       from_email = ENV.fetch("MAILER_FROM_EMAIL", "noreply@example.com")
-      admin_url = "#{ENV.fetch('FRONTEND_URL', 'http://localhost:5173')}/admin/tax-returns/#{tax_return.id}"
+      admin_url = "#{ENV.fetch('FRONTEND_URL', 'http://localhost:5173')}/admin/returns/#{tax_return.id}"
 
       Resend::Emails.send({
         from: from_email,
