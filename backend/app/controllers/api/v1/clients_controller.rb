@@ -54,7 +54,7 @@ module Api
         page = (params[:page] || 1).to_i
         per_page = (params[:per_page] || 20).to_i.clamp(1, 100)
         total_count = clients.count(:all)
-        total_count = total_count.length if total_count.is_a?(Hash)
+        total_count = total_count.values.sum if total_count.is_a?(Hash)
         clients = clients.offset((page - 1) * per_page).limit(per_page)
 
         render json: {
