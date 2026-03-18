@@ -227,7 +227,7 @@ class NotificationService
                     <td align="center">
                       <p style="color: #888888; font-size: 12px; margin: 0;">
                         Cornerstone Accounting & Business Services<br>
-                        Hagatna, Guam · (671) 727-8242
+                        Hagatna, Guam · (671) 828-8591
                       </p>
                     </td>
                   </tr>

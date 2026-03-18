@@ -1729,7 +1729,7 @@ export const api = {
   portalUpdateSettings: (data: { notification_preference: string }) =>
     fetchApi<{ notification_preference: string }>('/api/v1/portal/settings', {
       method: 'PATCH',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ setting: data }),
     }),
 
   // Admin: Invite client to portal

@@ -25,7 +25,7 @@ module Api
         private
 
         def settings_params
-          params.permit(:notification_preference)
+          params.require(:setting).permit(:notification_preference)
         end
       end
     end

@@ -34,7 +34,11 @@ function AuthSection({ mobile = false }: { mobile?: boolean }) {
           </SignInButton>
         </SignedOut>
         <SignedIn>
-          {!isLoading && (
+          {isLoading ? (
+            <span className="mt-2 px-4 py-3 rounded-lg text-base font-medium text-gray-300 bg-gray-50 min-h-[44px] flex items-center animate-pulse">
+              Loading…
+            </span>
+          ) : (
             <Link
               to={dashboardHref}
               className="mt-2 px-4 py-3 rounded-lg text-base font-medium text-primary bg-secondary min-h-[44px] flex items-center"
@@ -57,7 +61,11 @@ function AuthSection({ mobile = false }: { mobile?: boolean }) {
         </SignInButton>
       </SignedOut>
       <SignedIn>
-        {!isLoading && (
+        {isLoading ? (
+          <span className="h-full inline-flex items-center text-sm font-medium text-gray-300 animate-pulse">
+            Loading…
+          </span>
+        ) : (
           <Link
             to={dashboardHref}
             className="h-full inline-flex items-center text-sm font-medium text-gray-600 hover:text-primary transition-colors"
