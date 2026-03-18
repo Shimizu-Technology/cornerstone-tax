@@ -149,7 +149,7 @@ class EmailService
                       <h2 style="color: #2d2a26; margin: 0 0 20px 0; font-size: 22px;">Your Client Portal is Ready</h2>
 
                       <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-                        Cornerstone Accounting has set up a client portal for you. You can now:
+                        Cornerstone Accounting has set up a client portal for you. Once you create your account, you'll be able to:
                       </p>
 
                       <ul style="color: #555555; font-size: 16px; line-height: 1.8; margin: 0 0 25px 0; padding-left: 20px;">
@@ -158,11 +158,24 @@ class EmailService
                         <li>See what actions are needed</li>
                       </ul>
 
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 0 0 20px 0; background-color: #fff8f0; border-radius: 8px; border-left: 4px solid #d97706; padding: 16px 20px;">
+                        <tr>
+                          <td>
+                            <p style="color: #92400e; font-size: 14px; font-weight: 600; margin: 0 0 4px 0;">Important: Use this email address to sign up</p>
+                            <p style="color: #92400e; font-size: 14px; margin: 0;">You must create your account using <strong>#{CGI.escapeHTML(user.email.to_s)}</strong> or you won't be able to access your portal.</p>
+                          </td>
+                        </tr>
+                      </table>
+
+                      <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                        Click the button below to create your account and access your portal:
+                      </p>
+
                       <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto 30px auto;">
                         <tr>
                           <td style="background-color: #8b7355; border-radius: 8px;">
                             <a href="#{CGI.escapeHTML(portal_url.to_s)}" target="_blank" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">
-                              Access Your Portal
+                              Create Account &amp; Access Portal
                             </a>
                           </td>
                         </tr>
@@ -173,12 +186,6 @@ class EmailService
                       </p>
                       <p style="color: #8b7355; font-size: 14px; word-break: break-all; margin: 0 0 30px 0;">
                         #{CGI.escapeHTML(portal_url.to_s)}
-                      </p>
-
-                      <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 30px 0;">
-
-                      <p style="color: #888888; font-size: 14px; line-height: 1.6; margin: 0;">
-                        <strong>Important:</strong> Sign up using this email address (<strong>#{CGI.escapeHTML(user.email.to_s)}</strong>) to access your account.
                       </p>
                     </td>
                   </tr>

@@ -96,7 +96,7 @@ class NotificationService
       notification.mark_sent!
       Rails.logger.info "Status change notification sent to #{client.email} for tax return #{tax_return.id}"
     rescue StandardError => e
-      notification.mark_failed!(e.message)
+      notification.mark_failed!(e.message) rescue nil
       Rails.logger.error "Failed to send status notification to #{client.email}: #{e.message}"
     end
 
@@ -121,7 +121,7 @@ class NotificationService
       notification.mark_sent!
       Rails.logger.info "Document upload notification sent to #{admin_email} for #{client.full_name}"
     rescue StandardError => e
-      notification.mark_failed!(e.message)
+      notification.mark_failed!(e.message) rescue nil
       Rails.logger.error "Failed to send document upload notification: #{e.message}"
     end
 

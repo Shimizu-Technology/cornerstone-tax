@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 interface DocumentViewerProps {
@@ -13,6 +13,7 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fetchIdRef = useRef(0)
 
   const handleDownload = useCallback(async () => {
     if (!url) return
@@ -33,19 +34,24 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
   }, [url, filename])
 
   const fetchUrl = useCallback(async () => {
+    const thisId = ++fetchIdRef.current
     setLoading(true)
     setError(null)
     try {
       const downloadUrl = await onFetchUrl()
+      if (fetchIdRef.current !== thisId) return
       if (downloadUrl) {
         setUrl(downloadUrl)
       } else {
         setError('Could not get file URL')
       }
     } catch {
+      if (fetchIdRef.current !== thisId) return
       setError('Failed to load document')
     } finally {
-      setLoading(false)
+      if (fetchIdRef.current === thisId) {
+        setLoading(false)
+      }
     }
   }, [onFetchUrl])
 
@@ -53,6 +59,7 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
     if (isOpen) {
       fetchUrl()
     } else {
+      fetchIdRef.current++
       setUrl(null)
       setError(null)
     }

@@ -38,6 +38,16 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
   const fetchedRef = useRef(false)
   const fetchRoleRef = useRef<((retryCount?: number) => Promise<void>) | undefined>(undefined)
   const retryTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const lastClerkIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const currentClerkId = clerkUser?.id ?? null
+    if (currentClerkId !== lastClerkIdRef.current) {
+      lastClerkIdRef.current = currentClerkId
+      fetchedRef.current = false
+      clearTimeout(retryTimerRef.current)
+    }
+  }, [clerkUser?.id])
 
   useEffect(() => {
     setAuthTokenGetter(async () => {
