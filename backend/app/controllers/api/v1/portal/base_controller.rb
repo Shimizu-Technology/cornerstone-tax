@@ -4,7 +4,6 @@ module Api
   module V1
     module Portal
       class BaseController < Api::V1::BaseController
-        before_action :authenticate_user!
         before_action :require_client!
         before_action :ensure_client_exists!
 
