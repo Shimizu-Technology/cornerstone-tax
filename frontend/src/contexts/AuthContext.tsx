@@ -57,6 +57,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const email = clerkUser.primaryEmailAddress?.emailAddress
+        || clerkUser.emailAddresses?.[0]?.emailAddress
       const response = await api.getCurrentUser(email)
       if (response.data?.user) {
         setUserRole(response.data.user.role)

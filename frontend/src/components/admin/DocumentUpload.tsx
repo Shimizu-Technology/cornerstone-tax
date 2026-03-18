@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import { api } from '../../lib/api'
 import type { Document } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
+import { formatFileSize } from '../../lib/formatUtils'
 import DocumentViewer from '../common/DocumentViewer'
 
 interface DocumentUploadProps {
@@ -23,12 +24,6 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 const ALLOWED_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
 const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
 
-function formatFileSize(bytes: number | null): string {
-  if (!bytes) return 'Unknown size'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 export default function DocumentUpload({ taxReturnId, documents, onDocumentsChange }: DocumentUploadProps) {
   const [isDragging, setIsDragging] = useState(false)
@@ -261,7 +256,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
                 onClick={() => setViewingDoc(doc)}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <svg className="w-8 h-8 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+                  <svg className="w-8 h-8 text-gray-400 shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                   </svg>
                   <div className="min-w-0">
@@ -271,7 +266,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={(e) => { e.stopPropagation(); setViewingDoc(doc) }}
                     className="p-2 text-gray-500 hover:text-primary transition-colors"

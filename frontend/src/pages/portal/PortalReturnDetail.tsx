@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../../lib/api'
+import { formatFileSize } from '../../lib/formatUtils'
 import DocumentViewer from '../../components/common/DocumentViewer'
 
 interface WorkflowStage {
@@ -185,7 +186,7 @@ export default function PortalReturnDetail() {
             <div key={stage.slug} className="flex gap-3">
               <div className="flex flex-col items-center">
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center border-2 flex-shrink-0 ${
+                  className={`w-8 h-8 rounded-full flex items-center justify-center border-2 shrink-0 ${
                     stage.current
                       ? 'bg-primary border-primary text-white shadow-md shadow-primary/25'
                       : stage.completed
@@ -264,7 +265,7 @@ export default function PortalReturnDetail() {
                   className="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50 rounded-lg px-2 -mx-2 transition-colors"
                   onClick={() => setViewingDoc(doc)}
                 >
-                  <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
                     {doc.content_type?.startsWith('image/') ? (
                       <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -281,7 +282,7 @@ export default function PortalReturnDetail() {
                       {doc.document_type?.replace('_', ' ') || 'Other'} · {formatFileSize(doc.file_size)}
                     </p>
                   </div>
-                  <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                   </svg>
@@ -301,11 +302,4 @@ export default function PortalReturnDetail() {
       />
     </div>
   )
-}
-
-function formatFileSize(bytes: number): string {
-  if (!bytes) return '—'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1048576).toFixed(1)} MB`
 }

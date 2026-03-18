@@ -108,7 +108,15 @@ module Api
           end
 
           permitted = {}
-          permitted[:role] = params[:role] if params[:role].present? && %w[admin employee client].include?(params[:role])
+          if params[:role].present? && %w[admin employee client].include?(params[:role])
+            new_role = params[:role]
+
+            if new_role == "client" && @user.client_id.blank?
+              return render json: { error: "Cannot set role to client without a linked client profile" }, status: :unprocessable_entity
+            end
+
+            permitted[:role] = new_role
+          end
 
           if @user.update(permitted)
             render json: { user: serialize_user(@user) }

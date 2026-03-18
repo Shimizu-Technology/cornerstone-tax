@@ -81,6 +81,7 @@ module Api
           :dependents,
           :service_types,
           :client_contacts,
+          :user,
           tax_returns: [:workflow_stage, :income_sources, :workflow_events, :assigned_to]
         ).find(params[:id])
 
