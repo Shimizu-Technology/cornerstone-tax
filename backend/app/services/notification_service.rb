@@ -48,6 +48,7 @@ class NotificationService
       end
 
       client = tax_return.client
+      return unless client
 
       notification = Notification.create!(
         client: client,

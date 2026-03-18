@@ -14,6 +14,24 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const handleDownload = useCallback(async () => {
+    if (!url) return
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      window.open(url, '_blank')
+    }
+  }, [url, filename])
+
   const fetchUrl = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -88,22 +106,7 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
           <div className="flex items-center gap-2 shrink-0">
             {url && (
               <button
-                onClick={async () => {
-                  try {
-                    const res = await fetch(url)
-                    const blob = await res.blob()
-                    const blobUrl = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = blobUrl
-                    a.download = filename
-                    document.body.appendChild(a)
-                    a.click()
-                    document.body.removeChild(a)
-                    URL.revokeObjectURL(blobUrl)
-                  } catch {
-                    window.open(url, '_blank')
-                  }
-                }}
+                onClick={handleDownload}
                 className="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
                 title="Download"
               >
@@ -200,22 +203,7 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
                       This file type ({contentType || 'unknown'}) can't be previewed in the browser.
                     </p>
                     <button
-                      onClick={async () => {
-                        try {
-                          const res = await fetch(url)
-                          const blob = await res.blob()
-                          const blobUrl = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = blobUrl
-                          a.download = filename
-                          document.body.appendChild(a)
-                          a.click()
-                          document.body.removeChild(a)
-                          URL.revokeObjectURL(blobUrl)
-                        } catch {
-                          window.open(url, '_blank')
-                        }
-                      }}
+                      onClick={handleDownload}
                       className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors font-medium text-sm"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

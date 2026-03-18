@@ -144,8 +144,13 @@ export default function PortalDocuments() {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setDragActive(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file) await uploadFile(file)
+    const files = e.dataTransfer.files
+    if (!files || files.length === 0) return
+    if (files.length > 1) {
+      setUploadError('Please upload one file at a time.')
+      return
+    }
+    await uploadFile(files[0])
   }
 
   const fetchViewUrl = useCallback(async () => {
