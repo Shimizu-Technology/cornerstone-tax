@@ -645,6 +645,7 @@ export interface PortalActionItem {
 export interface PortalDashboardResponse {
   client: {
     id: number;
+    first_name: string;
     full_name: string;
     email: string;
     phone: string | null;

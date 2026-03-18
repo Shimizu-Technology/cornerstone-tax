@@ -17,7 +17,7 @@ module Api
           return if performed?
 
           unless current_client
-            render json: { error: "Client profile not found. Please contact support." }, status: :forbidden
+            render_forbidden("Client profile not found. Please contact support.")
           end
         end
       end

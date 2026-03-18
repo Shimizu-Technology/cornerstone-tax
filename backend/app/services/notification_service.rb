@@ -5,7 +5,7 @@ require "cgi"
 class NotificationService
   class << self
     # Called when a tax return's workflow stage changes to a stage with notify_client = true
-    def notify_status_change(tax_return:, old_stage:, new_stage:)
+    def notify_status_change(tax_return:, new_stage:)
       return unless new_stage&.notify_client
       client = tax_return.client
       return unless client&.email.present?

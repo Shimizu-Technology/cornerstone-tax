@@ -45,10 +45,8 @@ class TaxReturn < ApplicationRecord
   end
 
   def send_status_notification
-    old_stage = WorkflowStage.find_by(id: workflow_stage_id_before_last_save)
     NotificationService.notify_status_change(
       tax_return: self,
-      old_stage: old_stage,
       new_stage: workflow_stage
     )
   rescue StandardError => e

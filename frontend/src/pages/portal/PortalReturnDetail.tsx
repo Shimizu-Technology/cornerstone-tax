@@ -63,6 +63,10 @@ export default function PortalReturnDetail() {
   }
 
   const { workflow_progress } = taxReturn
+  const currentStageIndex = workflow_progress.stages.findIndex(s => s.current)
+  const progressPercent = currentStageIndex >= 0
+    ? (currentStageIndex / Math.max(workflow_progress.stages.length - 1, 1)) * 100
+    : 0
 
   return (
     <div className="space-y-6">
@@ -110,7 +114,7 @@ export default function PortalReturnDetail() {
             <div
               className="absolute top-5 left-0 h-0.5 bg-primary transition-all duration-500"
               style={{
-                width: `${Math.max(0, ((workflow_progress.current_position - 1) / Math.max(workflow_progress.stages.length - 1, 1)) * 100)}%`
+                width: `${progressPercent}%`
               }}
             />
 

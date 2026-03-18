@@ -14,6 +14,7 @@ module Api
           render json: {
             client: {
               id: client.id,
+              first_name: client.first_name,
               full_name: client.full_name,
               email: client.email,
               phone: client.phone,

@@ -47,7 +47,7 @@ export default function PortalDashboard() {
     )
   }
 
-  const firstName = data.client.full_name.split(' ')[0]
+  const firstName = data.client.first_name || data.client.full_name.split(' ')[0]
 
   return (
     <div className="space-y-8">
