@@ -128,13 +128,13 @@ class NotificationService
     def status_change_subject(stage, tax_return)
       year = tax_return.tax_year
       case stage.slug
-      when "documents_pending"
+      when WorkflowStage::SLUGS[:documents_pending]
         "Action Needed — Documents Required for Your #{year} Tax Return"
-      when "ready_to_sign"
+      when WorkflowStage::SLUGS[:ready_to_sign]
         "Your #{year} Tax Return is Ready to Sign"
-      when "ready_for_pickup"
+      when WorkflowStage::SLUGS[:ready_for_pickup]
         "Your #{year} Tax Return is Ready for Pickup"
-      when "complete"
+      when WorkflowStage::SLUGS[:complete]
         "Your #{year} Tax Return is Complete"
       else
         "Update on Your #{year} Tax Return — #{stage.name}"
@@ -243,19 +243,19 @@ class NotificationService
     def status_message(stage, tax_return)
       year = CGI.escapeHTML(tax_return.tax_year.to_s)
       case stage.slug
-      when "documents_pending"
+      when WorkflowStage::SLUGS[:documents_pending]
         "We need some additional documents to continue preparing your #{year} tax return. Please log in to your portal to see what's needed and upload them at your convenience."
-      when "in_preparation"
+      when WorkflowStage::SLUGS[:in_preparation]
         "Great news — your #{year} tax return is now being prepared by our team. We'll notify you when there's an update."
-      when "in_review"
+      when WorkflowStage::SLUGS[:in_review]
         "Your #{year} tax return is currently under review. We're making sure everything is accurate before the next step."
-      when "ready_to_sign"
+      when WorkflowStage::SLUGS[:ready_to_sign]
         "Your #{year} tax return is ready for your signature. Please visit our office or log in to your portal for details."
-      when "filing"
+      when WorkflowStage::SLUGS[:filing]
         "Your #{year} tax return has been signed and is now being filed. Almost done!"
-      when "ready_for_pickup"
+      when WorkflowStage::SLUGS[:ready_for_pickup]
         "Your #{year} tax return is ready for pickup at our office. Please bring a valid photo ID."
-      when "complete"
+      when WorkflowStage::SLUGS[:complete]
         "Your #{year} tax return has been completed. Thank you for choosing Cornerstone Accounting!"
       else
         "The status of your #{year} tax return has been updated to <strong>#{CGI.escapeHTML(stage.name)}</strong>."

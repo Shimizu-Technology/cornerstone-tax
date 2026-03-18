@@ -48,7 +48,7 @@ module Api
         end
 
         def serialize_tax_return_detail(tr)
-          all_stages = WorkflowStage.active.ordered
+          all_stages = @all_workflow_stages ||= WorkflowStage.active.ordered.to_a
           current_position = tr.workflow_stage&.position || 0
 
           {

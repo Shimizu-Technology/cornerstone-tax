@@ -1,6 +1,16 @@
 # frozen_string_literal: true
 
 class WorkflowStage < ApplicationRecord
+  SLUGS = {
+    documents_pending: "documents_pending",
+    in_preparation: "in_preparation",
+    in_review: "in_review",
+    ready_to_sign: "ready_to_sign",
+    filing: "filing",
+    ready_for_pickup: "ready_for_pickup",
+    complete: "complete"
+  }.freeze
+
   has_many :tax_returns, dependent: :nullify
 
   validates :name, presence: true

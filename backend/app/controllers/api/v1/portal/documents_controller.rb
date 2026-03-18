@@ -39,13 +39,11 @@ module Api
             return render json: { error: "File size is required" }, status: :unprocessable_entity
           end
 
-          max_size = 50.megabytes
-          if file_size > max_size
+          if file_size > MAX_FILE_SIZE
             return render json: { error: "File size exceeds maximum of 50MB" }, status: :unprocessable_entity
           end
 
-          allowed_types = %w[application/pdf image/jpeg image/png]
-          unless allowed_types.include?(content_type)
+          unless ALLOWED_CONTENT_TYPES.include?(content_type)
             return render json: { error: "Only PDF, JPEG, and PNG files are accepted" }, status: :unprocessable_entity
           end
 
@@ -78,14 +76,13 @@ module Api
           filename = document_params[:filename]
           file_size = document_params[:file_size].to_i
 
-          allowed_types = %w[application/pdf image/jpeg image/png]
-          unless content_type.present? && allowed_types.include?(content_type)
+          unless content_type.present? && ALLOWED_CONTENT_TYPES.include?(content_type)
             return render json: { error: "Invalid content type" }, status: :unprocessable_entity
           end
           unless content_type_matches_extension?(content_type, filename.to_s)
             return render json: { error: "Content type does not match file extension" }, status: :unprocessable_entity
           end
-          if file_size <= 0 || file_size > 50.megabytes
+          if file_size <= 0 || file_size > MAX_FILE_SIZE
             return render json: { error: "File size must be between 1 byte and 50MB" }, status: :unprocessable_entity
           end
 

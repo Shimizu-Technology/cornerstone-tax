@@ -3,6 +3,9 @@
 module DocumentValidatable
   extend ActiveSupport::Concern
 
+  ALLOWED_CONTENT_TYPES = %w[application/pdf image/jpeg image/png].freeze
+  MAX_FILE_SIZE = 50.megabytes
+
   private
 
   CONTENT_TYPE_EXTENSIONS = {

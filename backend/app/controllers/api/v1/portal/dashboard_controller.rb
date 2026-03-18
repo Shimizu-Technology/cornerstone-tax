@@ -44,21 +44,21 @@ module Api
           items = []
           tax_returns.each do |tr|
             slug = tr.workflow_stage&.slug
-            if slug == "documents_pending"
+            if slug == WorkflowStage::SLUGS[:documents_pending]
               items << {
                 type: "documents_needed",
                 message: "We need additional documents for your #{tr.tax_year} tax return.",
                 tax_return_id: tr.id,
                 tax_year: tr.tax_year
               }
-            elsif slug == "ready_to_sign"
+            elsif slug == WorkflowStage::SLUGS[:ready_to_sign]
               items << {
                 type: "ready_to_sign",
                 message: "Your #{tr.tax_year} tax return is ready for signing.",
                 tax_return_id: tr.id,
                 tax_year: tr.tax_year
               }
-            elsif slug == "ready_for_pickup"
+            elsif slug == WorkflowStage::SLUGS[:ready_for_pickup]
               items << {
                 type: "ready_for_pickup",
                 message: "Your #{tr.tax_year} tax return is ready for pickup.",

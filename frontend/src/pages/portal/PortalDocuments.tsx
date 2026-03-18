@@ -12,6 +12,9 @@ const DOCUMENT_TYPES = [
   { value: 'other', label: 'Other' },
 ]
 
+const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
+const MAX_FILE_SIZE = 50 * 1024 * 1024
+
 export default function PortalDocuments() {
   useEffect(() => { document.title = 'Documents | Cornerstone Client Portal' }, [])
 
@@ -82,8 +85,6 @@ export default function PortalDocuments() {
     loadDocuments()
   }, [loadDocuments])
 
-  const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
-  const MAX_FILE_SIZE = 50 * 1024 * 1024
 
   const uploadFile = async (file: File) => {
     if (!selectedReturnId) return
