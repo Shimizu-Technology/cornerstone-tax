@@ -9,7 +9,7 @@ module Api
 
       # GET /api/v1/clients
       def index
-        clients = Client.includes(:tax_returns, :service_types, :client_contacts, tax_returns: [:workflow_stage, :assigned_to])
+        clients = Client.includes(:tax_returns, :service_types, :client_contacts, :user, tax_returns: [:workflow_stage, :assigned_to])
                         .order(created_at: :desc)
 
         # Search

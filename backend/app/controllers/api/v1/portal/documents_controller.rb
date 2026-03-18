@@ -4,6 +4,8 @@ module Api
   module V1
     module Portal
       class DocumentsController < BaseController
+        include DocumentValidatable
+
         before_action :set_tax_return
         before_action :set_document, only: [:download]
 
@@ -117,17 +119,6 @@ module Api
             uploaded_by: doc.uploaded_by&.full_name,
             created_at: doc.created_at
           }
-        end
-
-        def content_type_matches_extension?(content_type, filename)
-          ext = File.extname(filename).downcase
-          valid_mappings = {
-            "application/pdf" => %w[.pdf],
-            "image/jpeg" => %w[.jpg .jpeg],
-            "image/png" => %w[.png]
-          }
-          allowed_exts = valid_mappings[content_type]
-          allowed_exts.present? && allowed_exts.include?(ext)
         end
       end
     end

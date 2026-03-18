@@ -3,6 +3,8 @@
 module Api
   module V1
     class DocumentsController < BaseController
+      include DocumentValidatable
+
       before_action :authenticate_user!
       before_action :require_staff!
       before_action :set_tax_return
@@ -163,17 +165,6 @@ module Api
           created_at: doc.created_at,
           tax_return_id: doc.tax_return_id
         }
-      end
-
-      def content_type_matches_extension?(content_type, filename)
-        ext = File.extname(filename).downcase
-        valid_mappings = {
-          "application/pdf" => %w[.pdf],
-          "image/jpeg" => %w[.jpg .jpeg],
-          "image/png" => %w[.png]
-        }
-        allowed_exts = valid_mappings[content_type]
-        allowed_exts.present? && allowed_exts.include?(ext)
       end
     end
   end

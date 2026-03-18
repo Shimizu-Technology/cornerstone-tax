@@ -49,7 +49,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
     })
   }, [getToken])
 
-  const fetchRole = useCallback(async () => {
+  const fetchRole = useCallback(async (retryCount = 0) => {
     if (!isLoaded || !isSignedIn || !clerkUser) {
       setUserRole(null)
       setRoleFetched(true)
@@ -65,11 +65,18 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
       const response = await api.getCurrentUser(email)
       if (response.data?.user) {
         setUserRole(response.data.user.role)
+        setRoleFetched(true)
+      } else {
+        throw new Error('No user in response')
       }
     } catch {
       fetchedRef.current = false
-    } finally {
-      setRoleFetched(true)
+      if (retryCount < 2) {
+        const delay = (retryCount + 1) * 1500
+        setTimeout(() => fetchRole(retryCount + 1), delay)
+      } else {
+        setRoleFetched(true)
+      }
     }
   }, [isLoaded, isSignedIn, clerkUser])
 
