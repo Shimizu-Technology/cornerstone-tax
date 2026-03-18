@@ -191,7 +191,7 @@ export default function PortalReturnDetail() {
               {taxReturn.income_sources.map(is => (
                 <div key={is.id} className="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0">
                   <span className="text-xs bg-secondary text-primary-dark px-2.5 py-1 rounded-md font-semibold uppercase tracking-wide">
-                    {is.source_type.replace('_', ' ')}
+                    {is.source_type.replaceAll('_', ' ')}
                   </span>
                   <span className="text-sm text-gray-900">{is.payer_name}</span>
                 </div>
@@ -244,7 +244,7 @@ export default function PortalReturnDetail() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-gray-900 truncate">{doc.filename}</p>
                     <p className="text-xs text-gray-400">
-                      {doc.document_type?.replace('_', ' ') || 'Other'} · {formatFileSize(doc.file_size)}
+                      {doc.document_type?.replaceAll('_', ' ') || 'Other'} · {formatFileSize(doc.file_size)}
                     </p>
                   </div>
                   <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

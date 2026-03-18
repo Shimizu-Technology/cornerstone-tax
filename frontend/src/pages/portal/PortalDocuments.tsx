@@ -26,6 +26,12 @@ export default function PortalDocuments() {
   const [documentType, setDocumentType] = useState('other')
   const [dragActive, setDragActive] = useState(false)
   const [viewingDoc, setViewingDoc] = useState<PortalDocument | null>(null)
+  const viewingReturnIdRef = useRef<number | null>(null)
+
+  const openDocViewer = useCallback((doc: PortalDocument) => {
+    viewingReturnIdRef.current = selectedReturnId
+    setViewingDoc(doc)
+  }, [selectedReturnId])
 
   useEffect(() => {
     async function loadReturns() {
@@ -143,10 +149,10 @@ export default function PortalDocuments() {
   }
 
   const fetchViewUrl = useCallback(async () => {
-    if (!viewingDoc || !selectedReturnId) return null
-    const result = await api.portalGetDocumentDownloadUrl(selectedReturnId, viewingDoc.id)
+    if (!viewingDoc || !viewingReturnIdRef.current) return null
+    const result = await api.portalGetDocumentDownloadUrl(viewingReturnIdRef.current, viewingDoc.id)
     return result.data?.download_url || null
-  }, [viewingDoc, selectedReturnId])
+  }, [viewingDoc])
 
   if (loading) {
     return (
@@ -316,7 +322,7 @@ export default function PortalDocuments() {
               <div
                 key={doc.id}
                 className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-gray-50 rounded-lg px-2 -mx-2 transition-colors"
-                onClick={() => setViewingDoc(doc)}
+                onClick={() => openDocViewer(doc)}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 bg-secondary rounded-lg flex items-center justify-center shrink-0">
@@ -333,7 +339,7 @@ export default function PortalDocuments() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{doc.filename}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {doc.document_type?.replace('_', ' ') || 'Other'}
+                      {doc.document_type?.replaceAll('_', ' ') || 'Other'}
                       {' · '}
                       {formatFileSize(doc.file_size)}
                       {' · '}
