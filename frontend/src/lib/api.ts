@@ -592,6 +592,64 @@ export interface Document {
   tax_return_id: number;
 }
 
+// Portal Types
+export interface PortalTaxReturnSummary {
+  id: number;
+  tax_year: number;
+  status: string;
+  status_slug: string;
+  status_color: string | null;
+  assigned_to: string | null;
+  income_sources: { id: number; source_type: string; payer_name: string }[];
+  documents_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortalDocument {
+  id: number;
+  filename: string;
+  document_type: string | null;
+  content_type: string | null;
+  file_size: number | null;
+  uploaded_by?: string | null;
+  created_at: string;
+}
+
+export interface PortalTaxReturnDetail extends PortalTaxReturnSummary {
+  documents: PortalDocument[];
+  workflow_progress: {
+    current_stage: string;
+    current_position: number;
+    stages: {
+      name: string;
+      slug: string;
+      position: number;
+      color: string | null;
+      completed: boolean;
+      current: boolean;
+    }[];
+  };
+}
+
+export interface PortalActionItem {
+  type: string;
+  message: string;
+  tax_return_id: number;
+  tax_year: number;
+}
+
+export interface PortalDashboardResponse {
+  client: {
+    id: number;
+    full_name: string;
+    email: string;
+    phone: string | null;
+  };
+  tax_returns: PortalTaxReturnSummary[];
+  action_items: PortalActionItem[];
+}
+
 export interface PresignResponse {
   upload_url: string;
   s3_key: string;
@@ -1634,16 +1692,16 @@ export const api = {
   // ── Portal (Client-facing) ──
 
   portalDashboard: () =>
-    fetchApi<Record<string, unknown>>('/api/v1/portal/dashboard'),
+    fetchApi<PortalDashboardResponse>('/api/v1/portal/dashboard'),
 
   portalTaxReturns: () =>
-    fetchApi<Record<string, unknown>>('/api/v1/portal/tax_returns'),
+    fetchApi<{ tax_returns: PortalTaxReturnSummary[] }>('/api/v1/portal/tax_returns'),
 
   portalTaxReturn: (id: number) =>
-    fetchApi<Record<string, unknown>>(`/api/v1/portal/tax_returns/${id}`),
+    fetchApi<{ tax_return: PortalTaxReturnDetail }>(`/api/v1/portal/tax_returns/${id}`),
 
   portalDocuments: (taxReturnId: number) =>
-    fetchApi<Record<string, unknown>>(`/api/v1/portal/tax_returns/${taxReturnId}/documents`),
+    fetchApi<{ documents: PortalDocument[] }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents`),
 
   portalPresignDocument: (taxReturnId: number, data: { filename: string; content_type: string; file_size: number }) =>
     fetchApi<{ upload_url: string; s3_key: string }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents/presign`, {
@@ -1652,7 +1710,7 @@ export const api = {
     }),
 
   portalCreateDocument: (taxReturnId: number, data: { filename: string; s3_key: string; content_type: string; file_size: number; document_type: string }) =>
-    fetchApi<Record<string, unknown>>(`/api/v1/portal/tax_returns/${taxReturnId}/documents`, {
+    fetchApi<{ document: PortalDocument }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents`, {
       method: 'POST',
       body: JSON.stringify({ document: data }),
     }),
@@ -1662,7 +1720,7 @@ export const api = {
 
   // Admin: Invite client to portal
   inviteClientToPortal: (clientId: number, email?: string, firstName?: string, lastName?: string) =>
-    fetchApi<{ user: Record<string, unknown> }>('/api/v1/admin/users', {
+    fetchApi<{ user: { id: number; email: string; role: string; client_id: number | null } }>('/api/v1/admin/users', {
       method: 'POST',
       body: JSON.stringify({ role: 'client', client_id: clientId, email, first_name: firstName, last_name: lastName }),
     }),

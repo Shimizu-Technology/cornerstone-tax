@@ -1,51 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../../lib/api'
+import type { PortalTaxReturnDetail, PortalDocument } from '../../lib/api'
 import { formatFileSize } from '../../lib/formatUtils'
 import DocumentViewer from '../../components/common/DocumentViewer'
 
-interface WorkflowStage {
-  name: string
-  slug: string
-  position: number
-  color: string
-  completed: boolean
-  current: boolean
-}
-
-interface PortalDoc {
-  id: number
-  filename: string
-  document_type: string
-  content_type: string | null
-  file_size: number
-  created_at: string
-}
-
-interface TaxReturnDetail {
-  id: number
-  tax_year: number
-  status: string
-  status_slug: string
-  status_color: string
-  assigned_to: string | null
-  income_sources: Array<{ id: number; source_type: string; payer_name: string }>
-  documents: PortalDoc[]
-  workflow_progress: {
-    current_stage: string
-    current_position: number
-    stages: WorkflowStage[]
-  }
-  created_at: string
-  updated_at: string
-}
-
 export default function PortalReturnDetail() {
   const { id } = useParams<{ id: string }>()
-  const [taxReturn, setTaxReturn] = useState<TaxReturnDetail | null>(null)
+  const [taxReturn, setTaxReturn] = useState<PortalTaxReturnDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [viewingDoc, setViewingDoc] = useState<PortalDoc | null>(null)
+  const [viewingDoc, setViewingDoc] = useState<PortalDocument | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -53,7 +18,7 @@ export default function PortalReturnDetail() {
       try {
         const result = await api.portalTaxReturn(parseInt(id))
         if (result.data) {
-          setTaxReturn((result.data as { tax_return: TaxReturnDetail }).tax_return)
+          setTaxReturn(result.data.tax_return)
         } else if (result.error) {
           setError(result.error)
         }

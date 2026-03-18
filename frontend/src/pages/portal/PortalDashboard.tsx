@@ -1,37 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
-
-interface DashboardData {
-  client: {
-    id: number
-    full_name: string
-    email: string
-    phone: string
-  }
-  tax_returns: Array<{
-    id: number
-    tax_year: number
-    status: string
-    status_slug: string
-    status_color: string
-    assigned_to: string | null
-    documents_count: number
-    created_at: string
-    updated_at: string
-  }>
-  action_items: Array<{
-    type: string
-    message: string
-    tax_return_id: number
-    tax_year: number
-  }>
-}
+import type { PortalDashboardResponse } from '../../lib/api'
 
 export default function PortalDashboard() {
   useEffect(() => { document.title = 'Dashboard | Cornerstone Client Portal' }, [])
 
-  const [data, setData] = useState<DashboardData | null>(null)
+  const [data, setData] = useState<PortalDashboardResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -40,7 +15,7 @@ export default function PortalDashboard() {
       try {
         const result = await api.portalDashboard()
         if (result.data) {
-          setData(result.data as unknown as DashboardData)
+          setData(result.data)
         } else if (result.error) {
           setError(result.error)
         }

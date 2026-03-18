@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth, useUser } from '@clerk/clerk-react'
 import { setAuthTokenGetter, api } from '../lib/api'
@@ -35,6 +35,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
   const { user: clerkUser } = useUser()
   const [userRole, setUserRole] = useState<'admin' | 'employee' | 'client' | null>(null)
   const [roleFetched, setRoleFetched] = useState(false)
+  const fetchedRef = useRef(false)
 
   useEffect(() => {
     setAuthTokenGetter(async () => {
@@ -55,7 +56,8 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    if (roleFetched && userRole !== null) return
+    if (fetchedRef.current) return
+    fetchedRef.current = true
 
     try {
       const email = clerkUser.primaryEmailAddress?.emailAddress
@@ -65,16 +67,17 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
         setUserRole(response.data.user.role)
       }
     } catch {
-      // Silently fail — the protected route will handle unauthorized
+      fetchedRef.current = false
     } finally {
       setRoleFetched(true)
     }
-  }, [isLoaded, isSignedIn, clerkUser, roleFetched, userRole])
+  }, [isLoaded, isSignedIn, clerkUser])
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
       fetchRole()
     } else if (isLoaded && !isSignedIn) {
+      fetchedRef.current = false
       setUserRole(null)
       setRoleFetched(true)
     }

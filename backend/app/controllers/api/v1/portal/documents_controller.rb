@@ -43,6 +43,10 @@ module Api
             return render json: { error: "Only PDF, JPEG, and PNG files are accepted" }, status: :unprocessable_entity
           end
 
+          unless content_type_matches_extension?(content_type, filename)
+            return render json: { error: "File extension does not match the declared content type" }, status: :unprocessable_entity
+          end
+
           result = S3Service.presign_upload(
             filename: filename,
             content_type: content_type,
@@ -58,6 +62,12 @@ module Api
 
         # POST /api/v1/portal/tax_returns/:tax_return_id/documents
         def create
+          s3_key = document_params[:s3_key]
+          expected_prefix = "tax_returns/#{@tax_return.id}/"
+          unless s3_key.present? && s3_key.start_with?(expected_prefix)
+            return render json: { error: "Invalid S3 key" }, status: :unprocessable_entity
+          end
+
           document = @tax_return.documents.build(document_params)
           document.uploaded_by = current_user
 
@@ -107,6 +117,17 @@ module Api
             uploaded_by: doc.uploaded_by&.full_name,
             created_at: doc.created_at
           }
+        end
+
+        def content_type_matches_extension?(content_type, filename)
+          ext = File.extname(filename).downcase
+          valid_mappings = {
+            "application/pdf" => %w[.pdf],
+            "image/jpeg" => %w[.jpg .jpeg],
+            "image/png" => %w[.png]
+          }
+          allowed_exts = valid_mappings[content_type]
+          allowed_exts.present? && allowed_exts.include?(ext)
         end
       end
     end

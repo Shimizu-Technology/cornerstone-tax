@@ -1,23 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
-
-interface TaxReturnSummary {
-  id: number
-  tax_year: number
-  status: string
-  status_slug: string
-  status_color: string
-  assigned_to: string | null
-  documents_count: number
-  created_at: string
-  updated_at: string
-}
+import type { PortalTaxReturnSummary } from '../../lib/api'
 
 export default function PortalReturns() {
   useEffect(() => { document.title = 'My Returns | Cornerstone Client Portal' }, [])
 
-  const [returns, setReturns] = useState<TaxReturnSummary[]>([])
+  const [returns, setReturns] = useState<PortalTaxReturnSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -26,7 +15,7 @@ export default function PortalReturns() {
       try {
         const result = await api.portalTaxReturns()
         if (result.data) {
-          setReturns((result.data as { tax_returns: TaxReturnSummary[] }).tax_returns)
+          setReturns(result.data.tax_returns)
         } else if (result.error) {
           setError(result.error)
         }

@@ -1,23 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../../lib/api'
+import type { PortalTaxReturnSummary, PortalDocument } from '../../lib/api'
 import { formatFileSize } from '../../lib/formatUtils'
 import DocumentViewer from '../../components/common/DocumentViewer'
-
-interface TaxReturnSummary {
-  id: number
-  tax_year: number
-  status: string
-}
-
-interface PortalDocument {
-  id: number
-  filename: string
-  document_type: string
-  content_type: string
-  file_size: number
-  uploaded_by: string | null
-  created_at: string
-}
 
 const DOCUMENT_TYPES = [
   { value: 'w2', label: 'W-2' },
@@ -30,7 +15,7 @@ const DOCUMENT_TYPES = [
 export default function PortalDocuments() {
   useEffect(() => { document.title = 'Documents | Cornerstone Client Portal' }, [])
 
-  const [taxReturns, setTaxReturns] = useState<TaxReturnSummary[]>([])
+  const [taxReturns, setTaxReturns] = useState<PortalTaxReturnSummary[]>([])
   const [selectedReturnId, setSelectedReturnId] = useState<number | null>(null)
   const [documents, setDocuments] = useState<PortalDocument[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,7 +32,7 @@ export default function PortalDocuments() {
       try {
         const result = await api.portalTaxReturns()
         if (result.data) {
-          const returns = (result.data as { tax_returns: TaxReturnSummary[] }).tax_returns
+          const returns = result.data.tax_returns
           setTaxReturns(returns)
           if (returns.length > 0) {
             setSelectedReturnId(returns[0].id)
@@ -69,7 +54,7 @@ export default function PortalDocuments() {
     try {
       const result = await api.portalDocuments(selectedReturnId)
       if (result.data) {
-        setDocuments((result.data as { documents: PortalDocument[] }).documents)
+        setDocuments(result.data.documents)
       } else if (result.error) {
         setLoadError(result.error)
       }
