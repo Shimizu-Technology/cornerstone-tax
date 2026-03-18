@@ -245,8 +245,8 @@ module Api
           :filing_status, :is_new_client, :has_prior_year_return, :changes_from_prior_year,
           :spouse_name, :spouse_dob, :denied_eic_actc, :denied_eic_actc_year,
           :has_crypto_transactions, :wants_direct_deposit, :bank_routing_number,
-          :bank_account_number, :bank_account_type, :client_type, :business_name, 
-          :has_tax_returns
+          :bank_account_number, :bank_account_type, :client_type, :business_name,
+          :has_tax_returns, :notification_preference
         )
         # Map legacy is_service_only param to has_tax_returns (inverted logic)
         # Read from raw params since we don't permit the renamed field
@@ -332,6 +332,7 @@ module Api
           has_tax_returns: client.has_tax_returns,
           is_service_only: !client.has_tax_returns,  # Backward compatibility
           archived_at: client.archived_at,
+          notification_preference: client.notification_preference,
           has_portal_access: client.user.present? && !client.user.clerk_id&.start_with?("pending_"),
           portal_invite_pending: client.user.present? && client.user.clerk_id&.start_with?("pending_"),
           service_types: client.service_types.map do |st|

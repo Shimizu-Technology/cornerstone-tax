@@ -6,7 +6,16 @@ class Notification < ApplicationRecord
 
   NOTIFICATION_TYPES = %w[email sms].freeze
   STATUSES = %w[pending sent failed].freeze
-  TEMPLATES = %w[intake_confirmation documents_needed ready_to_sign return_filed ready_for_pickup].freeze
+  TEMPLATES = %w[
+    intake_confirmation
+    documents_needed
+    ready_to_sign
+    return_filed
+    ready_for_pickup
+    status_changed
+    document_uploaded_by_client
+    return_complete
+  ].freeze
 
   validates :notification_type, inclusion: { in: NOTIFICATION_TYPES }, allow_blank: true
   validates :status, inclusion: { in: STATUSES }

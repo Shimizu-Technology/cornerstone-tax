@@ -40,6 +40,7 @@ const PortalDashboard = lazy(() => import("./pages/portal/PortalDashboard"))
 const PortalReturns = lazy(() => import("./pages/portal/PortalReturns"))
 const PortalReturnDetail = lazy(() => import("./pages/portal/PortalReturnDetail"))
 const PortalDocuments = lazy(() => import("./pages/portal/PortalDocuments"))
+const PortalSettings = lazy(() => import("./pages/portal/PortalSettings"))
 
 // Loading fallback for lazy routes
 function AdminLoadingFallback() {
@@ -116,6 +117,7 @@ function App() {
           <Route path="returns" element={<Suspense fallback={<AdminLoadingFallback />}><PortalReturns /></Suspense>} />
           <Route path="returns/:id" element={<Suspense fallback={<AdminLoadingFallback />}><PortalReturnDetail /></Suspense>} />
           <Route path="documents" element={<Suspense fallback={<AdminLoadingFallback />}><PortalDocuments /></Suspense>} />
+          <Route path="settings" element={<Suspense fallback={<AdminLoadingFallback />}><PortalSettings /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

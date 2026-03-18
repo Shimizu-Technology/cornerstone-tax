@@ -209,6 +209,7 @@ export interface ClientDetailResponse {
     business_name: string | null;
     is_service_only: boolean;
     archived_at: string | null;
+    notification_preference: string;
     service_types: ClientServiceType[];
     contacts: ClientContact[];
     created_at: string;
@@ -645,6 +646,7 @@ export interface PortalDashboardResponse {
     full_name: string;
     email: string;
     phone: string | null;
+    notification_preference: string;
   };
   tax_returns: PortalTaxReturnSummary[];
   action_items: PortalActionItem[];
@@ -1717,6 +1719,15 @@ export const api = {
 
   portalGetDocumentDownloadUrl: (taxReturnId: number, documentId: number) =>
     fetchApi<{ download_url: string; expires_in: number }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents/${documentId}/download`),
+
+  portalGetSettings: () =>
+    fetchApi<{ notification_preference: string }>('/api/v1/portal/settings'),
+
+  portalUpdateSettings: (data: { notification_preference: string }) =>
+    fetchApi<{ notification_preference: string }>('/api/v1/portal/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
 
   // Admin: Invite client to portal
   inviteClientToPortal: (clientId: number, email?: string, firstName?: string, lastName?: string) =>

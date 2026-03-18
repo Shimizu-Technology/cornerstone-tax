@@ -100,6 +100,7 @@ Rails.application.routes.draw do
       # Client Portal (requires client role)
       namespace :portal do
         get :dashboard, to: "dashboard#show"
+        resource :settings, only: [:show, :update]
         resources :tax_returns, only: [:index, :show] do
           resources :documents, only: [:index, :create] do
             collection do

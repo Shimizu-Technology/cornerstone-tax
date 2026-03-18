@@ -16,7 +16,8 @@ module Api
               id: client.id,
               full_name: client.full_name,
               email: client.email,
-              phone: client.phone
+              phone: client.phone,
+              notification_preference: client.notification_preference
             },
             tax_returns: tax_returns.map { |tr| portal_tax_return(tr) },
             action_items: build_action_items(tax_returns)
