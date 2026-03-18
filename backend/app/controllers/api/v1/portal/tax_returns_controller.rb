@@ -66,6 +66,7 @@ module Api
                 id: doc.id,
                 filename: doc.filename,
                 document_type: doc.document_type,
+                content_type: doc.content_type,
                 file_size: doc.file_size,
                 created_at: doc.created_at
               }

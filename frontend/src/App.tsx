@@ -37,6 +37,7 @@ const Operations = lazy(() => import("./pages/admin/Operations"))
 
 // Portal Pages — lazy loaded
 const PortalDashboard = lazy(() => import("./pages/portal/PortalDashboard"))
+const PortalReturns = lazy(() => import("./pages/portal/PortalReturns"))
 const PortalReturnDetail = lazy(() => import("./pages/portal/PortalReturnDetail"))
 const PortalDocuments = lazy(() => import("./pages/portal/PortalDocuments"))
 
@@ -112,6 +113,7 @@ function App() {
           }
         >
           <Route index element={<Suspense fallback={<AdminLoadingFallback />}><PortalDashboard /></Suspense>} />
+          <Route path="returns" element={<Suspense fallback={<AdminLoadingFallback />}><PortalReturns /></Suspense>} />
           <Route path="returns/:id" element={<Suspense fallback={<AdminLoadingFallback />}><PortalReturnDetail /></Suspense>} />
           <Route path="documents" element={<Suspense fallback={<AdminLoadingFallback />}><PortalDocuments /></Suspense>} />
         </Route>

@@ -17,8 +17,11 @@ const navigation = [
 ]
 
 function AuthSection({ mobile = false }: { mobile?: boolean }) {
-  const { isClerkEnabled } = useAuthContext()
+  const { isClerkEnabled, isClient } = useAuthContext()
   if (!isClerkEnabled) return null
+
+  const dashboardHref = isClient ? '/portal' : '/admin'
+  const dashboardLabel = isClient ? 'My Portal' : 'Dashboard'
 
   if (mobile) {
     return (
@@ -26,16 +29,16 @@ function AuthSection({ mobile = false }: { mobile?: boolean }) {
         <SignedOut>
           <SignInButton mode="modal">
             <button className="mt-2 px-4 py-3 rounded-lg text-base font-medium text-gray-600 hover:bg-gray-50 min-h-[44px] flex items-center">
-              Staff Login
+              Sign In
             </button>
           </SignInButton>
         </SignedOut>
         <SignedIn>
           <Link
-            to="/admin"
+            to={dashboardHref}
             className="mt-2 px-4 py-3 rounded-lg text-base font-medium text-primary bg-secondary min-h-[44px] flex items-center"
           >
-            Dashboard
+            {dashboardLabel}
           </Link>
         </SignedIn>
       </>
@@ -47,16 +50,16 @@ function AuthSection({ mobile = false }: { mobile?: boolean }) {
       <SignedOut>
         <SignInButton mode="modal">
           <button className="h-full inline-flex items-center text-sm font-medium text-gray-600 hover:text-primary transition-colors">
-            Staff Login
+            Sign In
           </button>
         </SignInButton>
       </SignedOut>
       <SignedIn>
         <Link
-          to="/admin"
+          to={dashboardHref}
           className="h-full inline-flex items-center text-sm font-medium text-gray-600 hover:text-primary transition-colors"
         >
-          Dashboard
+          {dashboardLabel}
         </Link>
         <UserButton
           afterSignOutUrl="/"

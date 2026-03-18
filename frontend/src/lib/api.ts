@@ -1657,6 +1657,9 @@ export const api = {
       body: JSON.stringify({ document: data }),
     }),
 
+  portalGetDocumentDownloadUrl: (taxReturnId: number, documentId: number) =>
+    fetchApi<{ download_url: string; expires_in: number }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents/${documentId}/download`),
+
   // Admin: Invite client to portal
   inviteClientToPortal: (clientId: number, email?: string, firstName?: string, lastName?: string) =>
     fetchApi<{ user: Record<string, unknown> }>('/api/v1/admin/users', {

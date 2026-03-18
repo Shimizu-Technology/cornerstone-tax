@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import { api } from '../../lib/api'
 import type { Document } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
+import DocumentViewer from '../common/DocumentViewer'
 
 interface DocumentUploadProps {
   taxReturnId: number
@@ -35,6 +36,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
   const [selectedType, setSelectedType] = useState('other')
   const [error, setError] = useState<string | null>(null)
+  const [viewingDoc, setViewingDoc] = useState<Document | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -161,6 +163,12 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
     }
   }
 
+  const fetchViewUrl = useCallback(async () => {
+    if (!viewingDoc) return null
+    const result = await api.getDocumentDownloadUrl(taxReturnId, viewingDoc.id)
+    return result.data?.download_url || null
+  }, [viewingDoc, taxReturnId])
+
   const handleDelete = async (doc: Document) => {
     if (!confirm(`Delete "${doc.filename}"?`)) return
 
@@ -249,7 +257,8 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
+                onClick={() => setViewingDoc(doc)}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <svg className="w-8 h-8 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
@@ -264,7 +273,17 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
-                    onClick={() => handleDownload(doc)}
+                    onClick={(e) => { e.stopPropagation(); setViewingDoc(doc) }}
+                    className="p-2 text-gray-500 hover:text-primary transition-colors"
+                    title="View"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDownload(doc) }}
                     className="p-2 text-gray-500 hover:text-primary transition-colors"
                     title="Download"
                   >
@@ -273,7 +292,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
                     </svg>
                   </button>
                   <button
-                    onClick={() => handleDelete(doc)}
+                    onClick={(e) => { e.stopPropagation(); handleDelete(doc) }}
                     className="p-2 text-gray-500 hover:text-red-600 transition-colors"
                     title="Delete"
                   >
@@ -291,6 +310,14 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
       {documents.length === 0 && !uploading && (
         <p className="mt-4 text-sm text-gray-500 text-center">No documents uploaded yet</p>
       )}
+
+      <DocumentViewer
+        isOpen={!!viewingDoc}
+        onClose={() => setViewingDoc(null)}
+        filename={viewingDoc?.filename || ''}
+        contentType={viewingDoc?.content_type || null}
+        onFetchUrl={fetchViewUrl}
+      />
     </div>
   )
 }
