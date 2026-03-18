@@ -27,6 +27,8 @@ class NotificationService
         tax_return: tax_return,
         new_stage: new_stage
       )
+    rescue StandardError => e
+      Rails.logger.error "Status change notification failed for tax return #{tax_return.id}: #{e.message}"
     end
 
     # Called when a client uploads a document — notifies the admin
@@ -54,6 +56,8 @@ class NotificationService
         document: document,
         admin_email: notification_email
       )
+    rescue StandardError => e
+      Rails.logger.error "Document upload notification failed: #{e.message}"
     end
 
     private

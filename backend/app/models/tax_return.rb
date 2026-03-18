@@ -42,13 +42,15 @@ class TaxReturn < ApplicationRecord
       user: current_actor
     )
 
-    NotificationService.notify_status_change(
-      tax_return: self,
-      old_stage: old_stage,
-      new_stage: workflow_stage
-    )
-  rescue StandardError => e
-    Rails.logger.error "Notification failed for tax return #{id}: #{e.message}"
+    begin
+      NotificationService.notify_status_change(
+        tax_return: self,
+        old_stage: old_stage,
+        new_stage: workflow_stage
+      )
+    rescue StandardError => e
+      Rails.logger.error "Notification failed for tax return #{id}: #{e.message}"
+    end
   end
 
   def log_assignment_change
