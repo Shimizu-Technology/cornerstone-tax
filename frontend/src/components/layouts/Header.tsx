@@ -17,7 +17,7 @@ const navigation = [
 ]
 
 function AuthSection({ mobile = false }: { mobile?: boolean }) {
-  const { isClerkEnabled, isClient } = useAuthContext()
+  const { isClerkEnabled, isClient, isLoading } = useAuthContext()
   if (!isClerkEnabled) return null
 
   const dashboardHref = isClient ? '/portal' : '/admin'
@@ -34,12 +34,14 @@ function AuthSection({ mobile = false }: { mobile?: boolean }) {
           </SignInButton>
         </SignedOut>
         <SignedIn>
-          <Link
-            to={dashboardHref}
-            className="mt-2 px-4 py-3 rounded-lg text-base font-medium text-primary bg-secondary min-h-[44px] flex items-center"
-          >
-            {dashboardLabel}
-          </Link>
+          {!isLoading && (
+            <Link
+              to={dashboardHref}
+              className="mt-2 px-4 py-3 rounded-lg text-base font-medium text-primary bg-secondary min-h-[44px] flex items-center"
+            >
+              {dashboardLabel}
+            </Link>
+          )}
         </SignedIn>
       </>
     )
@@ -55,12 +57,14 @@ function AuthSection({ mobile = false }: { mobile?: boolean }) {
         </SignInButton>
       </SignedOut>
       <SignedIn>
-        <Link
-          to={dashboardHref}
-          className="h-full inline-flex items-center text-sm font-medium text-gray-600 hover:text-primary transition-colors"
-        >
-          {dashboardLabel}
-        </Link>
+        {!isLoading && (
+          <Link
+            to={dashboardHref}
+            className="h-full inline-flex items-center text-sm font-medium text-gray-600 hover:text-primary transition-colors"
+          >
+            {dashboardLabel}
+          </Link>
+        )}
         <UserButton
           afterSignOutUrl="/"
           appearance={{ elements: { avatarBox: "w-9 h-9" } }}

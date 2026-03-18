@@ -61,7 +61,7 @@ module Api
             income_sources: tr.income_sources.map { |is|
               { id: is.id, source_type: is.source_type, payer_name: is.payer_name }
             },
-            documents: tr.documents.order(created_at: :desc).map { |doc|
+            documents: tr.documents.sort_by(&:created_at).reverse.map { |doc|
               {
                 id: doc.id,
                 filename: doc.filename,

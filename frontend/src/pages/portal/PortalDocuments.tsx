@@ -33,6 +33,7 @@ export default function PortalDocuments() {
   const [selectedReturnId, setSelectedReturnId] = useState<number | null>(null)
   const [documents, setDocuments] = useState<PortalDocument[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
@@ -50,9 +51,11 @@ export default function PortalDocuments() {
           if (returns.length > 0) {
             setSelectedReturnId(returns[0].id)
           }
+        } else if (result.error) {
+          setLoadError(result.error)
         }
       } catch {
-        // handled by empty state
+        setLoadError('Failed to load tax returns')
       } finally {
         setLoading(false)
       }
@@ -66,9 +69,11 @@ export default function PortalDocuments() {
       const result = await api.portalDocuments(selectedReturnId)
       if (result.data) {
         setDocuments((result.data as { documents: PortalDocument[] }).documents)
+      } else if (result.error) {
+        setLoadError(result.error)
       }
     } catch {
-      // handled by empty state
+      setLoadError('Failed to load documents')
     }
   }, [selectedReturnId])
 
@@ -158,6 +163,23 @@ export default function PortalDocuments() {
     )
   }
 
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Documents</h1>
+          <p className="text-gray-500 mt-1">Upload and manage your tax documents.</p>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <p className="text-red-800 font-medium">{loadError}</p>
+          <button onClick={() => window.location.reload()} className="mt-3 text-red-600 underline text-sm">
+            Try again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (taxReturns.length === 0) {
     return (
       <div className="space-y-6">
@@ -243,7 +265,7 @@ export default function PortalDocuments() {
           />
           {uploading ? (
             <div className="flex flex-col items-center gap-3">
-              <div className="animate-spin w-8 h-8 border-3 border-primary border-t-transparent rounded-full" />
+              <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
               <p className="text-gray-500 font-medium">Uploading...</p>
             </div>
           ) : (

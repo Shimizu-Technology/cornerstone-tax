@@ -331,7 +331,8 @@ module Api
           has_tax_returns: client.has_tax_returns,
           is_service_only: !client.has_tax_returns,  # Backward compatibility
           archived_at: client.archived_at,
-          has_portal_access: client.user.present?,
+          has_portal_access: client.user.present? && !client.user.clerk_id&.start_with?("pending_"),
+          portal_invite_pending: client.user.present? && client.user.clerk_id&.start_with?("pending_"),
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color, description: st.description }
           end,

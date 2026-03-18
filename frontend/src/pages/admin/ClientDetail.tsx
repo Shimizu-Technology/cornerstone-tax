@@ -84,6 +84,7 @@ interface ClientDetail {
   is_service_only: boolean
   archived_at: string | null
   has_portal_access: boolean
+  portal_invite_pending: boolean
   service_types: ClientServiceType[]
   contacts: ClientContact[]
   created_at: string
@@ -763,7 +764,7 @@ export default function ClientDetailPage() {
         </div>
         <div className="flex items-center gap-3 self-start flex-wrap">
           {/* Invite to Portal */}
-          {!client.has_portal_access && (
+          {!client.has_portal_access && !client.portal_invite_pending && (
             <button
               onClick={handleInviteToPortal}
               disabled={invitingToPortal}
@@ -774,6 +775,14 @@ export default function ClientDetailPage() {
               </svg>
               {invitingToPortal ? 'Sending...' : 'Invite to Portal'}
             </button>
+          )}
+          {client.portal_invite_pending && (
+            <span className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl text-sm font-medium">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Portal Invite Pending
+            </span>
           )}
           {client.has_portal_access && (
             <span className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm font-medium">
