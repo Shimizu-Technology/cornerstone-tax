@@ -161,6 +161,7 @@ export interface ClientSummary {
   client_type: 'individual' | 'business';
   business_name: string | null;
   is_service_only: boolean;
+  archived_at: string | null;
   service_types: ClientServiceType[];
   contacts: ClientContact[];
   created_at: string;
@@ -207,6 +208,7 @@ export interface ClientDetailResponse {
     client_type: 'individual' | 'business';
     business_name: string | null;
     is_service_only: boolean;
+    archived_at: string | null;
     service_types: ClientServiceType[];
     contacts: ClientContact[];
     created_at: string;

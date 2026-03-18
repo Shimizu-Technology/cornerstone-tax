@@ -589,8 +589,8 @@ export default function ClientDetailPage() {
       const result = action === 'archive'
         ? await api.archiveClient(client.id)
         : await api.unarchiveClient(client.id)
-      if (result && !('error' in result)) {
-        setClient(result.client as unknown as ClientDetail)
+      if (result.data) {
+        setClient(result.data.client as unknown as ClientDetail)
       }
     } finally {
       setArchiving(false)
