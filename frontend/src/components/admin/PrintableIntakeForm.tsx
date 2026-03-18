@@ -1,4 +1,3 @@
-import { forwardRef } from 'react'
 import { formatDate } from '../../lib/dateUtils'
 import { getFilingStatusLabel } from '../../lib/constants'
 
@@ -68,187 +67,248 @@ function formatSourceType(type: string): string {
   return SOURCE_TYPE_LABELS[type] || type.replace(/_/g, '-').toUpperCase()
 }
 
-const PrintableIntakeForm = forwardRef<HTMLDivElement, Props>(({ client }, ref) => {
+const FILING_STATUSES = [
+  { value: 'married', label: 'Married Filing Joint' },
+  { value: 'single', label: 'Single' },
+  { value: 'married_separate', label: 'Married Filing Separate' },
+  { value: 'hoh', label: 'Head of Household' },
+  { value: 'other', label: 'Other' },
+]
+
+export default function PrintableIntakeForm({ client }: Props) {
   const latestReturn = client.tax_returns[0]
   const incomeSources = latestReturn?.income_sources || []
+  const taxYear = latestReturn?.tax_year || new Date().getFullYear()
 
   const w2Sources = incomeSources.filter(s => s.source_type === 'w2')
-  const otherSources = incomeSources.filter(s => s.source_type !== 'w2')
+  const form1099Sources = incomeSources.filter(s => s.source_type !== 'w2')
 
   return (
-    <div ref={ref} className="print-intake-form">
-      {/* Header */}
-      <div className="print-header">
-        <h1>Client Intake Form</h1>
-        <p className="print-subtitle">Cornerstone Accounting & Business Services</p>
-        <p className="print-date">
-          Tax Year: {latestReturn?.tax_year || new Date().getFullYear()}
-          {' · '}
-          Submitted: {formatDate(client.created_at)}
-        </p>
-      </div>
+    <div className="print-intake-form" id="print-intake-form">
+      {/* ===== TWO-COLUMN LAYOUT matching their physical form ===== */}
+      <div className="print-columns">
 
-      {/* Section 1: Client Information */}
-      <div className="print-section">
-        <h2>Client Information</h2>
-        <table className="print-table">
-          <tbody>
-            <tr>
-              <td className="print-label">Name</td>
-              <td>{client.full_name}</td>
-              <td className="print-label">Date of Birth</td>
-              <td>{client.date_of_birth ? formatDate(client.date_of_birth) : '—'}</td>
-            </tr>
-            <tr>
-              <td className="print-label">Email</td>
-              <td>{client.email}</td>
-              <td className="print-label">Phone</td>
-              <td>{client.phone}</td>
-            </tr>
-            <tr>
-              <td className="print-label">Mailing Address</td>
-              <td colSpan={3}>{client.mailing_address || '—'}</td>
-            </tr>
-            {client.client_type === 'business' && client.business_name && (
-              <tr>
-                <td className="print-label">Business Name</td>
-                <td colSpan={3}>{client.business_name}</td>
-              </tr>
-            )}
-            <tr>
-              <td className="print-label">New Client</td>
-              <td>{client.is_new_client ? 'Yes' : 'No'}</td>
-              <td className="print-label">Client Type</td>
-              <td>{client.client_type === 'business' ? 'Business' : 'Individual'}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        {/* ===== LEFT COLUMN ===== */}
+        <div className="print-col-left">
 
-      {/* Section 2: Tax Filing Info */}
-      <div className="print-section">
-        <h2>Tax Filing Information</h2>
-        <table className="print-table">
-          <tbody>
-            <tr>
-              <td className="print-label">Filing Status</td>
-              <td>{getFilingStatusLabel(client.filing_status)}</td>
-              <td className="print-label">Return Status</td>
-              <td>{latestReturn?.status || '—'}</td>
-            </tr>
-            <tr>
-              <td className="print-label">Prior Year Return</td>
-              <td>{client.has_prior_year_return ? 'Yes' : 'No'}</td>
-              <td className="print-label">Direct Deposit</td>
-              <td>{client.wants_direct_deposit ? 'Yes' : 'No'}</td>
-            </tr>
-            {client.changes_from_prior_year && (
-              <tr>
-                <td className="print-label">Changes from Prior Year</td>
-                <td colSpan={3}>{client.changes_from_prior_year}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          {/* Header */}
+          <h1 className="print-title">Cornerstone — Client Intake Form</h1>
 
-      {/* Section 3: Income Sources */}
-      {incomeSources.length > 0 && (
-        <div className="print-section">
-          <h2>Income Sources</h2>
-          <table className="print-table">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Payer / Employer Name</th>
-              </tr>
-            </thead>
-            <tbody>
-              {w2Sources.map((src) => (
-                <tr key={src.id}>
-                  <td>{formatSourceType(src.source_type)}</td>
-                  <td>{src.payer_name}</td>
+          {/* Client info fields */}
+          <div className="print-field">
+            <span className="print-field-label">Date/Time:</span>
+            <span className="print-field-value">{formatDate(client.created_at)}</span>
+          </div>
+          <div className="print-field">
+            <span className="print-field-label">Client Name:</span>
+            <span className="print-field-value">{client.full_name}</span>
+          </div>
+          <div className="print-field">
+            <span className="print-field-label">DOB:</span>
+            <span className="print-field-value">{client.date_of_birth ? formatDate(client.date_of_birth) : '—'}</span>
+          </div>
+          <div className="print-field">
+            <span className="print-field-label">Contact No.:</span>
+            <span className="print-field-value">{client.phone}</span>
+          </div>
+          <div className="print-field">
+            <span className="print-field-label">Email:</span>
+            <span className="print-field-value">{client.email}</span>
+          </div>
+          <div className="print-field">
+            <span className="print-field-label">Mailing Address:</span>
+            <span className="print-field-value">{client.mailing_address || '—'}</span>
+          </div>
+          {client.client_type === 'business' && client.business_name && (
+            <div className="print-field">
+              <span className="print-field-label">Business Name:</span>
+              <span className="print-field-value">{client.business_name}</span>
+            </div>
+          )}
+
+          <div className="print-divider" />
+
+          {/* Filing Status */}
+          <p className="print-field-label" style={{ marginBottom: '4pt' }}>Filing Status:</p>
+          <div className="print-filing-status">
+            {FILING_STATUSES.map(fs => (
+              <span key={fs.value} className={`print-status-option ${
+                client.filing_status === fs.value || 
+                (fs.value === 'hoh' && client.filing_status === 'head_of_household')
+                  ? 'print-status-selected' : ''
+              }`}>
+                {fs.label}
+              </span>
+            ))}
+          </div>
+
+          <div className="print-divider" />
+
+          {/* Returning/New Client Questions */}
+          <div className="print-qa">
+            <p className="print-q">
+              *{client.is_new_client ? 'New' : 'Returning'} Client — {client.is_new_client
+                ? `Has prior year return: ${client.has_prior_year_return ? 'Yes' : 'No'}`
+                : `Changes from prior year: ${client.changes_from_prior_year || 'None noted'}`
+              }
+            </p>
+          </div>
+
+          <div className="print-qa">
+            <p className="print-q">
+              *Denied tax credit (EIC, ACTC) by IRS?{' '}
+              <strong>{client.denied_eic_actc
+                ? `Yes — ${client.denied_eic_actc_year || 'year not specified'}`
+                : 'No'}</strong>
+            </p>
+          </div>
+
+          <div className="print-qa">
+            <p className="print-q">
+              *During {taxYear}, did you receive, sell, exchange, or dispose of a digital asset?{' '}
+              <strong>{client.has_crypto_transactions ? 'Yes' : 'No'}</strong>
+            </p>
+          </div>
+
+          <div className="print-divider" />
+
+          {/* Section 1: Spouse and Dependent Info */}
+          <h2 className="print-section-title">Section 1: Spouse and Dependent Information</h2>
+          <div className="print-field">
+            <span className="print-field-label">Spouse's Name:</span>
+            <span className="print-field-value">{client.spouse_name || 'N/A'}</span>
+          </div>
+          {client.spouse_name && (
+            <div className="print-field">
+              <span className="print-field-label">Spouse DOB:</span>
+              <span className="print-field-value">{client.spouse_dob ? formatDate(client.spouse_dob) : '—'}</span>
+            </div>
+          )}
+
+          <p className="print-small-note" style={{ marginTop: '6pt' }}>
+            For Dependents: If None, indicate "N/A"
+          </p>
+
+          {client.dependents.length === 0 ? (
+            <p className="print-field-value" style={{ marginTop: '2pt' }}>N/A</p>
+          ) : (
+            <table className="print-dep-table">
+              <thead>
+                <tr>
+                  <th>Full Name</th>
+                  <th>DOB</th>
+                  <th>Relationship</th>
+                  <th>Months</th>
+                  <th>Student</th>
+                  <th>Disabled</th>
                 </tr>
-              ))}
-              {otherSources.map((src) => (
-                <tr key={src.id}>
-                  <td>{formatSourceType(src.source_type)}</td>
-                  <td>{src.payer_name}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {client.dependents.map(dep => (
+                  <tr key={dep.id}>
+                    <td>{dep.name}</td>
+                    <td>{dep.date_of_birth ? formatDate(dep.date_of_birth) : '—'}</td>
+                    <td>{dep.relationship}</td>
+                    <td>{dep.months_lived_with_client}</td>
+                    <td>{dep.is_student ? 'Yes' : '—'}</td>
+                    <td>{dep.is_disabled ? 'Yes' : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
-      )}
 
-      {/* Section 4: Special Questions */}
-      <div className="print-section">
-        <h2>Special Questions</h2>
-        <table className="print-table">
-          <tbody>
-            <tr>
-              <td className="print-label">Denied EIC/ACTC/HOH</td>
-              <td>
-                {client.denied_eic_actc
-                  ? `Yes — ${client.denied_eic_actc_year || 'year not specified'}`
-                  : 'No'}
-              </td>
-            </tr>
-            <tr>
-              <td className="print-label">Cryptocurrency Transactions</td>
-              <td>{client.has_crypto_transactions ? 'Yes' : 'No'}</td>
-            </tr>
-          </tbody>
-        </table>
+        {/* ===== RIGHT COLUMN ===== */}
+        <div className="print-col-right">
+
+          {/* Section 3: Income Information */}
+          <h2 className="print-section-title">Section 2: Income Information</h2>
+
+          {incomeSources.length === 0 ? (
+            <p className="print-field-value">N/A</p>
+          ) : (
+            <>
+              {w2Sources.length > 0 && (
+                <div className="print-income-group">
+                  <p className="print-field-label">W-2(s) from:</p>
+                  {w2Sources.map(src => (
+                    <p key={src.id} className="print-income-item">• {src.payer_name}</p>
+                  ))}
+                </div>
+              )}
+              {form1099Sources.length > 0 && (
+                <div className="print-income-group">
+                  <p className="print-field-label">1099 / Other Forms:</p>
+                  {form1099Sources.map(src => (
+                    <p key={src.id} className="print-income-item">• {formatSourceType(src.source_type)}: {src.payer_name}</p>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="print-divider" />
+
+          {/* Section 4: Refund Preference */}
+          <h2 className="print-section-title">Section 3: Refund Preference</h2>
+          <div className="print-field">
+            <span className="print-field-label">Method:</span>
+            <span className="print-field-value">
+              {client.wants_direct_deposit ? 'Direct Deposit' : 'Check'}
+            </span>
+          </div>
+          {client.wants_direct_deposit && (
+            <p className="print-small-note">
+              (Bank details on file — not printed for security)
+            </p>
+          )}
+
+          <div className="print-divider" />
+
+          {/* Section 5: Authorization */}
+          <h2 className="print-section-title">Section 4: Taxpayer Authorization</h2>
+          <p className="print-auth-text">
+            I confirm that the information provided is accurate to the best of my knowledge. 
+            I authorize my tax preparer to use this information to prepare my {taxYear} tax return.
+          </p>
+
+          <div className="print-sig-line">
+            <span className="print-field-label">Signature/Date:</span>
+            <span className="print-sig-blank" />
+          </div>
+
+          {client.spouse_name && (
+            <div className="print-sig-line">
+              <span className="print-field-label">Spouse's Signature/Date:</span>
+              <span className="print-sig-blank" />
+            </div>
+          )}
+
+          <div className="print-divider" />
+
+          {/* For Office Use Only */}
+          <div className="print-office-box">
+            <h3 className="print-office-title">For Office Use Only</h3>
+            <div className="print-field">
+              <span className="print-field-label">Return Status:</span>
+              <span className="print-field-value">{latestReturn?.status || '—'}</span>
+            </div>
+            <div className="print-field">
+              <span className="print-field-label">Filing Status:</span>
+              <span className="print-field-value">{getFilingStatusLabel(client.filing_status)}</span>
+            </div>
+            <div className="print-checkbox-row">
+              <span>☐ Documents Complete</span>
+              <span>☐ Documents Pending</span>
+            </div>
+            <div className="print-field">
+              <span className="print-field-label">Notes:</span>
+              <span className="print-sig-blank" />
+            </div>
+          </div>
+        </div>
       </div>
-
-      {/* Section 5: Spouse Information */}
-      {client.spouse_name && (
-        <div className="print-section">
-          <h2>Spouse Information</h2>
-          <table className="print-table">
-            <tbody>
-              <tr>
-                <td className="print-label">Name</td>
-                <td>{client.spouse_name}</td>
-                <td className="print-label">Date of Birth</td>
-                <td>{client.spouse_dob ? formatDate(client.spouse_dob) : '—'}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Section 6: Dependents */}
-      {client.dependents.length > 0 && (
-        <div className="print-section">
-          <h2>Dependents ({client.dependents.length})</h2>
-          <table className="print-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Date of Birth</th>
-                <th>Relationship</th>
-                <th>Months</th>
-                <th>Student</th>
-                <th>Disabled</th>
-              </tr>
-            </thead>
-            <tbody>
-              {client.dependents.map((dep) => (
-                <tr key={dep.id}>
-                  <td>{dep.name}</td>
-                  <td>{dep.date_of_birth ? formatDate(dep.date_of_birth) : '—'}</td>
-                  <td>{dep.relationship}</td>
-                  <td>{dep.months_lived_with_client}</td>
-                  <td>{dep.is_student ? 'Yes' : 'No'}</td>
-                  <td>{dep.is_disabled ? 'Yes' : 'No'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
 
       {/* Footer */}
       <div className="print-footer">
@@ -256,8 +316,4 @@ const PrintableIntakeForm = forwardRef<HTMLDivElement, Props>(({ client }, ref) 
       </div>
     </div>
   )
-})
-
-PrintableIntakeForm.displayName = 'PrintableIntakeForm'
-
-export default PrintableIntakeForm
+}

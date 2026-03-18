@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type {
@@ -1760,8 +1761,11 @@ export default function ClientDetailPage() {
     </div>
     </FadeUp>
 
-    {/* Hidden print view — only visible when printing */}
-    <PrintableIntakeForm client={client} />
+    {/* Hidden print view — rendered outside #root via portal so print CSS can hide #root */}
+    {createPortal(
+      <PrintableIntakeForm client={client} />,
+      document.body
+    )}
     </>
   )
 }

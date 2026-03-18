@@ -292,6 +292,29 @@ export default function IntakeForm() {
               </button>
             </div>
 
+            {/* Form 2848 helper note */}
+            <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="text-amber-900 font-semibold text-sm mb-1">
+                    Don&rsquo;t have your prior year tax returns?
+                  </p>
+                  <p className="text-amber-800 text-sm leading-relaxed">
+                    You&rsquo;ll need to complete <strong>Guam Form 2848 (Power of Attorney)</strong> so we can request your records from DRT.{' '}
+                    <Link
+                      to="/form-2848"
+                      className="underline font-medium hover:text-amber-950 transition-colors"
+                    >
+                      View instructions &amp; download the form &rarr;
+                    </Link>
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {!isKioskMode && (
               <div className="mt-8 text-center">
                 <Link

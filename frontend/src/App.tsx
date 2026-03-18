@@ -16,6 +16,7 @@ import Home from "./pages/public/Home"
 import About from "./pages/public/About"
 import Services from "./pages/public/Services"
 import Contact from "./pages/public/Contact"
+import Form2848 from "./pages/public/Form2848"
 
 // Intake (not lazy — public-facing)
 import IntakeForm from "./pages/intake/IntakeForm"
@@ -55,6 +56,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/about" element={<About />} />
           <Route path="/services" element={<Services />} />
+          <Route path="/form-2848" element={<Form2848 />} />
           <Route path="/contact" element={<Contact />} />
         </Route>
 
