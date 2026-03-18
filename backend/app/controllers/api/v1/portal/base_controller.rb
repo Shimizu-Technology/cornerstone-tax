@@ -11,10 +11,12 @@ module Api
         private
 
         def current_client
-          @current_client ||= current_user.client
+          @current_client ||= current_user&.client
         end
 
         def ensure_client_exists!
+          return if performed?
+
           unless current_client
             render json: { error: "Client profile not found. Please contact support." }, status: :forbidden
           end
