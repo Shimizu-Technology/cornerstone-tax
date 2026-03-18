@@ -30,11 +30,15 @@ module Api
         end
 
         filename = params[:filename]
-        content_type = params[:content_type] || "application/octet-stream"
+        content_type = params[:content_type]
         file_size = params[:file_size].to_i
 
         if filename.blank?
           return render json: { error: "Filename is required" }, status: :unprocessable_entity
+        end
+
+        if content_type.blank?
+          return render json: { error: "Content type is required" }, status: :unprocessable_entity
         end
 
         # CST-16: Validate file size is positive

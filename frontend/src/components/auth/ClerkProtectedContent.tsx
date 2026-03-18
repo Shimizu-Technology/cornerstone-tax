@@ -59,8 +59,10 @@ export default function ClerkProtectedContent({ children, requiredRole }: ClerkP
 
       setAuthStatus('checking')
 
-      // Wait a moment for token getter to be set up
-      await new Promise(resolve => setTimeout(resolve, 100))
+      const maxSetupWait = 10
+      for (let i = 0; i < maxSetupWait && !authSetupRef.current; i++) {
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
 
       const maxRetries = 3
       for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -71,7 +73,6 @@ export default function ClerkProtectedContent({ children, requiredRole }: ClerkP
           
           if (response.data) {
             const user = response.data.user
-            console.log('User verified:', user.email, 'Role:', user.role)
             setCurrentUser(user)
 
             // Check role if required
@@ -83,7 +84,6 @@ export default function ClerkProtectedContent({ children, requiredRole }: ClerkP
                 user.role === requiredRole
 
               if (!hasAccess) {
-                console.log(`Access denied: requires ${requiredRole}, user is ${user.role}`)
                 setAuthStatus('access_denied')
                 return
               }

@@ -11,6 +11,11 @@ class NotificationService
       return unless client&.email.present?
       return if client.notification_preference == "none"
 
+      unless resend_configured?
+        Rails.logger.info "Skipping status notification for tax return #{tax_return.id}: Resend not configured"
+        return
+      end
+
       notification = Notification.create!(
         client: client,
         tax_return: tax_return,
@@ -36,6 +41,11 @@ class NotificationService
       return unless uploaded_by_client
       notification_email = Setting.get("notification_email")
       return if notification_email.blank?
+
+      unless resend_configured?
+        Rails.logger.info "Skipping document upload notification: Resend not configured"
+        return
+      end
 
       client = tax_return.client
 
