@@ -148,3 +148,119 @@ input[type="button"],
 .animate-fadeInUp {
   animation: fadeInUp 0.4s ease-out forwards;
 }
+
+/* ===== Print Styles for Client Intake Form ===== */
+
+.print-intake-form {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .print-intake-form,
+  .print-intake-form * {
+    visibility: visible;
+  }
+
+  .print-intake-form {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 0.5in;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 11pt;
+    color: #1a1a1a;
+    line-height: 1.4;
+  }
+
+  .print-header {
+    text-align: center;
+    padding-bottom: 12pt;
+    margin-bottom: 16pt;
+    border-bottom: 2pt solid #78645A;
+  }
+
+  .print-header h1 {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-size: 20pt;
+    font-weight: 700;
+    margin: 0 0 2pt;
+    color: #78645A;
+  }
+
+  .print-subtitle {
+    font-size: 10pt;
+    color: #666;
+    margin: 0 0 4pt;
+  }
+
+  .print-date {
+    font-size: 9pt;
+    color: #888;
+    margin: 0;
+  }
+
+  .print-section {
+    margin-bottom: 14pt;
+    break-inside: avoid;
+  }
+
+  .print-section h2 {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-size: 12pt;
+    font-weight: 700;
+    color: #78645A;
+    margin: 0 0 6pt;
+    padding-bottom: 3pt;
+    border-bottom: 1pt solid #d4c8c0;
+  }
+
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+  }
+
+  .print-table th,
+  .print-table td {
+    padding: 5pt 8pt;
+    text-align: left;
+    vertical-align: top;
+    border: 0.5pt solid #ddd;
+  }
+
+  .print-table th {
+    background-color: #f5f0ec;
+    font-weight: 600;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3pt;
+    color: #555;
+  }
+
+  .print-table .print-label {
+    font-weight: 600;
+    color: #555;
+    width: 22%;
+    background-color: #faf8f6;
+    white-space: nowrap;
+  }
+
+  .print-footer {
+    margin-top: 20pt;
+    padding-top: 8pt;
+    border-top: 0.5pt solid #ccc;
+    text-align: center;
+    font-size: 8pt;
+    color: #aaa;
+  }
+
+  .print-footer p {
+    margin: 0;
+  }
+}
