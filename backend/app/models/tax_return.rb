@@ -25,6 +25,7 @@ class TaxReturn < ApplicationRecord
   after_save :log_status_change, if: :saved_change_to_workflow_stage_id?
   after_save :log_assignment_change, if: :saved_change_to_assigned_to_id?
   after_save :log_notes_change, if: :saved_change_to_notes?
+  after_commit :send_status_notification, if: :saved_change_to_workflow_stage_id?
 
   def status_name
     workflow_stage&.name || "Unknown"
@@ -41,16 +42,17 @@ class TaxReturn < ApplicationRecord
       description: "Status changed from #{old_stage&.name || 'none'} to #{workflow_stage&.name}",
       user: current_actor
     )
+  end
 
-    begin
-      NotificationService.notify_status_change(
-        tax_return: self,
-        old_stage: old_stage,
-        new_stage: workflow_stage
-      )
-    rescue StandardError => e
-      Rails.logger.error "Notification failed for tax return #{id}: #{e.message}"
-    end
+  def send_status_notification
+    old_stage = WorkflowStage.find_by(id: workflow_stage_id_before_last_save)
+    NotificationService.notify_status_change(
+      tax_return: self,
+      old_stage: old_stage,
+      new_stage: workflow_stage
+    )
+  rescue StandardError => e
+    Rails.logger.error "Notification failed for tax return #{id}: #{e.message}"
   end
 
   def log_assignment_change

@@ -234,7 +234,7 @@ export default function PortalDocuments() {
             <label className="text-sm font-medium text-gray-700">Tax Year:</label>
             <select
               value={selectedReturnId || ''}
-              onChange={e => setSelectedReturnId(parseInt(e.target.value))}
+              onChange={e => setSelectedReturnId(parseInt(e.target.value, 10))}
               className="px-3 py-2 border border-secondary-dark rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
             >
               {taxReturns.map(tr => (

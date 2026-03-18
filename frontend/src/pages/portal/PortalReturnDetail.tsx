@@ -16,7 +16,7 @@ export default function PortalReturnDetail() {
     async function load() {
       if (!id) return
       try {
-        const result = await api.portalTaxReturn(parseInt(id))
+        const result = await api.portalTaxReturn(parseInt(id, 10))
         if (result.data) {
           setTaxReturn(result.data.tax_return)
         } else if (result.error) {
