@@ -20,6 +20,10 @@ Rails.application.routes.draw do
 
       # Admin/Employee routes (requires authentication)
       resources :clients, only: [:index, :show, :create, :update] do
+        member do
+          post :archive
+          post :unarchive
+        end
         resources :contacts, controller: "client_contacts", only: [:index, :create, :update, :destroy]
         resources :operation_assignments, controller: "client_operation_assignments", only: [:index, :create]
         resources :operation_cycles, controller: "operation_cycles", only: [:index] do

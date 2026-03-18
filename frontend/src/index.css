@@ -281,6 +281,7 @@ input[type="button"],
   /* Dependent table */
   .print-dep-table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 8.5pt;
     margin-top: 5pt;
@@ -291,7 +292,16 @@ input[type="button"],
     padding: 3pt 4pt;
     text-align: left;
     border: 0.5pt solid #ccc;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
+
+  .print-dep-table th:nth-child(1) { width: 24%; }
+  .print-dep-table th:nth-child(2) { width: 14%; }
+  .print-dep-table th:nth-child(3) { width: 20%; }
+  .print-dep-table th:nth-child(4) { width: 12%; }
+  .print-dep-table th:nth-child(5) { width: 15%; }
+  .print-dep-table th:nth-child(6) { width: 15%; }
 
   .print-dep-table th {
     background-color: #f0f0f0;

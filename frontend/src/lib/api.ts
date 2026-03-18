@@ -839,6 +839,7 @@ export const api = {
     service_type_id?: number;
     client_type?: 'individual' | 'business';
     service_only?: boolean;
+    show_archived?: string;
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
@@ -848,6 +849,7 @@ export const api = {
     if (params?.service_type_id) searchParams.set('service_type_id', params.service_type_id.toString());
     if (params?.client_type) searchParams.set('client_type', params.client_type);
     if (params?.service_only !== undefined) searchParams.set('service_only', params.service_only.toString());
+    if (params?.show_archived) searchParams.set('show_archived', params.show_archived);
     const query = searchParams.toString();
     return fetchApi<ClientsResponse>(`/api/v1/clients${query ? `?${query}` : ''}`);
   },
@@ -886,6 +888,16 @@ export const api = {
     fetchApi<{ client: ClientDetailResponse['client'] }>(`/api/v1/clients/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ client: data }),
+    }),
+
+  archiveClient: (id: number) =>
+    fetchApi<{ client: ClientDetailResponse['client'] }>(`/api/v1/clients/${id}/archive`, {
+      method: 'POST',
+    }),
+
+  unarchiveClient: (id: number) =>
+    fetchApi<{ client: ClientDetailResponse['client'] }>(`/api/v1/clients/${id}/unarchive`, {
+      method: 'POST',
     }),
 
   // Client Contacts

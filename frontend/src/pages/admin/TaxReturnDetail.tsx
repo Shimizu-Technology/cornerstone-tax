@@ -325,7 +325,7 @@ export default function TaxReturnDetailPage() {
         title="Tax Return Not Found"
         message={error || 'This tax return does not exist or may have been removed.'}
         backTo="/admin/returns"
-        backLabel="\u2190 Back to Tax Returns"
+        backLabel="← Back to Tax Returns"
       />
     )
   }
@@ -337,7 +337,7 @@ export default function TaxReturnDetailPage() {
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
             <Link to="/admin/returns" className="text-gray-500 hover:text-gray-700 text-sm mb-2 inline-block transition-colors">
-              \u2190 Back to Tax Returns
+              ← Back to Tax Returns
             </Link>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
               {taxReturn.tax_year} Tax Return
@@ -435,7 +435,7 @@ export default function TaxReturnDetailPage() {
                   to={`/admin/clients/${taxReturn.client.id}`}
                   className="text-primary hover:text-primary-dark text-sm font-medium transition-colors"
                 >
-                  View Full Profile \u2192
+                  View Full Profile →
                 </Link>
               </div>
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -449,7 +449,7 @@ export default function TaxReturnDetailPage() {
                 </div>
                 <div>
                   <dt className="text-sm text-gray-500">Phone</dt>
-                  <dd className="font-medium">{taxReturn.client.phone || '\u2014'}</dd>
+                  <dd className="font-medium">{taxReturn.client.phone || '—'}</dd>
                 </div>
                 <div>
                   <dt className="text-sm text-gray-500">Filing Status</dt>
@@ -632,7 +632,7 @@ export default function TaxReturnDetailPage() {
                         {event.description || event.event_type}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {event.actor} \u2022 {formatDateTime(event.created_at)}
+                        {event.actor} · {formatDateTime(event.created_at)}
                       </p>
                     </div></StaggerItem>
                   ))}

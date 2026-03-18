@@ -15,6 +15,7 @@ interface Client {
   client_type: 'individual' | 'business'
   business_name: string | null
   is_service_only: boolean
+  archived_at: string | null
   service_types: ClientServiceType[]
   created_at: string
   tax_return: {
@@ -50,6 +51,7 @@ export default function ClientList() {
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
   const [selectedServiceTypeId, setSelectedServiceTypeId] = useState<number | undefined>()
   const [showServiceOnly, setShowServiceOnly] = useState<boolean | undefined>()
+  const [showArchived, setShowArchived] = useState(false)
 
   // Load service types for filter dropdown
   useEffect(() => {
@@ -69,7 +71,7 @@ export default function ClientList() {
 
   useEffect(() => {
     loadClients()
-  }, [page, search, selectedServiceTypeId, showServiceOnly])
+  }, [page, search, selectedServiceTypeId, showServiceOnly, showArchived])
 
   async function loadClients() {
     setLoading(true)
@@ -81,6 +83,7 @@ export default function ClientList() {
         per_page: 20,
         service_type_id: selectedServiceTypeId,
         service_only: showServiceOnly,
+        show_archived: showArchived ? 'true' : undefined,
       })
       if (result.data) {
         setClients(result.data.clients as Client[])
@@ -107,10 +110,11 @@ export default function ClientList() {
     setSearch('')
     setSelectedServiceTypeId(undefined)
     setShowServiceOnly(undefined)
+    setShowArchived(false)
     setPage(1)
   }
 
-  const hasActiveFilters = search || selectedServiceTypeId !== undefined || showServiceOnly !== undefined
+  const hasActiveFilters = search || selectedServiceTypeId !== undefined || showServiceOnly !== undefined || showArchived
 
   return (
     <FadeUp>
@@ -215,6 +219,17 @@ export default function ClientList() {
               }`}
             >
               Service Only
+            </button>
+            <button
+              onClick={() => {
+                setShowArchived(prev => !prev)
+                setPage(1)
+              }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                showArchived ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-white text-gray-500 border-gray-200 hover:bg-secondary'
+              }`}
+            >
+              {showArchived ? 'Showing Archived' : 'Show Archived'}
             </button>
           </div>
 
@@ -327,6 +342,9 @@ export default function ClientList() {
                               {client.is_service_only && (
                                 <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Service Only</span>
                               )}
+                              {client.archived_at && (
+                                <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Archived</span>
+                              )}
                             </div>
                           </div>
                         </Link>
@@ -361,9 +379,9 @@ export default function ClientList() {
                         {client.tax_return ? (
                           <span
                             className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm"
-                            style={{ backgroundColor: client.tax_return.status_color || '#8B7355' }}
+                            style={{ backgroundColor: client.tax_return.status_color || '#6B7280' }}
                           >
-                            {client.tax_return.status}
+                            {client.tax_return.status || 'Unknown'}
                           </span>
                         ) : client.is_service_only ? (
                           <span className="text-gray-400 text-sm">Service client</span>
@@ -418,6 +436,9 @@ export default function ClientList() {
                           {client.is_service_only && (
                             <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Service Only</span>
                           )}
+                          {client.archived_at && (
+                            <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Archived</span>
+                          )}
                           {(client.service_types ?? []).slice(0, 2).map(st => (
                             <span 
                               key={st.id}
@@ -430,9 +451,9 @@ export default function ClientList() {
                           {client.tax_return && (
                             <span
                               className="px-2 py-0.5 rounded text-xs font-semibold text-white"
-                              style={{ backgroundColor: client.tax_return.status_color || '#8B7355' }}
+                              style={{ backgroundColor: client.tax_return.status_color || '#6B7280' }}
                             >
-                              {client.tax_return.status}
+                              {client.tax_return.status || 'Unknown'}
                             </span>
                           )}
                         </div>

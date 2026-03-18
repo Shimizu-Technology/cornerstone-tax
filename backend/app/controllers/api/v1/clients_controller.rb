@@ -50,6 +50,13 @@ module Api
           clients = clients.where(has_tax_returns: params[:has_tax_returns] == 'true')
         end
 
+        # Filter archived clients (default: show only active)
+        if params[:show_archived] == 'true'
+          clients = clients.archived
+        elsif params[:show_archived] != 'all'
+          clients = clients.active
+        end
+
         # Pagination
         page = (params[:page] || 1).to_i
         per_page = (params[:per_page] || 20).to_i.clamp(1, 100)
@@ -199,6 +206,36 @@ module Api
         render json: { errors: [e.message] }, status: :unprocessable_entity
       end
 
+      # POST /api/v1/clients/:id/archive
+      def archive
+        client = Client.find(params[:id])
+        client.archive!
+
+        AuditLog.create!(
+          user: current_user,
+          action: 'archived',
+          auditable: client,
+          details: { client_name: client.full_name }
+        )
+
+        render json: { client: client_detail(client.reload) }
+      end
+
+      # POST /api/v1/clients/:id/unarchive
+      def unarchive
+        client = Client.find(params[:id])
+        client.unarchive!
+
+        AuditLog.create!(
+          user: current_user,
+          action: 'unarchived',
+          auditable: client,
+          details: { client_name: client.full_name }
+        )
+
+        render json: { client: client_detail(client.reload) }
+      end
+
       private
 
       def client_params
@@ -252,6 +289,7 @@ module Api
           business_name: client.business_name,
           has_tax_returns: client.has_tax_returns,
           is_service_only: !client.has_tax_returns,  # Backward compatibility
+          archived_at: client.archived_at,
           created_at: client.created_at,
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color }
@@ -260,8 +298,8 @@ module Api
           tax_return: latest_return ? {
             id: latest_return.id,
             tax_year: latest_return.tax_year,
-            status: latest_return.workflow_stage&.name,
-            status_slug: latest_return.workflow_stage&.slug,
+            status: latest_return.workflow_stage&.name || "Unknown",
+            status_slug: latest_return.workflow_stage&.slug || "unknown",
             status_color: latest_return.workflow_stage&.color,
             assigned_to: latest_return.assigned_to&.full_name
           } : nil
@@ -292,6 +330,7 @@ module Api
           business_name: client.business_name,
           has_tax_returns: client.has_tax_returns,
           is_service_only: !client.has_tax_returns,  # Backward compatibility
+          archived_at: client.archived_at,
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color, description: st.description }
           end,

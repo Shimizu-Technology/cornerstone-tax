@@ -453,8 +453,8 @@ export default function Contact() {
                     icon={<svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
                   >
                     <p>
-                      Monday \u2013 Friday: 8:00 AM \u2013 5:00 PM<br />
-                      Saturday: 9:00 AM \u2013 1:00 PM<br />
+                      Monday – Friday: 8:00 AM – 5:00 PM<br />
+                      Saturday: 9:00 AM – 1:00 PM<br />
                       Sunday: Closed
                     </p>
                     <p className="text-sm text-gray-400 mt-2">Holiday hours may vary. Please contact us to confirm availability.</p>
@@ -466,7 +466,7 @@ export default function Contact() {
                   <div className="bg-secondary rounded-2xl p-7">
                     <h3 className="font-bold text-gray-900 mb-2 tracking-tight">Ready to get started?</h3>
                     <p className="text-gray-500 text-sm mb-5 leading-relaxed">
-                      If you\u2019re ready to begin, fill out our client intake form to start the process.
+                      If you're ready to begin, fill out our client intake form to start the process.
                     </p>
                     <Link
                       to="/intake"

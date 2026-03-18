@@ -82,6 +82,7 @@ interface ClientDetail {
   client_type: 'individual' | 'business'
   business_name: string | null
   is_service_only: boolean
+  archived_at: string | null
   service_types: ClientServiceType[]
   contacts: ClientContact[]
   created_at: string
@@ -136,6 +137,7 @@ export default function ClientDetailPage() {
   const [client, setClient] = useState<ClientDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [archiving, setArchiving] = useState(false)
   
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false)
@@ -573,6 +575,28 @@ export default function ClientDetailPage() {
     }
   }
 
+  const handleArchiveToggle = async () => {
+    if (!client) return
+    const action = client.archived_at ? 'unarchive' : 'archive'
+    const confirm = window.confirm(
+      action === 'archive'
+        ? `Archive ${client.full_name}? They will be hidden from the active client list.`
+        : `Unarchive ${client.full_name}? They will reappear in the active client list.`
+    )
+    if (!confirm) return
+    setArchiving(true)
+    try {
+      const result = action === 'archive'
+        ? await api.archiveClient(client.id)
+        : await api.unarchiveClient(client.id)
+      if (result && !('error' in result)) {
+        setClient(result.client as unknown as ClientDetail)
+      }
+    } finally {
+      setArchiving(false)
+    }
+  }
+
   const openEditModal = () => {
     if (!client) return
     setEditForm({
@@ -659,6 +683,27 @@ export default function ClientDetailPage() {
     <>
     <FadeUp>
     <div className="space-y-6">
+      {/* Archived Banner */}
+      {client.archived_at && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+            <p className="text-amber-800 text-sm font-medium">
+              This client is archived. They won't appear in the active client list.
+            </p>
+          </div>
+          <button
+            onClick={handleArchiveToggle}
+            disabled={archiving}
+            className="text-amber-700 hover:text-amber-900 text-sm font-semibold underline disabled:opacity-50"
+          >
+            {archiving ? 'Restoring...' : 'Unarchive'}
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -705,6 +750,31 @@ export default function ClientDetailPage() {
           >
             <EditIcon />
             Edit Client
+          </button>
+          <button
+            onClick={handleArchiveToggle}
+            disabled={archiving}
+            className={`inline-flex items-center gap-2 px-4 py-2 border rounded-xl font-medium transition-colors ${
+              client.archived_at
+                ? 'bg-white border-green-300 text-green-700 hover:bg-green-50'
+                : 'bg-white border-red-200 text-red-600 hover:bg-red-50'
+            } disabled:opacity-50`}
+          >
+            {client.archived_at ? (
+              <>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {archiving ? 'Restoring...' : 'Unarchive'}
+              </>
+            ) : (
+              <>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+                {archiving ? 'Archiving...' : 'Archive'}
+              </>
+            )}
           </button>
           {latestReturn && (
             <span

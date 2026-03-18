@@ -23,8 +23,22 @@ class Client < ApplicationRecord
   scope :businesses, -> { where(client_type: 'business') }
   scope :with_tax_returns, -> { where(has_tax_returns: true) }
   scope :service_only, -> { where(has_tax_returns: false) }
+  scope :active, -> { where(archived_at: nil) }
+  scope :archived, -> { where.not(archived_at: nil) }
   # Legacy alias for backward compatibility
   scope :tax_clients, -> { with_tax_returns }
+
+  def archived?
+    archived_at.present?
+  end
+
+  def archive!
+    update!(archived_at: Time.current)
+  end
+
+  def unarchive!
+    update!(archived_at: nil)
+  end
 
   # Encrypt sensitive bank information at rest
   # Requires ACTIVE_RECORD_ENCRYPTION_* environment variables to be set
