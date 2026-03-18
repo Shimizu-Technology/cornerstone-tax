@@ -4,6 +4,7 @@ import { api } from '../../lib/api'
 import type { ServiceType, ClientServiceType } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
 import QuickCreateClientModal from '../../components/admin/QuickCreateClientModal'
+import BulkImportClientsModal from '../../components/admin/BulkImportClientsModal'
 import { FadeUp } from '../../components/ui/MotionComponents'
 
 interface Client {
@@ -46,6 +47,7 @@ export default function ClientList() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showBulkImport, setShowBulkImport] = useState(false)
   
   // Filter states
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
@@ -127,15 +129,26 @@ export default function ClientList() {
             {meta ? `${meta.total_count} total client${meta.total_count !== 1 ? 's' : ''}` : 'Loading...'}
           </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center justify-center gap-2 bg-primary text-white px-5 py-3 rounded-xl font-medium hover:bg-primary-dark transition-all shadow-md hover:shadow-lg"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New Client
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowBulkImport(true)}
+            className="inline-flex items-center justify-center gap-2 border border-secondary-dark text-gray-700 px-4 py-3 rounded-xl font-medium hover:bg-gray-50 transition-all"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Import CSV
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center justify-center gap-2 bg-primary text-white px-5 py-3 rounded-xl font-medium hover:bg-primary-dark transition-all shadow-md hover:shadow-lg"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Client
+          </button>
+        </div>
       </div>
 
       <QuickCreateClientModal
@@ -145,6 +158,12 @@ export default function ClientList() {
           navigate(`/admin/clients/${clientId}`)
         }}
       />
+
+      {showBulkImport && (
+        <BulkImportClientsModal
+          onClose={() => { setShowBulkImport(false); loadClients() }}
+        />
+      )}
 
       {/* Search and Filters */}
       <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark p-5 sm:p-6 space-y-4">
