@@ -257,7 +257,7 @@ export default function PortalDocuments() {
                 <p className="text-gray-700 font-medium">
                   <span className="text-primary">Click to upload</span> or drag and drop
                 </p>
-                <p className="text-xs text-gray-400 mt-1">PDF, JPEG, or PNG (max 10MB)</p>
+                <p className="text-xs text-gray-400 mt-1">PDF, JPEG, or PNG up to 50MB</p>
               </div>
             </div>
           )}

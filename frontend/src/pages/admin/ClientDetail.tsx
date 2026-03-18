@@ -83,6 +83,7 @@ interface ClientDetail {
   business_name: string | null
   is_service_only: boolean
   archived_at: string | null
+  has_portal_access: boolean
   service_types: ClientServiceType[]
   contacts: ClientContact[]
   created_at: string
@@ -139,7 +140,6 @@ export default function ClientDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [archiving, setArchiving] = useState(false)
   const [invitingToPortal, setInvitingToPortal] = useState(false)
-  const [portalInvited, setPortalInvited] = useState(false)
   
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false)
@@ -591,7 +591,7 @@ export default function ClientDetailPage() {
     try {
       const result = await api.inviteClientToPortal(client.id, client.email, client.first_name, client.last_name)
       if (result.data) {
-        setPortalInvited(true)
+        await loadClient()
       } else if (result.error) {
         alert(result.error)
       }
@@ -763,7 +763,7 @@ export default function ClientDetailPage() {
         </div>
         <div className="flex items-center gap-3 self-start flex-wrap">
           {/* Invite to Portal */}
-          {!portalInvited && (
+          {!client.has_portal_access && (
             <button
               onClick={handleInviteToPortal}
               disabled={invitingToPortal}
@@ -775,12 +775,12 @@ export default function ClientDetailPage() {
               {invitingToPortal ? 'Sending...' : 'Invite to Portal'}
             </button>
           )}
-          {portalInvited && (
+          {client.has_portal_access && (
             <span className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm font-medium">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              Portal Invite Sent
+              Portal Access Active
             </span>
           )}
           <button

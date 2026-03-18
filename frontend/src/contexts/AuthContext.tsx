@@ -66,7 +66,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setRoleFetched(true)
     }
-  }, [isLoaded, isSignedIn, clerkUser, getToken])
+  }, [isLoaded, isSignedIn, clerkUser])
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {

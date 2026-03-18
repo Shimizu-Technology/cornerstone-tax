@@ -86,6 +86,7 @@ module ClerkAuthenticatable
 
     unless @current_user&.client?
       render_forbidden("Client access required")
+      return
     end
 
     unless @current_user&.client_id.present?
