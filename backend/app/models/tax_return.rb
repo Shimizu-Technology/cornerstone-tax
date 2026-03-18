@@ -25,7 +25,7 @@ class TaxReturn < ApplicationRecord
   after_save :log_status_change, if: :saved_change_to_workflow_stage_id?
   after_save :log_assignment_change, if: :saved_change_to_assigned_to_id?
   after_save :log_notes_change, if: :saved_change_to_notes?
-  after_commit :send_status_notification, if: :saved_change_to_workflow_stage_id?
+  after_commit :send_status_notification, on: :update, if: :saved_change_to_workflow_stage_id?
 
   def status_name
     workflow_stage&.name || "Unknown"

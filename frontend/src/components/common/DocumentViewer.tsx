@@ -94,7 +94,12 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
       />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-[95vw] h-[90vh] max-w-6xl flex flex-col overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Document viewer: ${filename}`}
+        className="relative bg-white rounded-2xl shadow-2xl w-[95vw] h-[90vh] max-w-6xl flex flex-col overflow-hidden"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 bg-gray-50/80">
           <div className="flex items-center gap-3 min-w-0">

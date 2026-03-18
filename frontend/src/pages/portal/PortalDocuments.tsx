@@ -64,6 +64,7 @@ export default function PortalDocuments() {
     if (!selectedReturnId) return
     activeReturnRef.current = selectedReturnId
     setDocuments([])
+    setLoadError(null)
     setUploadError(null)
     setUploadSuccess(null)
     try {
@@ -160,6 +161,7 @@ export default function PortalDocuments() {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setDragActive(false)
+    if (uploading) return
     const files = e.dataTransfer.files
     if (!files || files.length === 0) return
     if (files.length > 1) {
