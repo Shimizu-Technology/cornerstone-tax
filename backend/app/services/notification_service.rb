@@ -149,11 +149,17 @@ class NotificationService
       true
     end
 
+    def sanitize_css_color(color)
+      return "#8b7355" unless color.present?
+      color.match?(/\A#[0-9a-fA-F]{3,8}\z/) ? color : "#8b7355"
+    end
+
     def status_change_html(client:, tax_return:, new_stage:, portal_url:)
       stage_name = CGI.escapeHTML(new_stage.name.to_s)
       client_name = CGI.escapeHTML(client.first_name.to_s)
       year = CGI.escapeHTML(tax_return.tax_year.to_s)
       message = status_message(new_stage, tax_return)
+      stage_color = sanitize_css_color(new_stage.color)
 
       <<~HTML
         <!DOCTYPE html>
@@ -188,7 +194,7 @@ class NotificationService
                         #{message}
                       </p>
 
-                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 0 0 25px 0; background-color: #f9f8f6; border-radius: 8px; border-left: 4px solid #{CGI.escapeHTML(new_stage.color || '#8b7355')};">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 0 0 25px 0; background-color: #f9f8f6; border-radius: 8px; border-left: 4px solid #{stage_color};">
                         <tr>
                           <td style="padding: 16px 20px;">
                             <p style="color: #888888; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Current Status</p>

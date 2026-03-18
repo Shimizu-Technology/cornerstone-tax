@@ -210,6 +210,8 @@ export interface ClientDetailResponse {
     is_service_only: boolean;
     archived_at: string | null;
     notification_preference: string;
+    has_portal_access: boolean;
+    portal_invite_pending: boolean;
     service_types: ClientServiceType[];
     contacts: ClientContact[];
     created_at: string;

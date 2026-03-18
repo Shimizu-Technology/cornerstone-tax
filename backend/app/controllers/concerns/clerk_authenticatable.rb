@@ -5,9 +5,6 @@
 module ClerkAuthenticatable
   extend ActiveSupport::Concern
 
-  private
-
-  # Require authentication - call this in before_action
   def authenticate_user!
     header = request.headers["Authorization"]
 
@@ -24,13 +21,11 @@ module ClerkAuthenticatable
       return
     end
 
-    # Extract user info from the token
     clerk_id = decoded["sub"]
     email = decoded["email"] || decoded["primary_email_address"]
     first_name = decoded["first_name"]
     last_name = decoded["last_name"]
 
-    # Find or create user
     @current_user = find_or_create_user(
       clerk_id: clerk_id,
       email: email,
@@ -44,7 +39,6 @@ module ClerkAuthenticatable
     end
   end
 
-  # Optional authentication - sets current_user if token present but doesn't require it
   def authenticate_user_optional
     header = request.headers["Authorization"]
     return unless header.present?
@@ -61,7 +55,6 @@ module ClerkAuthenticatable
     @current_user
   end
 
-  # Authorization helpers
   def require_admin!
     authenticate_user! unless @current_user
     return if performed?

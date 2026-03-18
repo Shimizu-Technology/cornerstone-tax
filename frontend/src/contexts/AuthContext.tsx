@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth, useUser } from '@clerk/clerk-react'
 import { setAuthTokenGetter, api } from '../lib/api'
@@ -36,7 +36,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
   const [userRole, setUserRole] = useState<'admin' | 'employee' | 'client' | null>(null)
   const [roleFetched, setRoleFetched] = useState(false)
   const fetchedRef = useRef(false)
-  const fetchRoleRef = useRef<(retryCount?: number) => Promise<void>>()
+  const fetchRoleRef = useRef<((retryCount?: number) => Promise<void>) | undefined>(undefined)
 
   useEffect(() => {
     setAuthTokenGetter(async () => {
@@ -76,12 +76,15 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
         const delay = (retryCount + 1) * 1500
         setTimeout(() => fetchRoleRef.current?.(retryCount + 1), delay)
       } else {
+        setUserRole(null)
         setRoleFetched(true)
       }
     }
   }, [isLoaded, isSignedIn, clerkUser])
 
-  fetchRoleRef.current = fetchRole
+  useLayoutEffect(() => {
+    fetchRoleRef.current = fetchRole
+  }, [fetchRole])
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
