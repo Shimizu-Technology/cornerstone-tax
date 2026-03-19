@@ -14,7 +14,11 @@ export default function PortalReturnDetail() {
 
   useEffect(() => {
     async function load() {
-      if (!id) return
+      if (!id) {
+        setError('Invalid tax return ID')
+        setLoading(false)
+        return
+      }
       try {
         const result = await api.portalTaxReturn(parseInt(id, 10))
         if (result.data) {

@@ -51,11 +51,16 @@ module Api
             return render json: { error: "File extension does not match the declared content type" }, status: :unprocessable_entity
           end
 
-          result = S3Service.presign_upload(
-            filename: filename,
-            content_type: content_type,
-            tax_return_id: @tax_return.id
-          )
+          begin
+            result = S3Service.presign_upload(
+              filename: filename,
+              content_type: content_type,
+              tax_return_id: @tax_return.id
+            )
+          rescue StandardError => e
+            Rails.logger.error "S3 presign failed for tax return #{@tax_return.id}: #{e.message}"
+            return render json: { error: "File upload service is temporarily unavailable. Please try again." }, status: :service_unavailable
+          end
 
           render json: {
             upload_url: result[:url],

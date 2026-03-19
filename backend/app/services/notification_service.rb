@@ -16,7 +16,7 @@ class NotificationService
         return
       end
 
-      notification = Notification.create!(
+      notification = Notification.create(
         client: client,
         tax_return: tax_return,
         notification_type: "email",
@@ -25,6 +25,11 @@ class NotificationService
         recipient: client.email,
         content: "Status changed to #{new_stage.name} for #{tax_return.tax_year} tax return"
       )
+
+      unless notification.persisted?
+        Rails.logger.error "Failed to create status notification for tax return #{tax_return.id}: #{notification.errors.full_messages.join(', ')}"
+        return
+      end
 
       send_status_change_email(
         notification: notification,
@@ -50,7 +55,7 @@ class NotificationService
       client = tax_return.client
       return unless client
 
-      notification = Notification.create!(
+      notification = Notification.create(
         client: client,
         tax_return: tax_return,
         notification_type: "email",
@@ -59,6 +64,11 @@ class NotificationService
         recipient: notification_email,
         content: "#{client.full_name} uploaded #{document.filename}"
       )
+
+      unless notification.persisted?
+        Rails.logger.error "Failed to create document upload notification: #{notification.errors.full_messages.join(', ')}"
+        return
+      end
 
       send_document_upload_email(
         notification: notification,

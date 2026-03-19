@@ -101,9 +101,9 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
     fetchedRef.current = true
 
     try {
-      const email = clerkUser.primaryEmailAddress?.emailAddress
+      const hasEmail = clerkUser.primaryEmailAddress?.emailAddress
         || clerkUser.emailAddresses?.[0]?.emailAddress
-      if (!email) {
+      if (!hasEmail) {
         setUserRole(null)
         setRoleFetched(true)
         return
