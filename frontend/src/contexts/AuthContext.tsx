@@ -31,19 +31,29 @@ interface AuthProviderProps {
 }
 
 const ROLE_CACHE_PREFIX = 'cst_role_'
+const ROLE_CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 type UserRole = 'admin' | 'employee' | 'client' | null
 
 function getCachedRole(clerkId: string | undefined): UserRole {
   if (!clerkId) return null
-  const cached = localStorage.getItem(`${ROLE_CACHE_PREFIX}${clerkId}`)
-  if (cached === 'admin' || cached === 'employee' || cached === 'client') return cached
+  const raw = localStorage.getItem(`${ROLE_CACHE_PREFIX}${clerkId}`)
+  if (!raw) return null
+  try {
+    const { role, ts } = JSON.parse(raw)
+    if (Date.now() - ts > ROLE_CACHE_TTL_MS) {
+      localStorage.removeItem(`${ROLE_CACHE_PREFIX}${clerkId}`)
+      return null
+    }
+    if (role === 'admin' || role === 'employee' || role === 'client') return role
+  } catch { /* corrupted entry */ }
+  localStorage.removeItem(`${ROLE_CACHE_PREFIX}${clerkId}`)
   return null
 }
 
 function setCachedRole(clerkId: string | undefined, role: UserRole) {
   if (!clerkId) return
   if (role) {
-    localStorage.setItem(`${ROLE_CACHE_PREFIX}${clerkId}`, role)
+    localStorage.setItem(`${ROLE_CACHE_PREFIX}${clerkId}`, JSON.stringify({ role, ts: Date.now() }))
   } else {
     localStorage.removeItem(`${ROLE_CACHE_PREFIX}${clerkId}`)
   }

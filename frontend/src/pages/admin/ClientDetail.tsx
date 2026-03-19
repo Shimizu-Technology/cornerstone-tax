@@ -584,10 +584,10 @@ export default function ClientDetailPage() {
       alert('This client needs an email address before they can be invited to the portal.')
       return
     }
-    const confirm = window.confirm(
+    const confirmed = window.confirm(
       `Invite ${client.full_name} to the client portal?\n\nAn email will be sent to ${client.email} with instructions to create their account.`
     )
-    if (!confirm) return
+    if (!confirmed) return
     setInvitingToPortal(true)
     try {
       const result = await api.inviteClientToPortal(client.id, client.email, client.first_name, client.last_name)
@@ -606,12 +606,12 @@ export default function ClientDetailPage() {
   const handleArchiveToggle = async () => {
     if (!client) return
     const action = client.archived_at ? 'unarchive' : 'archive'
-    const confirm = window.confirm(
+    const confirmed = window.confirm(
       action === 'archive'
         ? `Archive ${client.full_name}? They will be hidden from the active client list.`
         : `Unarchive ${client.full_name}? They will reappear in the active client list.`
     )
-    if (!confirm) return
+    if (!confirmed) return
     setArchiving(true)
     try {
       const result = action === 'archive'

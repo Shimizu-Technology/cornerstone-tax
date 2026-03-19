@@ -86,6 +86,11 @@ module Api
             return render json: { error: "File size must be between 1 byte and 50MB" }, status: :unprocessable_entity
           end
 
+          doc_type = document_params[:document_type]
+          if doc_type.present? && !Document::DOCUMENT_TYPES.include?(doc_type)
+            return render json: { error: "Invalid document type. Allowed: #{Document::DOCUMENT_TYPES.join(', ')}" }, status: :unprocessable_entity
+          end
+
           document = @tax_return.documents.build(document_params)
           document.uploaded_by = current_user
 

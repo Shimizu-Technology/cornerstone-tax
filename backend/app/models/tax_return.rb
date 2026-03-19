@@ -45,12 +45,9 @@ class TaxReturn < ApplicationRecord
   end
 
   def send_status_notification
-    NotificationService.notify_status_change(
-      tax_return: self,
-      new_stage: workflow_stage
-    )
+    StatusNotificationJob.perform_later(id, workflow_stage_id)
   rescue StandardError => e
-    Rails.logger.error "Notification failed for tax return #{id}: #{e.message}"
+    Rails.logger.error "Failed to enqueue notification for tax return #{id}: #{e.message}"
   end
 
   def log_assignment_change

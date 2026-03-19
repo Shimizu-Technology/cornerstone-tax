@@ -2,16 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../../lib/api'
 import type { PortalTaxReturnSummary, PortalDocument } from '../../lib/api'
 import { formatFileSize } from '../../lib/formatUtils'
-import { ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE } from '../../lib/documentConstants'
+import { ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE, DOCUMENT_TYPES } from '../../lib/documentConstants'
 import DocumentViewer from '../../components/common/DocumentViewer'
 
-const DOCUMENT_TYPES = [
-  { value: 'w2', label: 'W-2' },
-  { value: '1099', label: '1099' },
-  { value: 'id', label: 'Photo ID' },
-  { value: 'prior_return', label: 'Prior Year Return' },
-  { value: 'other', label: 'Other' },
-]
 
 
 export default function PortalDocuments() {

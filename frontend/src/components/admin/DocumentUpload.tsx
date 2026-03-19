@@ -3,7 +3,7 @@ import { api } from '../../lib/api'
 import type { Document } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
 import { formatFileSize } from '../../lib/formatUtils'
-import { ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE } from '../../lib/documentConstants'
+import { ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE, DOCUMENT_TYPES } from '../../lib/documentConstants'
 import DocumentViewer from '../common/DocumentViewer'
 
 interface DocumentUploadProps {
@@ -11,15 +11,6 @@ interface DocumentUploadProps {
   documents: Document[]
   onDocumentsChange: () => void
 }
-
-const DOCUMENT_TYPES = [
-  { value: 'w2', label: 'W-2' },
-  { value: '1099', label: '1099' },
-  { value: 'id', label: 'ID / Driver\'s License' },
-  { value: 'prior_return', label: 'Prior Year Return' },
-  { value: 'other', label: 'Other' },
-]
-
 
 const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
 
