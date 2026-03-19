@@ -72,6 +72,9 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const currentClerkId = clerkUser?.id ?? null
     if (currentClerkId !== lastClerkIdRef.current) {
+      if (lastClerkIdRef.current && !currentClerkId) {
+        setCachedRole(lastClerkIdRef.current, null)
+      }
       lastClerkIdRef.current = currentClerkId
       fetchedRef.current = false
       clearTimeout(retryTimerRef.current)
@@ -140,7 +143,6 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
     } else if (isLoaded && !isSignedIn) {
       clearTimeout(retryTimerRef.current)
       fetchedRef.current = false
-      setCachedRole(lastClerkIdRef.current ?? undefined, null)
       setUserRole(null)
       setRoleFetched(true)
     }

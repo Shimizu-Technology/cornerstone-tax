@@ -28,6 +28,10 @@ module Api
         clerk_id = decoded["sub"]
         email = decoded["email"] || decoded["primary_email_address"]
 
+        unless email.present?
+          Rails.logger.warn "JWT for clerk_id=#{clerk_id} has no email claim. Invite linking will not work. Ensure Clerk JWT template includes the email claim."
+        end
+
         # Find user by clerk_id first
         user = User.find_by(clerk_id: clerk_id)
 

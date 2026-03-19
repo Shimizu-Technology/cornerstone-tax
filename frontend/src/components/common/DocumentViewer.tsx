@@ -66,6 +66,13 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
     }
   }, [isOpen, fetchUrl])
 
+  // Re-fetch presigned URL before it expires (50 min of 60 min TTL)
+  useEffect(() => {
+    if (!isOpen || !url) return
+    const refreshTimer = setTimeout(() => fetchUrl(), 50 * 60 * 1000)
+    return () => clearTimeout(refreshTimer)
+  }, [isOpen, url, fetchUrl])
+
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {

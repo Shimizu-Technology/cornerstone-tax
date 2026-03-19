@@ -83,6 +83,7 @@ export default function PortalDocuments() {
 
   const uploadFile = async (file: File) => {
     if (!selectedReturnId) return
+    const returnId = selectedReturnId
 
     setUploadError(null)
     setUploadSuccess(null)
@@ -99,7 +100,7 @@ export default function PortalDocuments() {
     setUploading(true)
 
     try {
-      const presignResult = await api.portalPresignDocument(selectedReturnId, {
+      const presignResult = await api.portalPresignDocument(returnId, {
         filename: file.name,
         content_type: file.type,
         file_size: file.size,
@@ -123,7 +124,7 @@ export default function PortalDocuments() {
         return
       }
 
-      const registerResult = await api.portalCreateDocument(selectedReturnId, {
+      const registerResult = await api.portalCreateDocument(returnId, {
         filename: file.name,
         s3_key: presignData.s3_key,
         content_type: file.type,
