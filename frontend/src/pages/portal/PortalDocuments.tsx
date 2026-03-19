@@ -58,6 +58,7 @@ export default function PortalDocuments() {
     if (!selectedReturnId) return
     activeReturnRef.current = selectedReturnId
     setDocuments([])
+    setViewingDoc(null)
     setLoadError(null)
     setUploadError(null)
     setUploadSuccess(null)

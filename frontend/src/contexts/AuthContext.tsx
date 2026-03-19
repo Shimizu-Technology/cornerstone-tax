@@ -66,7 +66,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
   const [roleFetched, setRoleFetched] = useState(false)
   const fetchedRef = useRef(false)
   const fetchRoleRef = useRef<((retryCount?: number) => Promise<void>) | undefined>(undefined)
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const lastClerkIdRef = useRef<string | null>(null)
 
   useEffect(() => {
