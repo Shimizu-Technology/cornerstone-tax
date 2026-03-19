@@ -83,6 +83,8 @@ interface ClientDetail {
   business_name: string | null
   is_service_only: boolean
   archived_at: string | null
+  has_portal_access: boolean
+  portal_invite_pending: boolean
   service_types: ClientServiceType[]
   contacts: ClientContact[]
   created_at: string
@@ -138,6 +140,7 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [archiving, setArchiving] = useState(false)
+  const [invitingToPortal, setInvitingToPortal] = useState(false)
   
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false)
@@ -575,15 +578,44 @@ export default function ClientDetailPage() {
     }
   }
 
+  const handleInviteToPortal = async () => {
+    if (!client) return
+    if (!client.email) {
+      alert('This client needs an email address before they can be invited to the portal.')
+      return
+    }
+    const confirmed = window.confirm(
+      `Invite ${client.full_name} to the client portal?\n\nAn invitation email will be sent to ${client.email} with instructions to create their account.`
+    )
+    if (!confirmed) return
+    setInvitingToPortal(true)
+    try {
+      const result = await api.inviteClientToPortal(client.id, client.email, client.first_name, client.last_name)
+      if (result.data) {
+        const emailSent = result.data.invitation_email_sent
+        if (!emailSent) {
+          alert('Portal account created, but the invitation email could not be sent. Please share the portal link with the client manually.')
+        }
+        await loadClient()
+      } else if (result.error) {
+        alert(result.error)
+      }
+    } catch {
+      alert('Failed to send portal invite. Please try again.')
+    } finally {
+      setInvitingToPortal(false)
+    }
+  }
+
   const handleArchiveToggle = async () => {
     if (!client) return
     const action = client.archived_at ? 'unarchive' : 'archive'
-    const confirm = window.confirm(
+    const confirmed = window.confirm(
       action === 'archive'
         ? `Archive ${client.full_name}? They will be hidden from the active client list.`
         : `Unarchive ${client.full_name}? They will reappear in the active client list.`
     )
-    if (!confirm) return
+    if (!confirmed) return
     setArchiving(true)
     try {
       const result = action === 'archive'
@@ -735,6 +767,35 @@ export default function ClientDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-3 self-start flex-wrap">
+          {/* Invite to Portal */}
+          {!client.has_portal_access && !client.portal_invite_pending && (
+            <button
+              onClick={handleInviteToPortal}
+              disabled={invitingToPortal}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-medium hover:bg-primary-dark transition-colors disabled:opacity-50"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              {invitingToPortal ? 'Sending...' : 'Invite to Portal'}
+            </button>
+          )}
+          {client.portal_invite_pending && (
+            <span className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl text-sm font-medium">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Portal Invite Pending
+            </span>
+          )}
+          {client.has_portal_access && (
+            <span className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm font-medium">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Portal Access Active
+            </span>
+          )}
           <button
             onClick={() => window.print()}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-secondary-dark rounded-xl text-gray-600 font-medium hover:bg-secondary transition-colors"

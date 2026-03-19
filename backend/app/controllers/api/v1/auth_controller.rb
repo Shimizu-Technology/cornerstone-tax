@@ -26,8 +26,11 @@ module Api
         end
 
         clerk_id = decoded["sub"]
-        # Use email from params (sent by frontend from Clerk) - more reliable than JWT
-        email = params[:email].presence || decoded["email"] || decoded["primary_email_address"]
+        email = decoded["email"] || decoded["primary_email_address"]
+
+        unless email.present?
+          Rails.logger.warn "JWT for clerk_id=#{clerk_id} has no email claim. Invite linking will not work. Ensure Clerk JWT template includes the email claim."
+        end
 
         # Find user by clerk_id first
         user = User.find_by(clerk_id: clerk_id)
@@ -73,6 +76,8 @@ module Api
             role: user.role,
             is_admin: user.admin?,
             is_staff: user.staff?,
+            is_client: user.client?,
+            client_id: user.client_id,
             created_at: user.created_at
           }
         }

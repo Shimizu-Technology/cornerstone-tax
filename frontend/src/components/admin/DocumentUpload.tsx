@@ -2,6 +2,9 @@ import { useState, useRef, useCallback } from 'react'
 import { api } from '../../lib/api'
 import type { Document } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
+import { formatFileSize } from '../../lib/formatUtils'
+import { ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE, DOCUMENT_TYPES } from '../../lib/documentConstants'
+import DocumentViewer from '../common/DocumentViewer'
 
 interface DocumentUploadProps {
   taxReturnId: number
@@ -9,25 +12,8 @@ interface DocumentUploadProps {
   onDocumentsChange: () => void
 }
 
-const DOCUMENT_TYPES = [
-  { value: 'w2', label: 'W-2' },
-  { value: '1099', label: '1099' },
-  { value: 'id', label: 'ID / Driver\'s License' },
-  { value: 'prior_return', label: 'Prior Year Return' },
-  { value: 'other', label: 'Other' },
-]
-
-// CST-16: File upload validation constants
-const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
-const ALLOWED_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
 const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
 
-function formatFileSize(bytes: number | null): string {
-  if (!bytes) return 'Unknown size'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 export default function DocumentUpload({ taxReturnId, documents, onDocumentsChange }: DocumentUploadProps) {
   const [isDragging, setIsDragging] = useState(false)
@@ -35,6 +21,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
   const [selectedType, setSelectedType] = useState('other')
   const [error, setError] = useState<string | null>(null)
+  const [viewingDoc, setViewingDoc] = useState<Document | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -58,7 +45,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
 
     const fileType = file.type || ''
     const fileExt = '.' + file.name.split('.').pop()?.toLowerCase()
-    if (!ALLOWED_FILE_TYPES.includes(fileType) && !ALLOWED_FILE_EXTENSIONS.includes(fileExt)) {
+    if (!ALLOWED_CONTENT_TYPES.includes(fileType as typeof ALLOWED_CONTENT_TYPES[number]) && !ALLOWED_FILE_EXTENSIONS.includes(fileExt)) {
       setError('File type not allowed. Accepted types: PDF, JPEG, PNG')
       return
     }
@@ -161,6 +148,14 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
     }
   }
 
+  const fetchViewUrl = useCallback(async () => {
+    if (!viewingDoc) return null
+    const result = await api.getDocumentDownloadUrl(taxReturnId, viewingDoc.id)
+    return result.data?.download_url || null
+  }, [viewingDoc, taxReturnId])
+
+  const closeViewer = useCallback(() => setViewingDoc(null), [])
+
   const handleDelete = async (doc: Document) => {
     if (!confirm(`Delete "${doc.filename}"?`)) return
 
@@ -249,10 +244,11 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
+                onClick={() => setViewingDoc(doc)}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <svg className="w-8 h-8 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+                  <svg className="w-8 h-8 text-gray-400 shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                   </svg>
                   <div className="min-w-0">
@@ -262,9 +258,19 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={() => handleDownload(doc)}
+                    onClick={(e) => { e.stopPropagation(); setViewingDoc(doc) }}
+                    className="p-2 text-gray-500 hover:text-primary transition-colors"
+                    title="View"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDownload(doc) }}
                     className="p-2 text-gray-500 hover:text-primary transition-colors"
                     title="Download"
                   >
@@ -273,7 +279,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
                     </svg>
                   </button>
                   <button
-                    onClick={() => handleDelete(doc)}
+                    onClick={(e) => { e.stopPropagation(); handleDelete(doc) }}
                     className="p-2 text-gray-500 hover:text-red-600 transition-colors"
                     title="Delete"
                   >
@@ -291,6 +297,14 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
       {documents.length === 0 && !uploading && (
         <p className="mt-4 text-sm text-gray-500 text-center">No documents uploaded yet</p>
       )}
+
+      <DocumentViewer
+        isOpen={!!viewingDoc}
+        onClose={closeViewer}
+        filename={viewingDoc?.filename || ''}
+        contentType={viewingDoc?.content_type || null}
+        onFetchUrl={fetchViewUrl}
+      />
     </div>
   )
 }

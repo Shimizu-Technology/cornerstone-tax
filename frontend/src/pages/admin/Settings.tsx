@@ -48,6 +48,7 @@ export default function Settings() {
   const [, setSystemSettings] = useState<Record<string, string>>({})
   const [loadingSystemSettings, setLoadingSystemSettings] = useState(true)
   const [contactEmail, setContactEmail] = useState('')
+  const [notificationEmail, setNotificationEmail] = useState('')
   const [savingSystemSettings, setSavingSystemSettings] = useState(false)
   const [systemSettingsSuccess, setSystemSettingsSuccess] = useState('')
   const [systemSettingsError, setSystemSettingsError] = useState('')
@@ -179,6 +180,7 @@ export default function Settings() {
     if (response.data) {
       setSystemSettings(response.data)
       setContactEmail(response.data.contact_email || 'dmshimizucpa@gmail.com')
+      setNotificationEmail(response.data.notification_email || 'dmshimizucpa@gmail.com')
     }
     setLoadingSystemSettings(false)
   }, [])
@@ -190,6 +192,7 @@ export default function Settings() {
     
     const response = await api.updateSystemSettings({
       contact_email: contactEmail,
+      notification_email: notificationEmail,
     })
     
     if (response.error) {
@@ -1898,6 +1901,22 @@ export default function Settings() {
                     value={contactEmail}
                     aria-label="Contact email address"
                     onChange={(e) => setContactEmail(e.target.value)}
+                    placeholder="dmshimizucpa@gmail.com"
+                    className="w-full max-w-md px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                  />
+                </div>
+
+                {/* Notification Email Setting */}
+                <div className="bg-secondary/30 rounded-xl p-6">
+                  <h3 className="font-semibold text-primary-dark mb-2">Notification Email</h3>
+                  <p className="text-sm text-text-muted mb-4">
+                    Email address where notifications are sent when clients upload documents or take other actions.
+                  </p>
+                  <input
+                    type="email"
+                    value={notificationEmail}
+                    aria-label="Notification email address"
+                    onChange={(e) => setNotificationEmail(e.target.value)}
                     placeholder="dmshimizucpa@gmail.com"
                     className="w-full max-w-md px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
                   />

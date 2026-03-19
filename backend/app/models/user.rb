@@ -54,4 +54,12 @@ class User < ApplicationRecord
   def staff?
     admin? || employee?
   end
+
+  def portal_active?
+    client? && clerk_id.present? && !clerk_id.start_with?("pending_")
+  end
+
+  def portal_invite_pending?
+    client? && clerk_id.present? && clerk_id.start_with?("pending_")
+  end
 end

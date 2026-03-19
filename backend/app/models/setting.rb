@@ -5,7 +5,8 @@ class Setting < ApplicationRecord
 
   # Default values for settings
   DEFAULTS = {
-    "contact_email" => "dmshimizucpa@gmail.com"
+    "contact_email" => "dmshimizucpa@gmail.com",
+    "notification_email" => "dmshimizucpa@gmail.com"
   }.freeze
 
   # Get a setting value (with default fallback)

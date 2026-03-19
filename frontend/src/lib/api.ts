@@ -209,6 +209,9 @@ export interface ClientDetailResponse {
     business_name: string | null;
     is_service_only: boolean;
     archived_at: string | null;
+    notification_preference: string;
+    has_portal_access: boolean;
+    portal_invite_pending: boolean;
     service_types: ClientServiceType[];
     contacts: ClientContact[];
     created_at: string;
@@ -334,6 +337,8 @@ export interface CurrentUser {
   role: 'admin' | 'employee' | 'client';
   is_admin: boolean;
   is_staff: boolean;
+  is_client: boolean;
+  client_id: number | null;
   created_at: string;
 }
 
@@ -590,6 +595,66 @@ export interface Document {
   tax_return_id: number;
 }
 
+// Portal Types
+export interface PortalTaxReturnSummary {
+  id: number;
+  tax_year: number;
+  status: string;
+  status_slug: string;
+  status_color: string | null;
+  assigned_to: string | null;
+  income_sources: { id: number; source_type: string; payer_name: string }[];
+  documents_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortalDocument {
+  id: number;
+  filename: string;
+  document_type: string | null;
+  content_type: string | null;
+  file_size: number | null;
+  uploaded_by?: string | null;
+  created_at: string;
+}
+
+export interface PortalTaxReturnDetail extends PortalTaxReturnSummary {
+  documents: PortalDocument[];
+  workflow_progress: {
+    current_stage: string;
+    current_position: number;
+    stages: {
+      name: string;
+      slug: string;
+      position: number;
+      color: string | null;
+      completed: boolean;
+      current: boolean;
+    }[];
+  };
+}
+
+export interface PortalActionItem {
+  type: string;
+  message: string;
+  tax_return_id: number;
+  tax_year: number;
+}
+
+export interface PortalDashboardResponse {
+  client: {
+    id: number;
+    first_name: string;
+    full_name: string;
+    email: string;
+    phone: string | null;
+    notification_preference: string;
+  };
+  tax_returns: PortalTaxReturnSummary[];
+  action_items: PortalActionItem[];
+}
+
 export interface PresignResponse {
   upload_url: string;
   s3_key: string;
@@ -808,10 +873,9 @@ export interface PayrollChecklistPeriodDetailResponse {
 // API functions
 export const api = {
   // Auth
-  getCurrentUser: (email?: string) =>
+  getCurrentUser: () =>
     fetchApi<{ user: CurrentUser }>('/api/v1/auth/me', {
       method: 'POST',
-      body: JSON.stringify({ email }),
     }),
 
   // Intake (public - no auth required)
@@ -1627,5 +1691,50 @@ export const api = {
     fetchApi<{ success: boolean }>('/api/v1/admin/schedule_time_presets/reorder', {
       method: 'POST',
       body: JSON.stringify({ positions }),
+    }),
+
+  // ── Portal (Client-facing) ──
+
+  portalDashboard: () =>
+    fetchApi<PortalDashboardResponse>('/api/v1/portal/dashboard'),
+
+  portalTaxReturns: () =>
+    fetchApi<{ tax_returns: PortalTaxReturnSummary[] }>('/api/v1/portal/tax_returns'),
+
+  portalTaxReturn: (id: number) =>
+    fetchApi<{ tax_return: PortalTaxReturnDetail }>(`/api/v1/portal/tax_returns/${id}`),
+
+  portalDocuments: (taxReturnId: number) =>
+    fetchApi<{ documents: PortalDocument[] }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents`),
+
+  portalPresignDocument: (taxReturnId: number, data: { filename: string; content_type: string; file_size: number }) =>
+    fetchApi<{ upload_url: string; s3_key: string }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents/presign`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  portalCreateDocument: (taxReturnId: number, data: { filename: string; s3_key: string; content_type: string; file_size: number; document_type: string }) =>
+    fetchApi<{ document: PortalDocument }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents`, {
+      method: 'POST',
+      body: JSON.stringify({ document: data }),
+    }),
+
+  portalGetDocumentDownloadUrl: (taxReturnId: number, documentId: number) =>
+    fetchApi<{ download_url: string; expires_in: number }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents/${documentId}/download`),
+
+  portalGetSettings: () =>
+    fetchApi<{ notification_preference: string }>('/api/v1/portal/settings'),
+
+  portalUpdateSettings: (data: { notification_preference: string }) =>
+    fetchApi<{ notification_preference: string }>('/api/v1/portal/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ setting: data }),
+    }),
+
+  // Admin: Invite client to portal
+  inviteClientToPortal: (clientId: number, email?: string, firstName?: string, lastName?: string) =>
+    fetchApi<{ user: { id: number; email: string; role: string; client_id: number | null }; invitation_email_sent: boolean }>('/api/v1/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({ role: 'client', client_id: clientId, email, first_name: firstName, last_name: lastName }),
     }),
 };

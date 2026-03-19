@@ -7,6 +7,7 @@ import { PostHogPageView } from "./providers/PostHogProvider"
 // Layouts
 import PublicLayout from "./components/layouts/PublicLayout"
 import AdminLayout from "./components/layouts/AdminLayout"
+import PortalLayout from "./components/layouts/PortalLayout"
 
 // Auth
 import ProtectedRoute from "./components/auth/ProtectedRoute"
@@ -33,6 +34,13 @@ const Settings = lazy(() => import("./pages/admin/Settings"))
 const TimeTracking = lazy(() => import("./pages/admin/TimeTracking"))
 const Schedule = lazy(() => import("./pages/admin/Schedule"))
 const Operations = lazy(() => import("./pages/admin/Operations"))
+
+// Portal Pages — lazy loaded
+const PortalDashboard = lazy(() => import("./pages/portal/PortalDashboard"))
+const PortalReturns = lazy(() => import("./pages/portal/PortalReturns"))
+const PortalReturnDetail = lazy(() => import("./pages/portal/PortalReturnDetail"))
+const PortalDocuments = lazy(() => import("./pages/portal/PortalDocuments"))
+const PortalSettings = lazy(() => import("./pages/portal/PortalSettings"))
 
 // Loading fallback for lazy routes
 function AdminLoadingFallback() {
@@ -94,6 +102,22 @@ function App() {
           <Route path="time" element={<Suspense fallback={<AdminLoadingFallback />}><TimeTracking /></Suspense>} />
           <Route path="operations" element={<Suspense fallback={<AdminLoadingFallback />}><Operations /></Suspense>} />
           <Route path="schedule" element={<Suspense fallback={<AdminLoadingFallback />}><Schedule /></Suspense>} />
+        </Route>
+
+        {/* Client Portal - Protected (client role only) */}
+        <Route
+          path="/portal"
+          element={
+            <ProtectedRoute requiredRole="client">
+              <PortalLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Suspense fallback={<AdminLoadingFallback />}><PortalDashboard /></Suspense>} />
+          <Route path="returns" element={<Suspense fallback={<AdminLoadingFallback />}><PortalReturns /></Suspense>} />
+          <Route path="returns/:id" element={<Suspense fallback={<AdminLoadingFallback />}><PortalReturnDetail /></Suspense>} />
+          <Route path="documents" element={<Suspense fallback={<AdminLoadingFallback />}><PortalDocuments /></Suspense>} />
+          <Route path="settings" element={<Suspense fallback={<AdminLoadingFallback />}><PortalSettings /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

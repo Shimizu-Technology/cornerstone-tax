@@ -17,8 +17,11 @@ const navigation = [
 ]
 
 function AuthSection({ mobile = false }: { mobile?: boolean }) {
-  const { isClerkEnabled } = useAuthContext()
+  const { isClerkEnabled, isClient, isLoading } = useAuthContext()
   if (!isClerkEnabled) return null
+
+  const dashboardHref = isClient ? '/portal' : '/admin'
+  const dashboardLabel = isClient ? 'My Portal' : 'Dashboard'
 
   if (mobile) {
     return (
@@ -26,17 +29,23 @@ function AuthSection({ mobile = false }: { mobile?: boolean }) {
         <SignedOut>
           <SignInButton mode="modal">
             <button className="mt-2 px-4 py-3 rounded-lg text-base font-medium text-gray-600 hover:bg-gray-50 min-h-[44px] flex items-center">
-              Staff Login
+              Sign In
             </button>
           </SignInButton>
         </SignedOut>
         <SignedIn>
-          <Link
-            to="/admin"
-            className="mt-2 px-4 py-3 rounded-lg text-base font-medium text-primary bg-secondary min-h-[44px] flex items-center"
-          >
-            Dashboard
-          </Link>
+          {isLoading ? (
+            <span className="mt-2 px-4 py-3 rounded-lg text-base font-medium text-gray-300 bg-gray-50 min-h-[44px] flex items-center animate-pulse">
+              Loading…
+            </span>
+          ) : (
+            <Link
+              to={dashboardHref}
+              className="mt-2 px-4 py-3 rounded-lg text-base font-medium text-primary bg-secondary min-h-[44px] flex items-center"
+            >
+              {dashboardLabel}
+            </Link>
+          )}
         </SignedIn>
       </>
     )
@@ -47,17 +56,23 @@ function AuthSection({ mobile = false }: { mobile?: boolean }) {
       <SignedOut>
         <SignInButton mode="modal">
           <button className="h-full inline-flex items-center text-sm font-medium text-gray-600 hover:text-primary transition-colors">
-            Staff Login
+            Sign In
           </button>
         </SignInButton>
       </SignedOut>
       <SignedIn>
-        <Link
-          to="/admin"
-          className="h-full inline-flex items-center text-sm font-medium text-gray-600 hover:text-primary transition-colors"
-        >
-          Dashboard
-        </Link>
+        {isLoading ? (
+          <span className="h-full inline-flex items-center text-sm font-medium text-gray-300 animate-pulse">
+            Loading…
+          </span>
+        ) : (
+          <Link
+            to={dashboardHref}
+            className="h-full inline-flex items-center text-sm font-medium text-gray-600 hover:text-primary transition-colors"
+          >
+            {dashboardLabel}
+          </Link>
+        )}
         <UserButton
           afterSignOutUrl="/"
           appearance={{ elements: { avatarBox: "w-9 h-9" } }}

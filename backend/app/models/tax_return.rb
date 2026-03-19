@@ -25,6 +25,7 @@ class TaxReturn < ApplicationRecord
   after_save :log_status_change, if: :saved_change_to_workflow_stage_id?
   after_save :log_assignment_change, if: :saved_change_to_assigned_to_id?
   after_save :log_notes_change, if: :saved_change_to_notes?
+  after_commit :send_status_notification, on: :update, if: :saved_change_to_workflow_stage_id?
 
   def status_name
     workflow_stage&.name || "Unknown"
@@ -41,6 +42,12 @@ class TaxReturn < ApplicationRecord
       description: "Status changed from #{old_stage&.name || 'none'} to #{workflow_stage&.name}",
       user: current_actor
     )
+  end
+
+  def send_status_notification
+    StatusNotificationJob.perform_later(id, workflow_stage_id)
+  rescue StandardError => e
+    Rails.logger.error "Failed to enqueue notification for tax return #{id}: #{e.message}"
   end
 
   def log_assignment_change

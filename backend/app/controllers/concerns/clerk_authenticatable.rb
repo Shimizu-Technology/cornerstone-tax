@@ -7,7 +7,6 @@ module ClerkAuthenticatable
 
   private
 
-  # Require authentication - call this in before_action
   def authenticate_user!
     header = request.headers["Authorization"]
 
@@ -24,13 +23,11 @@ module ClerkAuthenticatable
       return
     end
 
-    # Extract user info from the token
     clerk_id = decoded["sub"]
     email = decoded["email"] || decoded["primary_email_address"]
     first_name = decoded["first_name"]
     last_name = decoded["last_name"]
 
-    # Find or create user
     @current_user = find_or_create_user(
       clerk_id: clerk_id,
       email: email,
@@ -44,7 +41,6 @@ module ClerkAuthenticatable
     end
   end
 
-  # Optional authentication - sets current_user if token present but doesn't require it
   def authenticate_user_optional
     header = request.headers["Authorization"]
     return unless header.present?
@@ -61,7 +57,6 @@ module ClerkAuthenticatable
     @current_user
   end
 
-  # Authorization helpers
   def require_admin!
     authenticate_user! unless @current_user
     return if performed?
@@ -80,7 +75,20 @@ module ClerkAuthenticatable
     end
   end
 
-  private
+  def require_client!
+    authenticate_user! unless @current_user
+    return if performed?
+
+    unless @current_user&.client?
+      render_forbidden("Client access required")
+      return
+    end
+
+    unless @current_user&.client_id.present?
+      render_forbidden("No client profile linked to this account")
+      return
+    end
+  end
 
   def find_or_create_user(clerk_id:, email:, first_name:, last_name:)
     return nil if clerk_id.blank?
@@ -102,12 +110,13 @@ module ClerkAuthenticatable
     # Try to find by email (for invited users who haven't signed in yet)
     if email.present?
       user = User.find_by("LOWER(email) = ?", email.downcase)
-      
+
       if user
-        # Link the real clerk_id to this invited user (replacing the pending_ placeholder)
         user.update(clerk_id: clerk_id)
         return user
       end
+    else
+      Rails.logger.warn "No email in JWT for clerk_id=#{clerk_id}. Cannot link invited user. Verify Clerk JWT template includes email claim."
     end
 
     # INVITE-ONLY: If user not found by clerk_id or email, they haven't been invited

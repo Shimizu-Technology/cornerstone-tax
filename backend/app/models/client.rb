@@ -18,6 +18,7 @@ class Client < ApplicationRecord
   validates :first_name, presence: true
   validates :last_name, presence: true
   validates :client_type, inclusion: { in: %w[individual business], allow_nil: true }
+  validates :notification_preference, inclusion: { in: %w[email none] }
 
   scope :individuals, -> { where(client_type: 'individual') }
   scope :businesses, -> { where(client_type: 'business') }

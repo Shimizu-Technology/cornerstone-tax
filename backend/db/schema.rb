@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_18_051325) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_18_140716) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -96,6 +96,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_18_051325) do
     t.boolean "is_new_client", default: true
     t.string "last_name", null: false
     t.text "mailing_address"
+    t.string "notification_preference", default: "email", null: false
     t.string "phone"
     t.date "spouse_dob"
     t.string "spouse_name"
@@ -433,7 +434,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_18_051325) do
     t.string "role", default: "client"
     t.datetime "updated_at", null: false
     t.index ["clerk_id"], name: "index_users_on_clerk_id", unique: true
-    t.index ["client_id"], name: "index_users_on_client_id"
+    t.index ["client_id"], name: "index_users_on_client_id_unique", unique: true, where: "(client_id IS NOT NULL)"
     t.index ["email"], name: "index_users_on_email"
     t.index ["role"], name: "index_users_on_role"
     t.check_constraint "role::text = ANY (ARRAY['admin'::character varying, 'employee'::character varying, 'client'::character varying]::text[])", name: "check_valid_role"

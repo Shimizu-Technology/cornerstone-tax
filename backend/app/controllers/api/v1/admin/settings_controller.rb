@@ -24,7 +24,7 @@ module Api
         private
 
         def settings_params
-          params.permit(:contact_email)
+          params.permit(:contact_email, :notification_email)
         end
       end
     end
