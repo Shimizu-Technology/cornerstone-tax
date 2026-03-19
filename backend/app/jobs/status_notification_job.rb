@@ -14,7 +14,7 @@ class StatusNotificationJob < ApplicationJob
       tax_return_id: tax_return_id,
       template: "status_changed",
       status: "sent"
-    ).where("content LIKE ?", "%#{stage.name}%")
+    ).where("content LIKE ?", "%#{ActiveRecord::Base.sanitize_sql_like(stage.name)}%")
      .where("created_at > ?", 5.minutes.ago)
      .exists?
 

@@ -91,10 +91,9 @@ module Api
           )
 
           if @user.save
-            # Send invitation email
-            send_invitation_email(@user)
+            email_sent = send_invitation_email(@user)
             
-            render json: { user: serialize_user(@user) }, status: :created
+            render json: { user: serialize_user(@user), invitation_email_sent: email_sent }, status: :created
           else
             render json: { error: @user.errors.full_messages.join(", ") }, status: :unprocessable_entity
           end
@@ -165,12 +164,13 @@ module Api
         end
 
         def send_invitation_email(user)
-          if EmailService.send_invitation_email(user: user, invited_by: current_user)
+          sent = EmailService.send_invitation_email(user: user, invited_by: current_user)
+          if sent
             Rails.logger.info "Invitation email sent to #{user.email}"
           else
             Rails.logger.warn "Invitation email could not be sent to #{user.email}"
           end
-          # Don't fail the request if email fails - user is still created
+          sent
         end
       end
     end

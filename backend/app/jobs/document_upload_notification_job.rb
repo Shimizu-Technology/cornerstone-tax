@@ -14,7 +14,7 @@ class DocumentUploadNotificationJob < ApplicationJob
       tax_return_id: tax_return_id,
       template: "document_uploaded_by_client",
       status: "sent"
-    ).where("content LIKE ?", "%#{document.filename}%")
+    ).where("content LIKE ?", "%#{ActiveRecord::Base.sanitize_sql_like(document.filename)}%")
      .where("created_at > ?", 5.minutes.ago)
      .exists?
 

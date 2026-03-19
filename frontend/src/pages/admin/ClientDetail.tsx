@@ -585,13 +585,17 @@ export default function ClientDetailPage() {
       return
     }
     const confirmed = window.confirm(
-      `Invite ${client.full_name} to the client portal?\n\nAn email will be sent to ${client.email} with instructions to create their account.`
+      `Invite ${client.full_name} to the client portal?\n\nAn invitation email will be sent to ${client.email} with instructions to create their account.`
     )
     if (!confirmed) return
     setInvitingToPortal(true)
     try {
       const result = await api.inviteClientToPortal(client.id, client.email, client.first_name, client.last_name)
       if (result.data) {
+        const emailSent = (result.data as Record<string, unknown>).invitation_email_sent
+        if (!emailSent) {
+          alert('Portal account created, but the invitation email could not be sent. Please share the portal link with the client manually.')
+        }
         await loadClient()
       } else if (result.error) {
         alert(result.error)
