@@ -100,11 +100,7 @@ module Api
           document.uploaded_by = current_user
 
           if document.save
-            NotificationService.notify_document_uploaded(
-              document: document,
-              tax_return: @tax_return,
-              uploaded_by_client: true
-            )
+            DocumentUploadNotificationJob.perform_later(document.id, @tax_return.id)
             render json: { document: serialize_document(document) }, status: :created
           else
             render json: { errors: document.errors.full_messages }, status: :unprocessable_entity

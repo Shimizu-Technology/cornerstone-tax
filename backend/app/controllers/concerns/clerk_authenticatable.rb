@@ -5,6 +5,8 @@
 module ClerkAuthenticatable
   extend ActiveSupport::Concern
 
+  private
+
   def authenticate_user!
     header = request.headers["Authorization"]
 
@@ -87,8 +89,6 @@ module ClerkAuthenticatable
       return
     end
   end
-
-  private
 
   def find_or_create_user(clerk_id:, email:, first_name:, last_name:)
     return nil if clerk_id.blank?
