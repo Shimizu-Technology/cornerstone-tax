@@ -87,8 +87,6 @@ class NotificationService
     private
 
     def send_status_change_email(notification:, client:, tax_return:, new_stage:)
-      return unless resend_configured?
-
       from_email = ENV.fetch("MAILER_FROM_EMAIL", "noreply@example.com")
       portal_url = "#{ENV.fetch('FRONTEND_URL', 'http://localhost:5173')}/portal/returns/#{tax_return.id}"
 
@@ -114,8 +112,6 @@ class NotificationService
     end
 
     def send_document_upload_email(notification:, client:, tax_return:, document:, admin_email:)
-      return unless resend_configured?
-
       from_email = ENV.fetch("MAILER_FROM_EMAIL", "noreply@example.com")
       admin_url = "#{ENV.fetch('FRONTEND_URL', 'http://localhost:5173')}/admin/returns/#{tax_return.id}"
 

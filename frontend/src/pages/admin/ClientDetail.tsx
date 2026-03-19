@@ -592,7 +592,7 @@ export default function ClientDetailPage() {
     try {
       const result = await api.inviteClientToPortal(client.id, client.email, client.first_name, client.last_name)
       if (result.data) {
-        const emailSent = (result.data as Record<string, unknown>).invitation_email_sent
+        const emailSent = result.data.invitation_email_sent
         if (!emailSent) {
           alert('Portal account created, but the invitation email could not be sent. Please share the portal link with the client manually.')
         }

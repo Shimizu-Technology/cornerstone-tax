@@ -1733,7 +1733,7 @@ export const api = {
 
   // Admin: Invite client to portal
   inviteClientToPortal: (clientId: number, email?: string, firstName?: string, lastName?: string) =>
-    fetchApi<{ user: { id: number; email: string; role: string; client_id: number | null } }>('/api/v1/admin/users', {
+    fetchApi<{ user: { id: number; email: string; role: string; client_id: number | null }; invitation_email_sent: boolean }>('/api/v1/admin/users', {
       method: 'POST',
       body: JSON.stringify({ role: 'client', client_id: clientId, email, first_name: firstName, last_name: lastName }),
     }),

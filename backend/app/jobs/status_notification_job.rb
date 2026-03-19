@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "zlib"
+
 class StatusNotificationJob < ApplicationJob
   queue_as :default
 
@@ -9,6 +11,10 @@ class StatusNotificationJob < ApplicationJob
 
     stage = WorkflowStage.find_by(id: workflow_stage_id)
     return unless stage
+
+    lock_key = Zlib.crc32("status_notif:#{tax_return_id}:#{workflow_stage_id}")
+
+    ActiveRecord::Base.connection.execute("SELECT pg_advisory_xact_lock(#{lock_key})")
 
     already_sent = Notification.where(
       tax_return_id: tax_return_id,

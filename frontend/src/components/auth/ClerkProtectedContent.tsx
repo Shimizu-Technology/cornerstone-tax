@@ -1,99 +1,47 @@
 import { useEffect, useState } from 'react'
 import { useAuth, useUser, RedirectToSignIn } from '@clerk/clerk-react'
-import { api } from '../../lib/api'
-
-// Define user type locally to avoid import issues
-interface UserProfile {
-  id: number
-  email: string
-  first_name: string | null
-  last_name: string | null
-  full_name: string
-  role: 'admin' | 'employee' | 'client'
-  is_admin: boolean
-  is_staff: boolean
-  is_client: boolean
-  client_id: number | null
-  created_at: string
-}
+import { useAuthContext } from '../../contexts/AuthContext'
 
 interface ClerkProtectedContentProps {
   children: React.ReactNode
   requiredRole?: 'admin' | 'employee' | 'staff' | 'client'
 }
 
-type AuthStatus = 'loading' | 'checking' | 'authorized' | 'unauthorized' | 'access_denied'
-
-// This component is only rendered when ClerkProvider is present (isClerkEnabled is true)
 export default function ClerkProtectedContent({ children, requiredRole }: ClerkProtectedContentProps) {
   const { isLoaded, isSignedIn } = useAuth()
   const { user: clerkUser } = useUser()
-  const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
+  const { userRole, isLoading: authLoading, isStaff } = useAuthContext()
+  const [authStatus, setAuthStatus] = useState<'loading' | 'authorized' | 'unauthorized' | 'access_denied'>('loading')
 
-  // Verify user with backend once Clerk confirms they're signed in
   useEffect(() => {
-    const verifyUser = async () => {
-      if (!isLoaded) return
-      
-      if (!isSignedIn) {
-        setAuthStatus('unauthorized')
-        return
-      }
+    if (!isLoaded || authLoading) return
 
-      setAuthStatus('checking')
-
-      const maxRetries = 3
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-          const response = await api.getCurrentUser()
-          
-          if (response.data) {
-            const user = response.data.user
-            setCurrentUser(user)
-
-            // Check role if required
-            if (requiredRole) {
-              const hasAccess = 
-                requiredRole === 'staff' ? user.is_staff :
-                requiredRole === 'admin' ? user.is_admin :
-                requiredRole === 'client' ? user.role === 'client' :
-                user.role === requiredRole
-
-              if (!hasAccess) {
-                setAuthStatus('access_denied')
-                return
-              }
-            }
-
-            setAuthStatus('authorized')
-            return
-          } else if (response.error) {
-            console.error('Auth verification failed:', response.error)
-            // If it's an auth error, don't retry
-            if (response.error.includes('authorization') || response.error.includes('token')) {
-              setAuthStatus('unauthorized')
-              return
-            }
-          }
-        } catch (error) {
-          console.error(`Auth verification attempt ${attempt + 1} failed:`, error)
-        }
-
-        // Wait before retry
-        if (attempt < maxRetries - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500))
-        }
-      }
-
-      // All retries failed
+    if (!isSignedIn) {
       setAuthStatus('unauthorized')
+      return
     }
 
-    verifyUser()
-  }, [isLoaded, isSignedIn, requiredRole, clerkUser])
+    if (!userRole) {
+      setAuthStatus('unauthorized')
+      return
+    }
 
-  // Loading state - Clerk not ready
+    if (requiredRole) {
+      const hasAccess =
+        requiredRole === 'staff' ? isStaff :
+        requiredRole === 'admin' ? userRole === 'admin' :
+        requiredRole === 'client' ? userRole === 'client' :
+        userRole === requiredRole
+
+      if (!hasAccess) {
+        setAuthStatus('access_denied')
+        return
+      }
+    }
+
+    setAuthStatus('authorized')
+  }, [isLoaded, isSignedIn, authLoading, userRole, requiredRole, isStaff])
+
   if (!isLoaded || authStatus === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -102,26 +50,12 @@ export default function ClerkProtectedContent({ children, requiredRole }: ClerkP
     )
   }
 
-  // Checking state - verifying with backend
-  if (authStatus === 'checking') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-gray-600">Verifying access...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Not signed in - redirect to sign in
   if (authStatus === 'unauthorized' || !isSignedIn) {
     return <RedirectToSignIn signInForceRedirectUrl={window.location.href} />
   }
 
-  // Access denied - user doesn't have required role
   if (authStatus === 'access_denied') {
-    const isClientTryingAdmin = currentUser?.role === 'client' && (requiredRole === 'staff' || requiredRole === 'admin')
+    const isClientTryingAdmin = userRole === 'client' && (requiredRole === 'staff' || requiredRole === 'admin')
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -157,7 +91,7 @@ export default function ClerkProtectedContent({ children, requiredRole }: ClerkP
                 {requiredRole && ` This page requires ${requiredRole} access.`}
               </p>
               <p className="text-sm text-gray-500">
-                Signed in as: {currentUser?.email}
+                Signed in as: {clerkUser?.primaryEmailAddress?.emailAddress}
               </p>
               <a
                 href="/"
@@ -172,6 +106,5 @@ export default function ClerkProtectedContent({ children, requiredRole }: ClerkP
     )
   }
 
-  // Authorized - render children
   return <>{children}</>
 }

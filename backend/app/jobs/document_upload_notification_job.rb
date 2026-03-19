@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "zlib"
+
 class DocumentUploadNotificationJob < ApplicationJob
   queue_as :default
 
@@ -9,6 +11,10 @@ class DocumentUploadNotificationJob < ApplicationJob
 
     tax_return = TaxReturn.find_by(id: tax_return_id)
     return unless tax_return
+
+    lock_key = Zlib.crc32("doc_notif:#{document_id}:#{tax_return_id}")
+
+    ActiveRecord::Base.connection.execute("SELECT pg_advisory_xact_lock(#{lock_key})")
 
     already_sent = Notification.where(
       tax_return_id: tax_return_id,
