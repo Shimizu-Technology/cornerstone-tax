@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
+let overlayCount = 0
+
 interface DocumentViewerProps {
   isOpen: boolean
   onClose: () => void
@@ -79,10 +81,15 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', handleKeyDown)
+    overlayCount++
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
-      document.body.style.overflow = ''
+      overlayCount--
+      if (overlayCount <= 0) {
+        overlayCount = 0
+        document.body.style.overflow = ''
+      }
     }
   }, [isOpen, onClose])
 

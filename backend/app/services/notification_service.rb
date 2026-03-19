@@ -8,7 +8,10 @@ class NotificationService
     def notify_status_change(tax_return:, new_stage:)
       return unless new_stage&.notify_client
       client = tax_return.client
-      return unless client&.email.present?
+      unless client&.email.present?
+        Rails.logger.info "Skipping status notification for tax return #{tax_return.id}: client has no email address"
+        return
+      end
       return if client.notification_preference == "none"
 
       unless resend_configured?

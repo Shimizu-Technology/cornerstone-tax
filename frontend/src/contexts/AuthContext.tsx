@@ -93,8 +93,12 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
     })
   }, [getToken])
 
+  const clerkUserId = clerkUser?.id
+  const clerkUserEmail = clerkUser?.primaryEmailAddress?.emailAddress
+    || clerkUser?.emailAddresses?.[0]?.emailAddress
+
   const fetchRole = useCallback(async (retryCount = 0) => {
-    if (!isLoaded || !isSignedIn || !clerkUser) {
+    if (!isLoaded || !isSignedIn || !clerkUserId) {
       setUserRole(null)
       setRoleFetched(true)
       return
@@ -104,9 +108,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
     fetchedRef.current = true
 
     try {
-      const hasEmail = clerkUser.primaryEmailAddress?.emailAddress
-        || clerkUser.emailAddresses?.[0]?.emailAddress
-      if (!hasEmail) {
+      if (!clerkUserEmail) {
         setUserRole(null)
         setRoleFetched(true)
         return
@@ -115,7 +117,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
       if (response.data?.user) {
         const role = response.data.user.role
         setUserRole(role)
-        setCachedRole(clerkUser.id, role)
+        setCachedRole(clerkUserId, role)
         setRoleFetched(true)
       } else {
         throw new Error('No user in response')
@@ -126,12 +128,12 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
         const delay = (retryCount + 1) * 1500
         retryTimerRef.current = setTimeout(() => fetchRoleRef.current?.(retryCount + 1), delay)
       } else {
-        const fallback = getCachedRole(clerkUser.id)
+        const fallback = getCachedRole(clerkUserId)
         setUserRole(fallback)
         setRoleFetched(true)
       }
     }
-  }, [isLoaded, isSignedIn, clerkUser])
+  }, [isLoaded, isSignedIn, clerkUserId, clerkUserEmail])
 
   useLayoutEffect(() => {
     fetchRoleRef.current = fetchRole

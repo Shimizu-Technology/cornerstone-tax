@@ -120,11 +120,16 @@ module Api
           return render json: { error: "S3 not configured" }, status: :service_unavailable
         end
 
-        download_url = S3Service.presign_download(
-          s3_key: @document.s3_key,
-          filename: @document.filename,
-          expires_in: 3600
-        )
+        begin
+          download_url = S3Service.presign_download(
+            s3_key: @document.s3_key,
+            filename: @document.filename,
+            expires_in: 3600
+          )
+        rescue StandardError => e
+          Rails.logger.error "S3 presign download failed for document #{@document.id}: #{e.message}"
+          return render json: { error: "File download service is temporarily unavailable. Please try again." }, status: :service_unavailable
+        end
 
         render json: { download_url: download_url, expires_in: 3600 }
       end
