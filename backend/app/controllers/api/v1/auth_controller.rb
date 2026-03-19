@@ -26,8 +26,7 @@ module Api
         end
 
         clerk_id = decoded["sub"]
-        # Use email from params (sent by frontend from Clerk) - more reliable than JWT
-        email = params[:email].presence || decoded["email"] || decoded["primary_email_address"]
+        email = decoded["email"] || decoded["primary_email_address"]
 
         # Find user by clerk_id first
         user = User.find_by(clerk_id: clerk_id)

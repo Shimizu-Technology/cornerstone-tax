@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth, useUser, RedirectToSignIn } from '@clerk/clerk-react'
-import { api, setAuthTokenGetter } from '../../lib/api'
+import { api } from '../../lib/api'
 
 // Define user type locally to avoid import issues
 interface UserProfile {
@@ -26,26 +26,10 @@ type AuthStatus = 'loading' | 'checking' | 'authorized' | 'unauthorized' | 'acce
 
 // This component is only rendered when ClerkProvider is present (isClerkEnabled is true)
 export default function ClerkProtectedContent({ children, requiredRole }: ClerkProtectedContentProps) {
-  const { isLoaded, isSignedIn, getToken } = useAuth()
+  const { isLoaded, isSignedIn } = useAuth()
   const { user: clerkUser } = useUser()
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
-  const authSetupRef = useRef(false)
-
-  // Set up the auth token getter when the component mounts
-  useEffect(() => {
-    if (authSetupRef.current) return
-
-    setAuthTokenGetter(async () => {
-      try {
-        return await getToken()
-      } catch (error) {
-        console.error('Failed to get auth token:', error)
-        return null
-      }
-    })
-    authSetupRef.current = true
-  }, [getToken])
 
   // Verify user with backend once Clerk confirms they're signed in
   useEffect(() => {
@@ -59,17 +43,10 @@ export default function ClerkProtectedContent({ children, requiredRole }: ClerkP
 
       setAuthStatus('checking')
 
-      const maxSetupWait = 10
-      for (let i = 0; i < maxSetupWait && !authSetupRef.current; i++) {
-        await new Promise(resolve => setTimeout(resolve, 50))
-      }
-
       const maxRetries = 3
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
-          // Get email from Clerk user object
-          const email = clerkUser?.primaryEmailAddress?.emailAddress
-          const response = await api.getCurrentUser(email)
+          const response = await api.getCurrentUser()
           
           if (response.data) {
             const user = response.data.user

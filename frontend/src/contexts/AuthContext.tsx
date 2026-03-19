@@ -108,7 +108,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
         setRoleFetched(true)
         return
       }
-      const response = await api.getCurrentUser(email)
+      const response = await api.getCurrentUser()
       if (response.data?.user) {
         const role = response.data.user.role
         setUserRole(role)

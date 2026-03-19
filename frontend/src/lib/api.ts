@@ -873,10 +873,9 @@ export interface PayrollChecklistPeriodDetailResponse {
 // API functions
 export const api = {
   // Auth
-  getCurrentUser: (email?: string) =>
+  getCurrentUser: () =>
     fetchApi<{ user: CurrentUser }>('/api/v1/auth/me', {
       method: 'POST',
-      body: JSON.stringify({ email }),
     }),
 
   // Intake (public - no auth required)
