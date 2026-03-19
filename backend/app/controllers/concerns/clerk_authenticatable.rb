@@ -110,6 +110,9 @@ module ClerkAuthenticatable
     # Try to find by email (for invited users who haven't signed in yet)
     if email.present?
       user = User.find_by("LOWER(email) = ?", email.downcase)
+    else
+      Rails.logger.warn "No email in JWT for clerk_id=#{clerk_id}. Cannot link invited user. Verify Clerk JWT template includes email claim."
+    end
       
       if user
         # Link the real clerk_id to this invited user (replacing the pending_ placeholder)

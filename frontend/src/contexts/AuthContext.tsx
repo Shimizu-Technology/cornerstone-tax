@@ -94,8 +94,6 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
   }, [getToken])
 
   const clerkUserId = clerkUser?.id
-  const clerkUserEmail = clerkUser?.primaryEmailAddress?.emailAddress
-    || clerkUser?.emailAddresses?.[0]?.emailAddress
 
   const fetchRole = useCallback(async (retryCount = 0) => {
     if (!isLoaded || !isSignedIn || !clerkUserId) {
@@ -108,11 +106,6 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
     fetchedRef.current = true
 
     try {
-      if (!clerkUserEmail) {
-        setUserRole(null)
-        setRoleFetched(true)
-        return
-      }
       const response = await api.getCurrentUser()
       if (response.data?.user) {
         const role = response.data.user.role
@@ -133,7 +126,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
         setRoleFetched(true)
       }
     }
-  }, [isLoaded, isSignedIn, clerkUserId, clerkUserEmail])
+  }, [isLoaded, isSignedIn, clerkUserId])
 
   useLayoutEffect(() => {
     fetchRoleRef.current = fetchRole

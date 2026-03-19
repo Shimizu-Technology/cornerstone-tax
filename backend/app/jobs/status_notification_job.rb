@@ -10,6 +10,16 @@ class StatusNotificationJob < ApplicationJob
     stage = WorkflowStage.find_by(id: workflow_stage_id)
     return unless stage
 
+    already_sent = Notification.where(
+      tax_return_id: tax_return_id,
+      template: "status_changed",
+      status: "sent"
+    ).where("content LIKE ?", "%#{stage.name}%")
+     .where("created_at > ?", 5.minutes.ago)
+     .exists?
+
+    return if already_sent
+
     NotificationService.notify_status_change(
       tax_return: tax_return,
       new_stage: stage
