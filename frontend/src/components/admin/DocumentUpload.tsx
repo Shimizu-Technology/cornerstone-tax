@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import type { Document } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
 import { formatFileSize } from '../../lib/formatUtils'
+import { ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE } from '../../lib/documentConstants'
 import DocumentViewer from '../common/DocumentViewer'
 
 interface DocumentUploadProps {
@@ -19,9 +20,7 @@ const DOCUMENT_TYPES = [
   { value: 'other', label: 'Other' },
 ]
 
-// CST-16: File upload validation constants
-const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
-const ALLOWED_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
+
 const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
 
 
@@ -55,7 +54,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
 
     const fileType = file.type || ''
     const fileExt = '.' + file.name.split('.').pop()?.toLowerCase()
-    if (!ALLOWED_FILE_TYPES.includes(fileType) && !ALLOWED_FILE_EXTENSIONS.includes(fileExt)) {
+    if (!ALLOWED_CONTENT_TYPES.includes(fileType as typeof ALLOWED_CONTENT_TYPES[number]) && !ALLOWED_FILE_EXTENSIONS.includes(fileExt)) {
       setError('File type not allowed. Accepted types: PDF, JPEG, PNG')
       return
     }
@@ -163,6 +162,8 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
     const result = await api.getDocumentDownloadUrl(taxReturnId, viewingDoc.id)
     return result.data?.download_url || null
   }, [viewingDoc, taxReturnId])
+
+  const closeViewer = useCallback(() => setViewingDoc(null), [])
 
   const handleDelete = async (doc: Document) => {
     if (!confirm(`Delete "${doc.filename}"?`)) return
@@ -308,7 +309,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
 
       <DocumentViewer
         isOpen={!!viewingDoc}
-        onClose={() => setViewingDoc(null)}
+        onClose={closeViewer}
         filename={viewingDoc?.filename || ''}
         contentType={viewingDoc?.content_type || null}
         onFetchUrl={fetchViewUrl}

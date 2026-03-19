@@ -43,6 +43,8 @@ export default function PortalReturnDetail() {
     return result.data?.download_url || null
   }, [viewingDoc, taxReturn])
 
+  const closeViewer = useCallback(() => setViewingDoc(null), [])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[40vh]">
@@ -264,7 +266,7 @@ export default function PortalReturnDetail() {
 
       <DocumentViewer
         isOpen={!!viewingDoc}
-        onClose={() => setViewingDoc(null)}
+        onClose={closeViewer}
         filename={viewingDoc?.filename || ''}
         contentType={viewingDoc?.content_type || null}
         onFetchUrl={fetchViewUrl}

@@ -30,6 +30,25 @@ interface AuthProviderProps {
   isClerkEnabled: boolean
 }
 
+const ROLE_CACHE_PREFIX = 'cst_role_'
+type UserRole = 'admin' | 'employee' | 'client' | null
+
+function getCachedRole(clerkId: string | undefined): UserRole {
+  if (!clerkId) return null
+  const cached = localStorage.getItem(`${ROLE_CACHE_PREFIX}${clerkId}`)
+  if (cached === 'admin' || cached === 'employee' || cached === 'client') return cached
+  return null
+}
+
+function setCachedRole(clerkId: string | undefined, role: UserRole) {
+  if (!clerkId) return
+  if (role) {
+    localStorage.setItem(`${ROLE_CACHE_PREFIX}${clerkId}`, role)
+  } else {
+    localStorage.removeItem(`${ROLE_CACHE_PREFIX}${clerkId}`)
+  }
+}
+
 function ClerkAuthProvider({ children }: { children: ReactNode }) {
   const { getToken, isLoaded, isSignedIn } = useAuth()
   const { user: clerkUser } = useUser()
@@ -81,7 +100,9 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
       }
       const response = await api.getCurrentUser(email)
       if (response.data?.user) {
-        setUserRole(response.data.user.role)
+        const role = response.data.user.role
+        setUserRole(role)
+        setCachedRole(clerkUser.id, role)
         setRoleFetched(true)
       } else {
         throw new Error('No user in response')
@@ -92,7 +113,8 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
         const delay = (retryCount + 1) * 1500
         retryTimerRef.current = setTimeout(() => fetchRoleRef.current?.(retryCount + 1), delay)
       } else {
-        setUserRole(null)
+        const fallback = getCachedRole(clerkUser.id)
+        setUserRole(fallback)
         setRoleFetched(true)
       }
     }
@@ -108,6 +130,7 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
     } else if (isLoaded && !isSignedIn) {
       clearTimeout(retryTimerRef.current)
       fetchedRef.current = false
+      setCachedRole(lastClerkIdRef.current ?? undefined, null)
       setUserRole(null)
       setRoleFetched(true)
     }

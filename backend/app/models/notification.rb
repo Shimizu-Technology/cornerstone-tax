@@ -14,7 +14,6 @@ class Notification < ApplicationRecord
     ready_for_pickup
     status_changed
     document_uploaded_by_client
-    return_complete
   ].freeze
 
   validates :notification_type, inclusion: { in: NOTIFICATION_TYPES }, allow_blank: true

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../../lib/api'
 import type { PortalTaxReturnSummary, PortalDocument } from '../../lib/api'
 import { formatFileSize } from '../../lib/formatUtils'
+import { ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE } from '../../lib/documentConstants'
 import DocumentViewer from '../../components/common/DocumentViewer'
 
 const DOCUMENT_TYPES = [
@@ -12,8 +13,6 @@ const DOCUMENT_TYPES = [
   { value: 'other', label: 'Other' },
 ]
 
-const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
-const MAX_FILE_SIZE = 50 * 1024 * 1024
 
 export default function PortalDocuments() {
   useEffect(() => { document.title = 'Documents | Cornerstone Client Portal' }, [])
@@ -35,6 +34,8 @@ export default function PortalDocuments() {
     viewingReturnIdRef.current = selectedReturnId
     setViewingDoc(doc)
   }, [selectedReturnId])
+
+  const closeViewer = useCallback(() => setViewingDoc(null), [])
 
   useEffect(() => {
     async function loadReturns() {
@@ -93,7 +94,7 @@ export default function PortalDocuments() {
     setUploadError(null)
     setUploadSuccess(null)
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    if (!ALLOWED_CONTENT_TYPES.includes(file.type as typeof ALLOWED_CONTENT_TYPES[number])) {
       setUploadError('Only PDF, JPEG, and PNG files are accepted.')
       return
     }
@@ -382,7 +383,7 @@ export default function PortalDocuments() {
 
       <DocumentViewer
         isOpen={!!viewingDoc}
-        onClose={() => setViewingDoc(null)}
+        onClose={closeViewer}
         filename={viewingDoc?.filename || ''}
         contentType={viewingDoc?.content_type || null}
         onFetchUrl={fetchViewUrl}
