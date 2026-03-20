@@ -219,7 +219,7 @@ class TimeClockService
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
       scheduled_start = schedule.start_time
 
-      earliest_allowed = scheduled_start.seconds_since_midnight - (buffer * 60)
+      earliest_allowed = [scheduled_start.seconds_since_midnight - (buffer * 60), 0].max
       current_seconds = now.in_time_zone(business_timezone).seconds_since_midnight
 
       if current_seconds < earliest_allowed
@@ -270,7 +270,7 @@ class TimeClockService
       return { allowed: false, reason: "no_schedule" } unless schedule
 
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
-      earliest_allowed = schedule.start_time.seconds_since_midnight - (buffer * 60)
+      earliest_allowed = [schedule.start_time.seconds_since_midnight - (buffer * 60), 0].max
       current_seconds = local_seconds_since_midnight
 
       if current_seconds >= earliest_allowed

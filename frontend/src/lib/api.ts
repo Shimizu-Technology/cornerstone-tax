@@ -470,6 +470,12 @@ export interface TimeEntry {
   } | null;
   approved_at: string | null;
   approval_note: string | null;
+  overtime_approved_by: {
+    id: number;
+    full_name: string;
+  } | null;
+  overtime_approved_at: string | null;
+  overtime_note: string | null;
   schedule: {
     id: number;
     start_time: string;

@@ -1976,7 +1976,7 @@ export default function Settings() {
                       </label>
                       <input
                         type="number"
-                        min="0"
+                        min="1"
                         max="60"
                         step="1"
                         value={earlyClockInBuffer}

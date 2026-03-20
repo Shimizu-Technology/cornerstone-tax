@@ -452,7 +452,7 @@ module Api
             start_time: entry.schedule.formatted_start_time,
             end_time: entry.schedule.formatted_end_time
           } : nil,
-          breaks: entry.time_entry_breaks.order(:start_time).map { |b|
+          breaks: entry.time_entry_breaks.sort_by(&:start_time).map { |b|
             {
               id: b.id,
               start_time: b.start_time.iso8601,
