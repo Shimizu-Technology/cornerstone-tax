@@ -201,6 +201,23 @@ class TimeClockService
       TimeEntry.countable.for_user(user).for_week(date).sum(:hours).to_f
     end
 
+    # Evaluates whether an entry triggers overtime thresholds.
+    # entry.hours is added manually because for clock_out the entry
+    # hasn't been saved yet — it won't appear in the DB query.
+    def check_overtime_status(user, entry)
+      daily_threshold = (Setting.get("overtime_daily_threshold_hours") || "8").to_f
+      weekly_threshold = (Setting.get("overtime_weekly_threshold_hours") || "40").to_f
+
+      daily_hours = hours_today(user, entry.work_date) + entry.hours
+      weekly_hours = hours_this_week(user, entry.work_date) + entry.hours
+
+      if daily_hours > daily_threshold || weekly_hours > weekly_threshold
+        "pending"
+      else
+        "none"
+      end
+    end
+
     private
 
     # Schedule times are stored as wall-clock times in UTC (e.g., 7:30 PM stored
@@ -241,27 +258,6 @@ class TimeClockService
       else
         "late"
       end
-    end
-
-    # entry.hours is added manually because the entry hasn't been saved yet
-    # at this point in the clock_out flow — it won't appear in the DB query
-    def check_overtime_status(user, entry)
-      daily_threshold = (Setting.get("overtime_daily_threshold_hours") || "8").to_f
-      weekly_threshold = (Setting.get("overtime_weekly_threshold_hours") || "40").to_f
-
-      daily_hours = hours_today(user, entry.work_date) + entry.hours
-      weekly_hours = hours_this_week(user, entry.work_date) + entry.hours
-
-      if daily_hours > daily_threshold || weekly_hours > weekly_threshold
-        "pending"
-      else
-        "none"
-      end
-    end
-
-    def can_clock_in?(user, schedule)
-      info = can_clock_in_info(user, schedule)
-      info[:allowed]
     end
 
     def can_clock_in_info(user, schedule, existing_entry: nil)

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class AddOvertimeApprovalFieldsToTimeEntries < ActiveRecord::Migration[8.1]
   def change
     add_column :time_entries, :overtime_approved_by_id, :bigint
