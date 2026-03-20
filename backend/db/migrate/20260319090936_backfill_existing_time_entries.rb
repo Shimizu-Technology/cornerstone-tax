@@ -8,8 +8,6 @@ class BackfillExistingTimeEntries < ActiveRecord::Migration[8.0]
   end
 
   def down
-    TimeEntry.where(entry_method: "manual", approval_status: "approved").update_all(
-      approval_status: nil
-    )
+    raise ActiveRecord::IrreversibleMigration
   end
 end

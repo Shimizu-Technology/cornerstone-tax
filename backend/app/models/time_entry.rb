@@ -96,10 +96,10 @@ class TimeEntry < ApplicationRecord
     end
   end
 
+  # hours already has break time deducted via calculate_hours_from_times
   def net_hours
     return 0 unless hours.present?
-    break_hours = total_break_minutes / 60.0
-    [hours - break_hours, 0].max.round(2)
+    hours.round(2)
   end
 
   def calculate_hours_from_times

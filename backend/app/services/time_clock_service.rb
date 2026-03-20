@@ -47,20 +47,23 @@ class TimeClockService
       entry = active_entry_for(user)
       raise ClockError, "Not currently clocked in" unless entry
 
-      if entry.status == "on_break"
-        active_break = entry.active_break
-        active_break&.close!
+      ActiveRecord::Base.transaction do
+        if entry.status == "on_break"
+          active_break = entry.active_break
+          active_break&.close!
+        end
+
+        now = Time.current
+        entry.end_time = now
+        entry.clock_out_at = now
+        entry.status = "completed"
+        entry.break_minutes = entry.total_break_minutes
+        entry.calculate_hours_from_times
+        entry.overtime_status = check_overtime_status(user, entry)
+
+        entry.save!
       end
 
-      now = Time.current
-      entry.end_time = now
-      entry.clock_out_at = now
-      entry.status = "completed"
-      entry.break_minutes = entry.total_break_minutes
-      entry.calculate_hours_from_times
-      entry.overtime_status = check_overtime_status(user, entry)
-
-      entry.save!
       entry
     end
 
@@ -70,9 +73,12 @@ class TimeClockService
       raise ClockError, "You are not currently clocked in" unless entry
       raise ClockError, "You are already on a break" if entry.status == "on_break"
 
-      now = Time.current
-      entry.time_entry_breaks.create!(start_time: now)
-      entry.update!(status: "on_break")
+      ActiveRecord::Base.transaction do
+        now = Time.current
+        entry.time_entry_breaks.create!(start_time: now)
+        entry.update!(status: "on_break")
+      end
+
       entry
     end
 
@@ -85,8 +91,11 @@ class TimeClockService
       active_break = entry.active_break
       raise ClockError, "No active break found" unless active_break
 
-      active_break.close!
-      entry.update!(status: "clocked_in")
+      ActiveRecord::Base.transaction do
+        active_break.close!
+        entry.update!(status: "clocked_in")
+      end
+
       entry
     end
 
@@ -234,6 +243,8 @@ class TimeClockService
       end
     end
 
+    # entry.hours is added manually because the entry hasn't been saved yet
+    # at this point in the clock_out flow — it won't appear in the DB query
     def check_overtime_status(user, entry)
       daily_threshold = (Setting.get("overtime_daily_threshold_hours") || "8").to_f
       weekly_threshold = (Setting.get("overtime_weekly_threshold_hours") || "40").to_f
