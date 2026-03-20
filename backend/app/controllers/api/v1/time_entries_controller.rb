@@ -125,7 +125,7 @@ module Api
         update_params = time_entry_params.except(:user_id)
 
         unless current_user.admin?
-          if @time_entry.approval_status == "approved" && @time_entry.manual_entry?
+          if @time_entry.approval_status.in?(%w[approved denied]) && @time_entry.manual_entry?
             update_params[:approval_status] = "pending"
           end
         end
@@ -345,8 +345,11 @@ module Api
                     elsif schedule
                       guam_now = Time.current.in_time_zone("Guam")
                       shift_start_seconds = schedule.start_time.seconds_since_midnight
+                      shift_end_seconds = schedule.end_time.seconds_since_midnight
                       current_seconds = guam_now.seconds_since_midnight
-                      if current_seconds > shift_start_seconds + buffer_seconds
+                      if current_seconds > shift_end_seconds && shift_end_seconds > shift_start_seconds
+                        "no_show"
+                      elsif current_seconds > shift_start_seconds + buffer_seconds
                         "late"
                       else
                         "not_clocked_in"

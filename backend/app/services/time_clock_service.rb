@@ -138,56 +138,68 @@ class TimeClockService
     # ── Admin: Approve Entry ──
     def approve_entry(entry:, approved_by:, note: nil)
       raise AuthorizationError, "Only admins can approve entries" unless approved_by.admin?
-      raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
-      entry.update!(
-        approval_status: "approved",
-        approved_by: approved_by,
-        approved_at: Time.current,
-        approval_note: note
-      )
+      entry.with_lock do
+        raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
+
+        entry.update!(
+          approval_status: "approved",
+          approved_by: approved_by,
+          approved_at: Time.current,
+          approval_note: note
+        )
+      end
       entry
     end
 
     # ── Admin: Deny Entry ──
     def deny_entry(entry:, denied_by:, note: nil)
       raise AuthorizationError, "Only admins can deny entries" unless denied_by.admin?
-      raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
-      entry.update!(
-        approval_status: "denied",
-        approved_by: denied_by,
-        approved_at: Time.current,
-        approval_note: note
-      )
+      entry.with_lock do
+        raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
+
+        entry.update!(
+          approval_status: "denied",
+          approved_by: denied_by,
+          approved_at: Time.current,
+          approval_note: note
+        )
+      end
       entry
     end
 
     # ── Admin: Approve Overtime ──
     def approve_overtime(entry:, approved_by:, note: nil)
       raise AuthorizationError, "Only admins can approve overtime" unless approved_by.admin?
-      raise ClockError, "Entry does not have pending overtime" unless entry.overtime_status == "pending"
 
-      entry.update!(
-        overtime_status: "approved",
-        overtime_approved_by: approved_by,
-        overtime_approved_at: Time.current,
-        overtime_note: note
-      )
+      entry.with_lock do
+        raise ClockError, "Entry does not have pending overtime" unless entry.overtime_status == "pending"
+
+        entry.update!(
+          overtime_status: "approved",
+          overtime_approved_by: approved_by,
+          overtime_approved_at: Time.current,
+          overtime_note: note
+        )
+      end
       entry
     end
 
     # ── Admin: Deny Overtime ──
     def deny_overtime(entry:, denied_by:, note: nil)
       raise AuthorizationError, "Only admins can deny overtime" unless denied_by.admin?
-      raise ClockError, "Entry does not have pending overtime" unless entry.overtime_status == "pending"
 
-      entry.update!(
-        overtime_status: "denied",
-        overtime_approved_by: denied_by,
-        overtime_approved_at: Time.current,
-        overtime_note: note
-      )
+      entry.with_lock do
+        raise ClockError, "Entry does not have pending overtime" unless entry.overtime_status == "pending"
+
+        entry.update!(
+          overtime_status: "denied",
+          overtime_approved_by: denied_by,
+          overtime_approved_at: Time.current,
+          overtime_note: note
+        )
+      end
       entry
     end
 

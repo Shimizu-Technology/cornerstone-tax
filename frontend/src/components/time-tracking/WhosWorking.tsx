@@ -54,6 +54,7 @@ export default function WhosWorking() {
     clocked_in: { label: 'Working', color: 'text-emerald-600', dot: 'bg-emerald-500' },
     on_break: { label: 'On Break', color: 'text-amber-600', dot: 'bg-amber-400' },
     late: { label: 'Late', color: 'text-red-500', dot: 'bg-red-400' },
+    no_show: { label: 'No Show', color: 'text-red-700', dot: 'bg-red-600' },
     not_clocked_in: { label: 'Not In', color: 'text-text-muted', dot: 'bg-neutral-warm' },
     no_schedule: { label: 'Off', color: 'text-text-muted/50', dot: 'bg-neutral-warm/60' },
   }
