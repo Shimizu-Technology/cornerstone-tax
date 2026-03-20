@@ -14,16 +14,22 @@ module Api
 
         # PUT /api/v1/admin/settings
         def update
-          numeric_keys = %w[overtime_daily_threshold_hours overtime_weekly_threshold_hours early_clock_in_buffer_minutes]
+          float_keys = %w[overtime_daily_threshold_hours overtime_weekly_threshold_hours]
+          integer_keys = %w[early_clock_in_buffer_minutes]
           errors = []
 
           settings_params.each do |key, value|
-            if numeric_keys.include?(key.to_s)
+            key_str = key.to_s
+            if integer_keys.include?(key_str)
               numeric = Float(value)
-              errors << "#{key.to_s.humanize} must be greater than 0" if numeric <= 0
-            rescue ArgumentError, TypeError
-              errors << "#{key.to_s.humanize} must be a valid number"
+              errors << "#{key_str.humanize} must be a whole number" if numeric != numeric.to_i
+              errors << "#{key_str.humanize} must be greater than 0" if numeric <= 0
+            elsif float_keys.include?(key_str)
+              numeric = Float(value)
+              errors << "#{key_str.humanize} must be greater than 0" if numeric <= 0
             end
+          rescue ArgumentError, TypeError
+            errors << "#{key.to_s.humanize} must be a valid number"
           end
 
           return render json: { error: errors.join(", ") }, status: :unprocessable_entity if errors.any?

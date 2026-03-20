@@ -12,6 +12,7 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState(false)
   const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [noteInput, setNoteInput] = useState<{ id: number; note: string } | null>(null)
 
   const fetchPending = useCallback(async () => {
@@ -38,13 +39,16 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
 
   const handleApprove = async (entry: TimeEntry, note?: string) => {
     setActionLoading(entry.id)
+    setActionError(null)
     try {
       const isOvertimeOnly = entry.approval_status !== 'pending' && entry.overtime_status === 'pending'
       const result = isOvertimeOnly
         ? await api.approveOvertime(entry.id, note)
         : await api.approveTimeEntry(entry.id, note)
 
-      if (!result.error) {
+      if (result.error) {
+        setActionError(result.error)
+      } else {
         const stillHasOvertimePending = !isOvertimeOnly && entry.overtime_status === 'pending'
         if (stillHasOvertimePending) {
           await fetchPending()
@@ -54,6 +58,8 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
         setNoteInput(null)
         onUpdate?.()
       }
+    } catch {
+      setActionError('Failed to approve entry. Please try again.')
     } finally {
       setActionLoading(null)
     }
@@ -61,13 +67,16 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
 
   const handleDeny = async (entry: TimeEntry, note?: string) => {
     setActionLoading(entry.id)
+    setActionError(null)
     try {
       const isOvertimeOnly = entry.approval_status !== 'pending' && entry.overtime_status === 'pending'
       const result = isOvertimeOnly
         ? await api.denyOvertime(entry.id, note)
         : await api.denyTimeEntry(entry.id, note)
 
-      if (!result.error) {
+      if (result.error) {
+        setActionError(result.error)
+      } else {
         const stillHasOvertimePending = !isOvertimeOnly && entry.overtime_status === 'pending'
         if (stillHasOvertimePending) {
           await fetchPending()
@@ -77,6 +86,8 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
         setNoteInput(null)
         onUpdate?.()
       }
+    } catch {
+      setActionError('Failed to deny entry. Please try again.')
     } finally {
       setActionLoading(null)
     }
@@ -126,6 +137,17 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
           </div>
           <h3 className="font-semibold text-primary-dark text-base">Pending Approvals</h3>
         </div>
+
+        {actionError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 flex items-center justify-between gap-2">
+            <p className="text-xs text-red-700">{actionError}</p>
+            <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 shrink-0">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         <div className="space-y-3">
           <AnimatePresence>

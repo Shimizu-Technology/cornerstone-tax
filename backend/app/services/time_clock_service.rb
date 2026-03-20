@@ -8,7 +8,8 @@ class TimeClockService
     # ── Clock In ──
     def clock_in(user:, admin_override_by: nil)
       now = Time.current
-      today = Time.current.in_time_zone(business_timezone).to_date
+      guam_now = now.in_time_zone(business_timezone)
+      today = guam_now.to_date
 
       raise ClockError, "You are already clocked in" if active_entry_for(user)
 
@@ -25,7 +26,7 @@ class TimeClockService
       entry = TimeEntry.new(
         user: user,
         work_date: today,
-        start_time: now,
+        start_time: guam_now,
         clock_in_at: now,
         entry_method: "clock",
         status: "clocked_in",
@@ -54,7 +55,8 @@ class TimeClockService
         end
 
         now = Time.current
-        entry.end_time = now
+        guam_now = now.in_time_zone(business_timezone)
+        entry.end_time = guam_now
         entry.clock_out_at = now
         entry.status = "completed"
         entry.break_minutes = entry.total_break_minutes
@@ -80,6 +82,8 @@ class TimeClockService
       end
 
       entry
+    rescue ActiveRecord::RecordNotUnique
+      raise ClockError, "You are already on a break"
     end
 
     # ── End Break ──
