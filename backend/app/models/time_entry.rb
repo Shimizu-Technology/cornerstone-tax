@@ -35,7 +35,7 @@ class TimeEntry < ApplicationRecord
   before_validation :set_zero_hours_if_clocked_in, if: -> { status.in?(%w[clocked_in on_break]) }
 
   scope :for_date, ->(date) { where(work_date: date) }
-  scope :for_week, ->(date) { where(work_date: date.beginning_of_week..date.end_of_week) }
+  scope :for_week, ->(date) { where(work_date: date.beginning_of_week(:sunday)..date.end_of_week(:sunday)) }
   scope :for_user, ->(user) { where(user: user) }
   scope :recent, -> { order(work_date: :desc, created_at: :desc) }
   scope :clocked_in, -> { where(status: %w[clocked_in on_break]) }

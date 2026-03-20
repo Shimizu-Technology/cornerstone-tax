@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_20_012308) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_20_054555) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -406,6 +406,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_20_012308) do
     t.index ["client_id"], name: "index_time_entries_on_client_id"
     t.index ["entry_method"], name: "index_time_entries_on_entry_method"
     t.index ["overtime_approved_by_id"], name: "index_time_entries_on_overtime_approved_by_id"
+    t.index ["overtime_status"], name: "index_time_entries_on_overtime_status"
     t.index ["schedule_id"], name: "index_time_entries_on_schedule_id"
     t.index ["service_task_id"], name: "index_time_entries_on_service_task_id"
     t.index ["service_type_id"], name: "index_time_entries_on_service_type_id"
