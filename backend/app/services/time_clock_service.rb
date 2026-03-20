@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class TimeClockService
+  BUSINESS_TIMEZONE = "Guam"
+
   class ClockError < StandardError; end
   class AuthorizationError < StandardError; end
 
@@ -261,7 +263,7 @@ class TimeClockService
     end
 
     def business_timezone
-      "Guam"
+      BUSINESS_TIMEZONE
     end
 
     def validate_clock_in_time(now, schedule)

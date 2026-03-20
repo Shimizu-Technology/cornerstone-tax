@@ -312,7 +312,7 @@ module Api
       def whos_working
         return render json: { error: "Admin access required" }, status: :forbidden unless current_user.admin?
 
-        today = Time.current.in_time_zone("Guam").to_date
+        today = Time.current.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).to_date
         staff_users = User.staff.order(:first_name, :last_name)
         staff_ids = staff_users.pluck(:id)
 
@@ -364,7 +364,7 @@ module Api
                     elsif clocked_out_today.include?(user.id)
                       "clocked_out"
                     elsif schedule
-                      guam_now = Time.current.in_time_zone("Guam")
+                      guam_now = Time.current.in_time_zone(TimeClockService::BUSINESS_TIMEZONE)
                       shift_start_seconds = schedule.start_time.seconds_since_midnight
                       shift_end_seconds = schedule.end_time.seconds_since_midnight
                       current_seconds = guam_now.seconds_since_midnight

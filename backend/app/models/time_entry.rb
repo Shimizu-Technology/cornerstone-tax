@@ -79,7 +79,7 @@ class TimeEntry < ApplicationRecord
   end
 
   def counts_toward_hours?
-    status == "completed" && approval_status != "denied"
+    status == "completed" && !approval_status.in?(%w[denied pending])
   end
 
   def total_break_minutes
