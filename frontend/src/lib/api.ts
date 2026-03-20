@@ -456,6 +456,32 @@ export interface TimeEntry {
   hours: number;
   break_minutes: number | null;
   description: string | null;
+  entry_method: 'clock' | 'manual';
+  status: 'clocked_in' | 'on_break' | 'completed';
+  admin_override: boolean;
+  attendance_status: 'early' | 'on_time' | 'late' | null;
+  approval_status: 'pending' | 'approved' | 'denied' | null;
+  overtime_status: 'none' | 'pending' | 'approved' | 'denied' | null;
+  clock_in_at: string | null;
+  clock_out_at: string | null;
+  approved_by: {
+    id: number;
+    full_name: string;
+  } | null;
+  approved_at: string | null;
+  approval_note: string | null;
+  schedule: {
+    id: number;
+    start_time: string;
+    end_time: string;
+  } | null;
+  breaks: Array<{
+    id: number;
+    start_time: string;
+    end_time: string | null;
+    duration_minutes: number | null;
+    active: boolean;
+  }>;
   user: {
     id: number;
     email: string;
@@ -487,8 +513,57 @@ export interface TimeEntry {
     id: number;
     title: string;
   } | null;
+  locked_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ClockStatus {
+  clocked_in: boolean;
+  status: 'clocked_in' | 'on_break' | 'completed' | null;
+  entry_id: number | null;
+  clock_in_at: string | null;
+  elapsed_minutes: number | null;
+  break_minutes: number;
+  active_break: boolean;
+  active_break_started_at: string | null;
+  breaks: Array<{
+    start_time: string;
+    end_time: string | null;
+    duration_minutes: number | null;
+    active: boolean;
+  }>;
+  schedule: {
+    id: number;
+    start_time: string;
+    end_time: string;
+    hours: number;
+  } | null;
+  can_clock_in: boolean;
+  clock_in_blocked_reason: 'already_clocked_in' | 'no_schedule' | 'too_early' | null;
+  minutes_until?: number;
+  is_admin?: boolean;
+}
+
+export interface WorkerStatus {
+  user: {
+    id: number;
+    full_name: string;
+    display_name: string;
+    email: string;
+  };
+  schedule: {
+    start_time: string;
+    end_time: string;
+    hours: number;
+  } | null;
+  status: string;
+  clock_in_at: string | null;
+  clock_out_at: string | null;
+  completed_hours: number;
+  active_break: boolean;
+  break_started_at: string | null;
+  total_break_minutes: number;
 }
 
 export interface TimeEntriesResponse {
@@ -1388,6 +1463,7 @@ export const api = {
   // Time Tracking
   getTimeEntries: (params?: {
     page?: number;
+    per_page?: number;
     date?: string;
     week?: string;
     start_date?: string;
@@ -1395,9 +1471,11 @@ export const api = {
     time_category_id?: number;
     client_id?: number;
     user_id?: number;
+    exclude_approval_statuses?: string[];
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
     if (params?.date) searchParams.set('date', params.date);
     if (params?.week) searchParams.set('week', params.week);
     if (params?.start_date) searchParams.set('start_date', params.start_date);
@@ -1405,6 +1483,9 @@ export const api = {
     if (params?.time_category_id) searchParams.set('time_category_id', params.time_category_id.toString());
     if (params?.client_id) searchParams.set('client_id', params.client_id.toString());
     if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
+    if (params?.exclude_approval_statuses) {
+      params.exclude_approval_statuses.forEach(s => searchParams.append('exclude_approval_statuses[]', s));
+    }
     const query = searchParams.toString();
     return fetchApi<TimeEntriesResponse>(`/api/v1/time_entries${query ? `?${query}` : ''}`);
   },
@@ -1456,6 +1537,64 @@ export const api = {
     fetchApi<void>(`/api/v1/time_entries/${id}`, {
       method: 'DELETE',
     }),
+
+  // Time Clock
+  clockIn: (userId?: number, adminOverride?: boolean) =>
+    fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/clock_in', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...(userId ? { user_id: userId } : {}),
+        ...(adminOverride ? { admin_override: true } : {}),
+      }),
+    }),
+
+  clockOut: () =>
+    fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/clock_out', {
+      method: 'POST',
+    }),
+
+  startBreak: () =>
+    fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/start_break', {
+      method: 'POST',
+    }),
+
+  endBreak: () =>
+    fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/end_break', {
+      method: 'POST',
+    }),
+
+  getClockStatus: () =>
+    fetchApi<ClockStatus>('/api/v1/time_entries/current_status'),
+
+  getPendingApprovals: () =>
+    fetchApi<{ pending_entries: TimeEntry[]; count: number }>('/api/v1/time_entries/pending_approvals'),
+
+  approveTimeEntry: (id: number, note?: string) =>
+    fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+
+  denyTimeEntry: (id: number, note?: string) =>
+    fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}/deny`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+
+  approveOvertime: (id: number, note?: string) =>
+    fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}/approve_overtime`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+
+  denyOvertime: (id: number, note?: string) =>
+    fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}/deny_overtime`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+
+  getWhosWorking: () =>
+    fetchApi<{ workers: WorkerStatus[] }>('/api/v1/time_entries/whos_working'),
 
   getTimeCategories: () =>
     fetchApi<{ time_categories: TimeCategory[] }>('/api/v1/time_categories'),

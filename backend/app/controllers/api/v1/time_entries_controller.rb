@@ -5,23 +5,20 @@ module Api
     class TimeEntriesController < BaseController
       before_action :authenticate_user!
       before_action :require_staff!
-      before_action :set_time_entry, only: [:show, :update, :destroy]
+      before_action :set_time_entry, only: [:show, :update, :destroy, :approve, :deny, :approve_overtime, :deny_overtime]
 
       # GET /api/v1/time_entries
       def index
         @time_entries = current_user.admin? ? TimeEntry.all : TimeEntry.for_user(current_user)
-        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category)
+        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by, :time_entry_breaks)
 
-        # Filter by user (admin only)
         if params[:user_id].present? && current_user.admin?
           @time_entries = @time_entries.where(user_id: params[:user_id])
         end
 
-        # Filter by date
         if params[:date].present?
           @time_entries = @time_entries.for_date(Date.parse(params[:date]))
         elsif params[:week].present?
-          # Week starts on Sunday (frontend convention)
           week_start = Date.parse(params[:week])
           week_end = week_start + 6.days
           @time_entries = @time_entries.where(work_date: week_start..week_end)
@@ -29,22 +26,30 @@ module Api
           @time_entries = @time_entries.where(work_date: Date.parse(params[:start_date])..Date.parse(params[:end_date]))
         end
 
-        # Filter by category
         if params[:time_category_id].present?
           @time_entries = @time_entries.where(time_category_id: params[:time_category_id])
         end
 
-        # Filter by client
         if params[:client_id].present?
           @time_entries = @time_entries.where(client_id: params[:client_id])
         end
 
+        if params[:approval_status].present?
+          @time_entries = @time_entries.where(approval_status: params[:approval_status])
+        end
+
+        if params[:exclude_approval_statuses].present?
+          statuses = Array(params[:exclude_approval_statuses])
+          @time_entries = @time_entries.where("approval_status IS NULL OR approval_status NOT IN (?)", statuses)
+        end
+
         @time_entries = @time_entries.order(work_date: :desc, created_at: :desc)
 
-        # Pagination
+        summary = calculate_summary(@time_entries)
+
         page = (params[:page] || 1).to_i
-        per_page = (params[:per_page] || 50).to_i.clamp(1, 100)
-        total_count = @time_entries.count
+        per_page = (params[:per_page] || 50).to_i.clamp(1, 500)
+        total_count = summary[:entry_count]
         @time_entries = @time_entries.offset((page - 1) * per_page).limit(per_page)
 
         render json: {
@@ -55,7 +60,7 @@ module Api
             total_count: total_count,
             total_pages: (total_count.to_f / per_page).ceil
           },
-          summary: calculate_summary(@time_entries)
+          summary: summary
         }
       end
 
@@ -74,14 +79,21 @@ module Api
         return unless entry_owner
 
         @time_entry = entry_owner.time_entries.build(time_entry_params.except(:user_id))
+        @time_entry.entry_method = "manual"
+
+        if current_user.admin?
+          @time_entry.admin_override = true if entry_owner.id != current_user.id
+          @time_entry.approval_status = "approved"
+        else
+          @time_entry.approval_status = "pending"
+        end
 
         if @time_entry.save
-          # Log the audit event
           AuditLog.log(
             auditable: @time_entry,
             action: "created",
             user: current_user,
-            metadata: "#{@time_entry.hours}h on #{@time_entry.work_date}"
+            metadata: "#{@time_entry.hours}h on #{@time_entry.work_date} (manual, #{@time_entry.approval_status})"
           )
 
           render json: { time_entry: serialize_time_entry(@time_entry) }, status: :created
@@ -102,7 +114,6 @@ module Api
           return render json: { error: message }, status: :forbidden
         end
 
-        # Capture changes for audit log
         old_values = {
           hours: @time_entry.hours.to_f,
           work_date: @time_entry.work_date.iso8601,
@@ -110,8 +121,15 @@ module Api
           time_category_id: @time_entry.time_category_id
         }
 
-        if @time_entry.update(time_entry_params.except(:user_id))
-          # Log the audit event with changes
+        update_params = time_entry_params.except(:user_id)
+
+        unless current_user.admin?
+          if @time_entry.approval_status == "approved" && @time_entry.manual_entry?
+            update_params[:approval_status] = "pending"
+          end
+        end
+
+        if @time_entry.update(update_params)
           new_values = {
             hours: @time_entry.hours.to_f,
             work_date: @time_entry.work_date.iso8601,
@@ -149,13 +167,11 @@ module Api
           return render json: { error: message }, status: :forbidden
         end
 
-        # Capture info before deletion for audit log
         entry_info = "#{@time_entry.hours}h on #{@time_entry.work_date}"
         entry_id = @time_entry.id
 
         @time_entry.destroy
 
-        # Log the audit event (use entry_id since record is deleted)
         AuditLog.create!(
           auditable_type: "TimeEntry",
           auditable_id: entry_id,
@@ -165,6 +181,159 @@ module Api
         )
 
         head :no_content
+      end
+
+      # ── Clock Actions ──
+
+      # POST /api/v1/time_entries/clock_in
+      def clock_in
+        if current_user.admin? && params[:user_id].present?
+          admin_override = current_user
+          target_user = User.staff.find(params[:user_id])
+        elsif current_user.admin? && params[:admin_override].present?
+          admin_override = current_user
+          target_user = current_user
+        else
+          admin_override = nil
+          target_user = current_user
+        end
+
+        entry = TimeClockService.clock_in(user: target_user, admin_override_by: admin_override)
+        render json: { time_entry: serialize_time_entry(entry) }, status: :created
+      rescue TimeClockService::ClockError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # POST /api/v1/time_entries/clock_out
+      def clock_out
+        entry = TimeClockService.clock_out(user: current_user)
+        render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::ClockError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # POST /api/v1/time_entries/start_break
+      def start_break
+        entry = TimeClockService.start_break(user: current_user)
+        render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::ClockError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # POST /api/v1/time_entries/end_break
+      def end_break
+        entry = TimeClockService.end_break(user: current_user)
+        render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::ClockError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # GET /api/v1/time_entries/current_status
+      def current_status
+        status = TimeClockService.current_status(user: current_user)
+        status[:is_admin] = current_user.admin?
+        render json: status
+      end
+
+      # ── Approval Actions ──
+
+      # GET /api/v1/time_entries/pending_approvals
+      def pending_approvals
+        return render json: { error: "Admin access required" }, status: :forbidden unless current_user.admin?
+
+        entries = TimeEntry.includes(:user, :schedule)
+          .where(approval_status: "pending")
+          .or(TimeEntry.where(overtime_status: "pending"))
+          .order(created_at: :desc)
+
+        render json: {
+          pending_entries: entries.map { |e| serialize_time_entry(e) },
+          count: entries.count
+        }
+      end
+
+      # POST /api/v1/time_entries/:id/approve
+      def approve
+        entry = TimeClockService.approve_entry(entry: @time_entry, approved_by: current_user, note: params[:note])
+        render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::ClockError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # POST /api/v1/time_entries/:id/deny
+      def deny
+        entry = TimeClockService.deny_entry(entry: @time_entry, denied_by: current_user, note: params[:note])
+        render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::ClockError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # POST /api/v1/time_entries/:id/approve_overtime
+      def approve_overtime
+        entry = TimeClockService.approve_overtime(entry: @time_entry, approved_by: current_user, note: params[:note])
+        render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::ClockError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # POST /api/v1/time_entries/:id/deny_overtime
+      def deny_overtime
+        entry = TimeClockService.deny_overtime(entry: @time_entry, denied_by: current_user, note: params[:note])
+        render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::ClockError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # GET /api/v1/time_entries/whos_working
+      def whos_working
+        return render json: { error: "Admin access required" }, status: :forbidden unless current_user.admin?
+
+        today = Time.current.in_time_zone("Guam").to_date
+        staff_users = User.staff.order(:first_name, :last_name)
+
+        workers = staff_users.map do |user|
+          schedule = Schedule.for_user(user.id).for_date(today).first
+          active_entry = TimeClockService.active_entry_for(user)
+          completed_hours = TimeClockService.hours_today(user, today)
+
+          active_break_record = active_entry&.active_break
+
+          {
+            user: {
+              id: user.id,
+              full_name: user.full_name,
+              display_name: user.display_name,
+              email: user.email
+            },
+            schedule: schedule ? {
+              start_time: schedule.formatted_start_time,
+              end_time: schedule.formatted_end_time,
+              hours: schedule.hours
+            } : nil,
+            status: if active_entry
+                      active_entry.status
+                    elsif schedule
+                      guam_now = Time.current.in_time_zone("Guam")
+                      shift_start_seconds = schedule.start_time.seconds_since_midnight
+                      current_seconds = guam_now.seconds_since_midnight
+                      if current_seconds > shift_start_seconds + (5 * 60)
+                        "late"
+                      else
+                        "not_clocked_in"
+                      end
+                    else
+                      "no_schedule"
+                    end,
+            clock_in_at: active_entry&.clock_in_at&.iso8601,
+            clock_out_at: active_entry&.clock_out_at&.iso8601,
+            completed_hours: completed_hours.round(2),
+            active_break: active_break_record.present?,
+            break_started_at: active_break_record&.start_time&.iso8601,
+            total_break_minutes: active_entry&.total_break_minutes || 0
+          }
+        end
+
+        render json: { workers: workers }
       end
 
       private
@@ -227,6 +396,34 @@ module Api
           hours: entry.hours.to_f,
           break_minutes: entry.break_minutes,
           description: entry.description,
+          entry_method: entry.entry_method,
+          status: entry.status,
+          admin_override: entry.admin_override,
+          attendance_status: entry.attendance_status,
+          approval_status: entry.approval_status,
+          overtime_status: entry.overtime_status,
+          clock_in_at: entry.clock_in_at&.iso8601,
+          clock_out_at: entry.clock_out_at&.iso8601,
+          approved_by: entry.approved_by ? {
+            id: entry.approved_by.id,
+            full_name: entry.approved_by.full_name
+          } : nil,
+          approved_at: entry.approved_at&.iso8601,
+          approval_note: entry.approval_note,
+          schedule: entry.schedule ? {
+            id: entry.schedule.id,
+            start_time: entry.schedule.formatted_start_time,
+            end_time: entry.schedule.formatted_end_time
+          } : nil,
+          breaks: entry.time_entry_breaks.order(:start_time).map { |b|
+            {
+              id: b.id,
+              start_time: b.start_time.iso8601,
+              end_time: b.end_time&.iso8601,
+              duration_minutes: b.duration_minutes,
+              active: b.active?
+            }
+          },
           user: {
             id: entry.user.id,
             email: entry.user.email,
@@ -244,6 +441,15 @@ module Api
           tax_return: entry.tax_return ? {
             id: entry.tax_return.id,
             tax_year: entry.tax_return.tax_year
+          } : nil,
+          service_type: entry.service_type ? {
+            id: entry.service_type.id,
+            name: entry.service_type.name,
+            color: entry.service_type.color
+          } : nil,
+          service_task: entry.service_task ? {
+            id: entry.service_task.id,
+            name: entry.service_task.name
           } : nil,
           locked_at: entry.locked_at&.iso8601,
           created_at: entry.created_at.iso8601,

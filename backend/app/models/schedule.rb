@@ -3,6 +3,7 @@
 class Schedule < ApplicationRecord
   belongs_to :user
   belongs_to :created_by, class_name: "User", optional: true
+  has_many :time_entries, dependent: :nullify
 
   validates :work_date, presence: true
   validates :start_time, presence: true

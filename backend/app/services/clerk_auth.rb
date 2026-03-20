@@ -35,6 +35,35 @@ class ClerkAuth
       nil
     end
 
+    # Fetch a Clerk user's primary email via the Backend API
+    # Requires CLERK_SECRET_KEY env var
+    # @param clerk_user_id [String] The Clerk user ID (e.g., "user_abc123")
+    # @return [String, nil] The user's primary email, or nil
+    def fetch_user_email(clerk_user_id)
+      secret_key = ENV.fetch("CLERK_SECRET_KEY", nil)
+      return nil unless secret_key.present?
+
+      response = HTTParty.get(
+        "https://api.clerk.com/v1/users/#{clerk_user_id}",
+        headers: { "Authorization" => "Bearer #{secret_key}" },
+        timeout: 5
+      )
+
+      if response.success?
+        data = response.parsed_response
+        primary_id = data.dig("primary_email_address_id")
+        addresses = data["email_addresses"] || []
+        primary = addresses.find { |a| a["id"] == primary_id } || addresses.first
+        primary&.dig("email_address")
+      else
+        Rails.logger.warn("Clerk API fetch failed for #{clerk_user_id}: #{response.code}")
+        nil
+      end
+    rescue HTTParty::Error, Timeout::Error => e
+      Rails.logger.warn("Clerk API error for #{clerk_user_id}: #{e.message}")
+      nil
+    end
+
     private
 
     def fetch_jwks

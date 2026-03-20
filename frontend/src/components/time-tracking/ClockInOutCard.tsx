@@ -1,0 +1,453 @@
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { api } from '../../lib/api'
+import type { ClockStatus } from '../../lib/api'
+
+interface ClockInOutCardProps {
+  onStatusChange?: () => void
+}
+
+function Spinner({ className = 'border-white/30 border-t-white' }: { className?: string }) {
+  return <span className={`w-5 h-5 border-2 rounded-full animate-spin ${className}`} />
+}
+
+export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) {
+  const [status, setStatus] = useState<ClockStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [breakElapsed, setBreakElapsed] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const isOnBreakRef = useRef(false)
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const result = await api.getClockStatus()
+      if (result.data) {
+        setStatus(result.data)
+        if (result.data.clock_in_at) {
+          const start = new Date(result.data.clock_in_at).getTime()
+          setElapsedSeconds(Math.floor((Date.now() - start) / 1000))
+        }
+        if (result.data.active_break && result.data.active_break_started_at) {
+          const breakStart = new Date(result.data.active_break_started_at).getTime()
+          setBreakElapsed(Math.floor((Date.now() - breakStart) / 1000))
+        }
+      }
+    } catch {
+      setError('Failed to load clock status')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchStatus() }, [fetchStatus])
+
+  // Auto-poll every 30s when not clocked in (waiting for shift to start)
+  useEffect(() => {
+    if (!status?.clocked_in && !loading) {
+      pollRef.current = setInterval(() => fetchStatus(), 30_000)
+    }
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [status?.clocked_in, loading, fetchStatus])
+
+  // Keep ref in sync so the single interval callback reads fresh state
+  isOnBreakRef.current = status?.active_break ?? false
+
+  // Single interval ticks both elapsed and break counters in sync
+  useEffect(() => {
+    if (status?.clocked_in) {
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1)
+        if (isOnBreakRef.current) {
+          setBreakElapsed(prev => prev + 1)
+        }
+      }, 1000)
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [status?.clocked_in])
+
+  // Reset break elapsed when break state changes
+  useEffect(() => {
+    if (!status?.active_break) {
+      setBreakElapsed(0)
+    }
+  }, [status?.active_break])
+
+  const fmt = (totalSeconds: number) => {
+    const h = Math.floor(totalSeconds / 3600)
+    const m = Math.floor((totalSeconds % 3600) / 60)
+    const s = totalSeconds % 60
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
+
+  const fmtTime = (iso: string) => {
+    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  }
+
+  const handleAction = async (action: 'clock_in' | 'clock_out' | 'start_break' | 'end_break', adminOverride = false) => {
+    setActionLoading(true)
+    setError(null)
+    try {
+      const fn = {
+        clock_in: () => api.clockIn(undefined, adminOverride),
+        clock_out: () => api.clockOut(),
+        start_break: () => api.startBreak(),
+        end_break: () => api.endBreak(),
+      }
+      const result = await fn[action]()
+      if (result?.error) setError(result.error)
+      else { await fetchStatus(); onStatusChange?.() }
+    } catch {
+      setError('Action failed. Please try again.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-5 animate-pulse">
+        <div className="md:flex md:items-center md:gap-8">
+          <div className="h-5 bg-neutral-warm rounded w-28 mb-4 md:mb-0" />
+          <div className="h-10 bg-neutral-warm/60 rounded-xl flex-1" />
+        </div>
+      </div>
+    )
+  }
+
+  const isClockedIn = status?.clocked_in
+  const isOnBreak = status?.status === 'on_break'
+  const isAdmin = status?.is_admin ?? false
+  const blockedReason = status?.clock_in_blocked_reason
+  const canClockIn = status?.can_clock_in || (isAdmin && blockedReason === 'too_early')
+  const netWorkSeconds = isClockedIn ? elapsedSeconds - (status?.break_minutes || 0) * 60 - (isOnBreak ? breakElapsed : 0) : 0
+
+  const stripeColor = isOnBreak ? 'bg-amber-400' : isClockedIn ? 'bg-emerald-500' : 'bg-neutral-warm'
+  const borderColor = isOnBreak ? 'border-amber-300/60' : isClockedIn ? 'border-emerald-300/60' : 'border-neutral-warm'
+  const dotColor = isOnBreak ? 'bg-amber-400 animate-pulse' : isClockedIn ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-warm'
+  const statusLabel = isOnBreak ? 'On Break' : isClockedIn ? 'Clocked In' : 'Not Clocked In'
+
+  // Shared button styles
+  const btnPrimary = 'min-h-[48px] py-3 px-5 bg-primary hover:bg-primary-dark active:bg-primary-dark disabled:bg-neutral-warm disabled:text-text-muted text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-sm'
+  const btnSecondary = 'min-h-[48px] py-3 px-5 bg-secondary-dark hover:bg-neutral-warm active:bg-neutral-warm text-primary-dark font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm border border-neutral-warm'
+  const btnBreak = 'min-h-[48px] py-3 px-5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-sm'
+
+  return (
+    <div className={`rounded-2xl border shadow-sm transition-all duration-300 hover:shadow-md overflow-hidden bg-white ${borderColor}`}>
+      <div className={`h-1 ${stripeColor}`} />
+
+      {/* ─── Mobile / Tablet layout (stacked) ─── */}
+      <div className="p-5 md:hidden">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColor}`} />
+            <h3 className="font-semibold text-primary-dark text-base">{statusLabel}</h3>
+          </div>
+          {status?.schedule && !isClockedIn && (
+            <span className="text-xs text-text-muted bg-secondary rounded-full px-2.5 py-1">
+              {status.schedule.start_time} – {status.schedule.end_time}
+            </span>
+          )}
+        </div>
+
+        {/* Timer (mobile) */}
+        {isClockedIn && (
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-5">
+            <div className="text-center py-3 bg-secondary/60 rounded-xl">
+              <div className={`font-mono text-3xl font-bold tabular-nums tracking-tight ${isOnBreak ? 'text-amber-600' : 'text-primary-dark'}`}>
+                {fmt(elapsedSeconds)}
+              </div>
+              <div className="text-[10px] text-text-muted mt-1 font-medium uppercase tracking-wider">Total elapsed</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 mt-3">
+              <div className="text-center bg-secondary/40 rounded-xl py-2 px-2">
+                <div className="text-sm font-semibold text-primary-dark tabular-nums font-mono">{fmt(Math.max(netWorkSeconds, 0))}</div>
+                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-0.5">Net work</div>
+              </div>
+              <div className="text-center bg-secondary/40 rounded-xl py-2 px-2">
+                <div className={`text-sm font-semibold tabular-nums font-mono ${isOnBreak ? 'text-amber-600' : 'text-text-muted'}`}>
+                  {isOnBreak ? fmt(breakElapsed) : `${status?.break_minutes || 0}m`}
+                </div>
+                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-0.5">{isOnBreak ? 'Break' : 'Breaks'}</div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Timeline (mobile) */}
+        {isClockedIn && status?.clock_in_at && (
+          <TimelineSection clockInAt={status.clock_in_at} breaks={status.breaks || []} fmtTime={fmtTime} />
+        )}
+
+        {/* Schedule / no-schedule (mobile) */}
+        {!isClockedIn && status?.schedule && (
+          <div className="mb-4 p-3.5 bg-secondary/60 rounded-xl border border-neutral-warm/50">
+            <div className="text-xs font-medium text-text-muted uppercase tracking-wider">Today's Shift</div>
+            <div className="text-lg font-semibold text-primary-dark mt-1">{status.schedule.start_time} – {status.schedule.end_time}</div>
+            <div className="text-xs text-text-muted mt-0.5">{status.schedule.hours} hours</div>
+          </div>
+        )}
+        {!isClockedIn && !status?.schedule && <NoScheduleMsg />}
+        {!isClockedIn && blockedReason === 'too_early' && <TooEarlyMsg isAdmin={isAdmin} />}
+
+        <ErrorMsg error={error} />
+
+        {/* Buttons (mobile - stacked) */}
+        <div className="space-y-2">
+          {!isClockedIn ? (
+            <button
+              onClick={() => handleAction('clock_in', isAdmin && blockedReason === 'too_early')}
+              disabled={actionLoading || !canClockIn}
+              className={`w-full ${btnPrimary}`}
+            >
+              {actionLoading ? <Spinner /> : <><ClockIcon /> {isAdmin && blockedReason === 'too_early' ? 'Clock In (Override)' : 'Clock In'}</>}
+            </button>
+          ) : (
+            <>
+              {isOnBreak ? (
+                <button onClick={() => handleAction('end_break')} disabled={actionLoading} className={`w-full ${btnBreak}`}>
+                  {actionLoading ? <Spinner /> : <><PlayIcon /> End Break</>}
+                </button>
+              ) : (
+                <button onClick={() => handleAction('start_break')} disabled={actionLoading} className={`w-full ${btnSecondary}`}>
+                  {actionLoading ? <Spinner className="border-primary-dark/30 border-t-primary-dark" /> : <><PauseIcon /> Start Break</>}
+                </button>
+              )}
+              <button onClick={() => handleAction('clock_out')} disabled={actionLoading} className={`w-full ${btnPrimary}`}>
+                {actionLoading ? <Spinner /> : <><StopIcon /> Clock Out</>}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Desktop layout ─── */}
+      <div className="hidden md:block p-5">
+        {/* Top row: status + buttons */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-3 h-3 rounded-full shrink-0 ${dotColor}`} />
+            <div>
+              <h3 className="font-semibold text-primary-dark text-base leading-tight">{statusLabel}</h3>
+              {status?.schedule && (
+                <span className="text-xs text-text-muted">
+                  Shift: {status.schedule.start_time} – {status.schedule.end_time} ({status.schedule.hours}h)
+                </span>
+              )}
+              {!status?.schedule && !isClockedIn && (
+                <span className="text-xs text-red-500">No shift scheduled today</span>
+              )}
+            </div>
+          </div>
+
+          {!isClockedIn && blockedReason === 'too_early' && (
+            <div className="flex-1 text-center">
+              <span className="text-xs text-amber-600 font-medium">
+                Shift hasn't started yet
+                {isAdmin && ' — admin override available'}
+              </span>
+            </div>
+          )}
+
+          {!isClockedIn && blockedReason !== 'too_early' && <div className="flex-1" />}
+
+          <div className="flex items-center gap-2 shrink-0">
+            {!isClockedIn ? (
+              <button
+                onClick={() => handleAction('clock_in', isAdmin && blockedReason === 'too_early')}
+                disabled={actionLoading || !canClockIn}
+                className={btnPrimary}
+              >
+                {actionLoading ? <Spinner /> : <><ClockIcon /> {isAdmin && blockedReason === 'too_early' ? 'Clock In (Override)' : 'Clock In'}</>}
+              </button>
+            ) : (
+              <>
+                {isOnBreak ? (
+                  <button onClick={() => handleAction('end_break')} disabled={actionLoading} className={btnBreak}>
+                    {actionLoading ? <Spinner /> : <><PlayIcon /> End Break</>}
+                  </button>
+                ) : (
+                  <button onClick={() => handleAction('start_break')} disabled={actionLoading} className={btnSecondary}>
+                    {actionLoading ? <Spinner className="border-primary-dark/30 border-t-primary-dark" /> : <><PauseIcon /> Start Break</>}
+                  </button>
+                )}
+                <button onClick={() => handleAction('clock_out')} disabled={actionLoading} className={btnPrimary}>
+                  {actionLoading ? <Spinner /> : <><StopIcon /> Clock Out</>}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Timer row (only when clocked in) */}
+        {isClockedIn && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4 pt-4 border-t border-neutral-warm/50"
+          >
+            <div className="flex items-center gap-6 lg:gap-8">
+              <div className="text-center">
+                <div className={`font-mono text-3xl lg:text-4xl font-bold tabular-nums tracking-tight ${isOnBreak ? 'text-amber-600' : 'text-primary-dark'}`}>
+                  {fmt(elapsedSeconds)}
+                </div>
+                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-1">Elapsed</div>
+              </div>
+              <div className="w-px h-12 bg-neutral-warm/60" />
+              <div className="text-center">
+                <div className="font-mono text-xl lg:text-2xl font-semibold text-primary-dark tabular-nums">{fmt(Math.max(netWorkSeconds, 0))}</div>
+                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-1">Net work</div>
+              </div>
+              <div className="w-px h-12 bg-neutral-warm/60" />
+              <div className="text-center">
+                <div className={`font-mono text-xl lg:text-2xl font-semibold tabular-nums ${isOnBreak ? 'text-amber-600' : 'text-text-muted'}`}>
+                  {isOnBreak ? fmt(breakElapsed) : `${status?.break_minutes || 0}m`}
+                </div>
+                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-1">{isOnBreak ? 'Break' : 'Breaks'}</div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        <ErrorMsg error={error} />
+
+        {/* Timeline (desktop) */}
+        {isClockedIn && status?.clock_in_at && (
+          <TimelineSection clockInAt={status.clock_in_at} breaks={status.breaks || []} fmtTime={fmtTime} compact />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TimelineSection({ clockInAt, breaks, fmtTime, compact }: {
+  clockInAt: string
+  breaks: Array<{ start_time: string; end_time: string | null; duration_minutes: number | null; active: boolean }>
+  fmtTime: (iso: string) => string
+  compact?: boolean
+}) {
+  if (!breaks.length && !compact) {
+    return (
+      <div className="mb-4 text-xs text-text-muted bg-secondary/40 rounded-lg px-3 py-2">
+        Clocked in at <span className="font-medium text-primary-dark">{fmtTime(clockInAt)}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className={compact ? 'mt-3 pt-3 border-t border-neutral-warm/50' : 'mb-4'}>
+      <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted ${compact ? '' : 'bg-secondary/40 rounded-lg px-3 py-2'}`}>
+        <span>
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 align-middle" />
+          In <span className="font-medium text-primary-dark">{fmtTime(clockInAt)}</span>
+        </span>
+        {breaks.map((b, i) => (
+          <span key={i} className="flex items-center gap-1">
+            <span className="text-neutral-warm">→</span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-0.5 align-middle" />
+            Break {fmtTime(b.start_time)}
+            {b.end_time ? (
+              <>
+                <span className="text-neutral-warm">–</span>
+                {fmtTime(b.end_time)}
+                <span className="text-text-muted">({b.duration_minutes}m)</span>
+              </>
+            ) : (
+              <span className="text-amber-600 font-medium">(active)</span>
+            )}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ErrorMsg({ error }: { error: string | null }) {
+  return (
+    <AnimatePresence>
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          className="mt-3 p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600"
+        >
+          {error}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+function NoScheduleMsg() {
+  return (
+    <div className="mb-4 p-3.5 bg-red-50 rounded-xl border border-red-100">
+      <div className="flex items-start gap-2">
+        <svg className="w-4 h-4 text-red-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+        </svg>
+        <div>
+          <div className="text-sm font-medium text-red-700">No shift scheduled</div>
+          <div className="text-xs text-red-500 mt-0.5">Contact your manager if you need to work today.</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TooEarlyMsg({ isAdmin }: { isAdmin: boolean }) {
+  return (
+    <div className="mb-4 p-3.5 bg-amber-50 rounded-xl border border-amber-200">
+      <div className="flex items-start gap-2">
+        <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <div className="text-sm font-medium text-amber-700">Too early to clock in</div>
+          <div className="text-xs text-amber-600 mt-0.5">
+            {isAdmin
+              ? 'Your shift hasn\'t started yet, but you can use admin override.'
+              : 'You can clock in 5 minutes before your shift. This will update automatically.'}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ClockIcon() {
+  return (
+    <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  )
+}
+
+function PauseIcon() {
+  return (
+    <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  )
+}
+
+function PlayIcon() {
+  return (
+    <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  )
+}
+
+function StopIcon() {
+  return (
+    <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+    </svg>
+  )
+}

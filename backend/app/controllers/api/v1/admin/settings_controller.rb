@@ -24,7 +24,13 @@ module Api
         private
 
         def settings_params
-          params.permit(:contact_email, :notification_email)
+          params.permit(
+            :contact_email,
+            :notification_email,
+            :overtime_daily_threshold_hours,
+            :overtime_weekly_threshold_hours,
+            :early_clock_in_buffer_minutes
+          )
         end
       end
     end
