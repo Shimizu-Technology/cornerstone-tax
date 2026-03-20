@@ -546,7 +546,7 @@ export interface ClockStatus {
     hours: number;
   } | null;
   can_clock_in: boolean;
-  clock_in_blocked_reason: 'already_clocked_in' | 'no_schedule' | 'too_early' | null;
+  clock_in_blocked_reason: 'already_clocked_in' | 'no_schedule' | 'too_early' | 'shift_ended' | null;
   minutes_until?: number;
   is_admin?: boolean;
 }

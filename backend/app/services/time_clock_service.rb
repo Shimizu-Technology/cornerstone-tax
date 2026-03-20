@@ -261,14 +261,21 @@ class TimeClockService
     def validate_clock_in_time(now, schedule)
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
       scheduled_start = schedule.start_time
+      scheduled_end = schedule.end_time
 
       earliest_allowed = [scheduled_start.seconds_since_midnight - (buffer * 60), 0].max
+      latest_allowed = scheduled_end.seconds_since_midnight
       current_seconds = now.in_time_zone(business_timezone).seconds_since_midnight
 
       if current_seconds < earliest_allowed
         formatted_start = schedule.formatted_start_time
         errors_msg = "Your shift starts at #{formatted_start}. You can clock in starting at #{buffer} minutes before."
         raise ClockError, errors_msg
+      end
+
+      if latest_allowed > earliest_allowed && current_seconds > latest_allowed
+        formatted_end = schedule.formatted_end_time
+        raise ClockError, "Your shift ended at #{formatted_end}. Please submit a manual entry if you need to log time."
       end
     end
 
@@ -293,9 +300,12 @@ class TimeClockService
 
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
       earliest_allowed = [schedule.start_time.seconds_since_midnight - (buffer * 60), 0].max
+      latest_allowed = schedule.end_time.seconds_since_midnight
       current_seconds = local_seconds_since_midnight
 
-      if current_seconds >= earliest_allowed
+      if latest_allowed > earliest_allowed && current_seconds > latest_allowed
+        { allowed: false, reason: "shift_ended" }
+      elsif current_seconds >= earliest_allowed
         { allowed: true, reason: nil }
       else
         minutes_until = ((earliest_allowed - current_seconds) / 60).ceil
