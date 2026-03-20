@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class BackfillExistingTimeEntries < ActiveRecord::Migration[8.0]
+class BackfillExistingTimeEntries < ActiveRecord::Migration[8.1]
   def up
     execute <<~SQL
       UPDATE time_entries

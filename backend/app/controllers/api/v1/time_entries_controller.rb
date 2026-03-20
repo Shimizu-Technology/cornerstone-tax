@@ -6,6 +6,7 @@ module Api
       before_action :authenticate_user!
       before_action :require_staff!
       before_action :set_time_entry, only: [:show, :update, :destroy, :approve, :deny, :approve_overtime, :deny_overtime]
+      before_action :require_admin!, only: [:approve, :deny, :approve_overtime, :deny_overtime]
 
       # GET /api/v1/time_entries
       def index
@@ -328,6 +329,14 @@ module Api
 
           active_break_record = active_entry&.active_break
 
+          elapsed_hours = if active_entry && active_entry.clock_in_at
+                           elapsed = (Time.current - active_entry.clock_in_at) / 3600.0
+                           break_hours = (active_entry.total_break_minutes || 0) / 60.0
+                           (elapsed - break_hours).clamp(0, Float::INFINITY).round(2)
+                         else
+                           0.0
+                         end
+
           {
             user: {
               id: user.id,
@@ -359,7 +368,7 @@ module Api
                     end,
             clock_in_at: active_entry&.clock_in_at&.iso8601,
             clock_out_at: active_entry&.clock_out_at&.iso8601,
-            completed_hours: hours,
+            completed_hours: (hours + elapsed_hours).round(2),
             active_break: active_break_record.present?,
             break_started_at: active_break_record&.start_time&.iso8601,
             total_break_minutes: active_entry&.total_break_minutes || 0

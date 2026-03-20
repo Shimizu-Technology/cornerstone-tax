@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class CreateTimeEntryBreaks < ActiveRecord::Migration[8.0]
+class CreateTimeEntryBreaks < ActiveRecord::Migration[8.1]
   def change
     create_table :time_entry_breaks do |t|
       t.references :time_entry, null: false, foreign_key: true

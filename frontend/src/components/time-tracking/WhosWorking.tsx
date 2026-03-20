@@ -6,6 +6,7 @@ import type { WorkerStatus } from '../../lib/api'
 export default function WhosWorking() {
   const [workers, setWorkers] = useState<WorkerStatus[]>([])
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(false)
   const [showAll, setShowAll] = useState(false)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
@@ -15,9 +16,10 @@ export default function WhosWorking() {
       const result = await api.getWhosWorking()
       if (result.data) {
         setWorkers(result.data.workers)
+        setFetchError(false)
       }
     } catch {
-      // Silently fail
+      setFetchError(true)
     } finally {
       setLoading(false)
     }
@@ -37,6 +39,20 @@ export default function WhosWorking() {
           {[1, 2, 3].map(i => (
             <div key={i} className="h-10 bg-neutral-warm/60 rounded-xl" />
           ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (fetchError && workers.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-5">
+        <h3 className="font-semibold text-primary-dark text-base mb-3">Today's Team</h3>
+        <div className="text-center py-4">
+          <p className="text-sm text-red-600 mb-2">Unable to load team status</p>
+          <button onClick={fetchWorkers} className="text-xs text-primary-dark hover:underline font-medium">
+            Retry
+          </button>
         </div>
       </div>
     )

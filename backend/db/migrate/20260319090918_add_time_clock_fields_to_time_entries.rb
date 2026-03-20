@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class AddTimeClockFieldsToTimeEntries < ActiveRecord::Migration[8.0]
+class AddTimeClockFieldsToTimeEntries < ActiveRecord::Migration[8.1]
   def change
     add_reference :time_entries, :schedule, null: true, foreign_key: true
     add_column :time_entries, :clock_in_at, :datetime, null: true
