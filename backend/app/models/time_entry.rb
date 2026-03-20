@@ -21,6 +21,7 @@ class TimeEntry < ApplicationRecord
 
   validates :work_date, presence: true
   validates :hours, presence: true, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 24 }
+  validate :completed_manual_entry_has_positive_hours
   validates :entry_method, presence: true, inclusion: { in: ENTRY_METHODS }
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :attendance_status, inclusion: { in: ATTENDANCE_STATUSES }, allow_nil: true
@@ -148,5 +149,12 @@ class TimeEntry < ApplicationRecord
     unless service_task&.service_type_id == service_type_id
       errors.add(:service_task, "must belong to the selected service type")
     end
+  end
+
+  def completed_manual_entry_has_positive_hours
+    return unless manual_entry? && status == "completed"
+    return unless hours.present? && hours <= 0
+
+    errors.add(:hours, "must be greater than 0 for completed entries")
   end
 end

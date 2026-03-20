@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_20_054555) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_20_055835) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -414,6 +414,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_20_054555) do
     t.index ["tax_return_id"], name: "index_time_entries_on_tax_return_id"
     t.index ["time_category_id"], name: "index_time_entries_on_time_category_id"
     t.index ["user_id"], name: "index_time_entries_on_user_id"
+    t.index ["user_id"], name: "index_time_entries_one_active_per_user", unique: true, where: "((status)::text = ANY ((ARRAY['clocked_in'::character varying, 'on_break'::character varying])::text[]))"
     t.index ["work_date"], name: "index_time_entries_on_work_date"
   end
 

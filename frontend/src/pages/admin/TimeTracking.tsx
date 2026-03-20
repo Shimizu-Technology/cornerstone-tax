@@ -168,6 +168,7 @@ export default function TimeTracking() {
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [entries, setEntries] = useState<TimeEntryItem[]>([])
+  const [entrySummary, setEntrySummary] = useState({ total_hours: 0, total_break_hours: 0, entry_count: 0 })
   const [categories, setCategories] = useState<TimeCategory[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
   const [users, setUsers] = useState<UserOption[]>([])
@@ -267,7 +268,7 @@ export default function TimeTracking() {
     setError(null)
 
     try {
-      const params: Record<string, string | number> = {}
+      const params: Record<string, string | number> = { per_page: 500 }
       
       if (viewMode === 'day') {
         params.date = formatDateISO(currentDate)
@@ -293,6 +294,11 @@ export default function TimeTracking() {
       
       if (response.data) {
         setEntries(response.data.time_entries as unknown as TimeEntryItem[])
+        setEntrySummary({
+          total_hours: response.data.summary.total_hours,
+          total_break_hours: response.data.summary.total_break_hours || 0,
+          entry_count: response.data.summary.entry_count
+        })
       } else {
         setError(response.error || 'Failed to load time entries')
       }
@@ -636,7 +642,8 @@ export default function TimeTracking() {
   }, {} as Record<string, number>)
 
   const deniedCount = entries.filter(e => e.approval_status === 'denied').length
-  const visibleTotalHours = visibleEntries.reduce((sum, e) => sum + e.hours, 0)
+  const deniedHours = entries.filter(e => e.approval_status === 'denied').reduce((sum, e) => sum + e.hours, 0)
+  const visibleTotalHours = showDenied ? entrySummary.total_hours : entrySummary.total_hours - deniedHours
 
   // Calculate report summaries by category and user
   const reportByCategory = reportData.reduce((acc, entry) => {

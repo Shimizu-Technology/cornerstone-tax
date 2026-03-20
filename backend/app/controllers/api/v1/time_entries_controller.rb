@@ -207,12 +207,7 @@ module Api
 
       # POST /api/v1/time_entries/clock_out
       def clock_out
-        if current_user.admin? && params[:user_id].present?
-          target_user = User.staff.find(params[:user_id])
-        else
-          target_user = current_user
-        end
-
+        target_user = resolve_clock_target_user
         entry = TimeClockService.clock_out(user: target_user)
         render json: { time_entry: serialize_time_entry(entry) }
       rescue TimeClockService::ClockError => e
@@ -221,7 +216,8 @@ module Api
 
       # POST /api/v1/time_entries/start_break
       def start_break
-        entry = TimeClockService.start_break(user: current_user)
+        target_user = resolve_clock_target_user
+        entry = TimeClockService.start_break(user: target_user)
         render json: { time_entry: serialize_time_entry(entry) }
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
@@ -229,7 +225,8 @@ module Api
 
       # POST /api/v1/time_entries/end_break
       def end_break
-        entry = TimeClockService.end_break(user: current_user)
+        target_user = resolve_clock_target_user
+        entry = TimeClockService.end_break(user: target_user)
         render json: { time_entry: serialize_time_entry(entry) }
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
@@ -363,6 +360,14 @@ module Api
       end
 
       private
+
+      def resolve_clock_target_user
+        if current_user.admin? && params[:user_id].present?
+          User.staff.find(params[:user_id])
+        else
+          current_user
+        end
+      end
 
       def set_time_entry
         @time_entry = TimeEntry.find(params[:id])

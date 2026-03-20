@@ -38,6 +38,8 @@ class TimeClockService
 
       entry.save!
       entry
+    rescue ActiveRecord::RecordNotUnique
+      raise ClockError, "You are already clocked in"
     end
 
     # ── Clock Out ──
