@@ -145,12 +145,18 @@ class TimeClockService
       entry.with_lock do
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
-        entry.update!(
+        attrs = {
           approval_status: "approved",
           approved_by: approved_by,
           approved_at: Time.current,
           approval_note: note
-        )
+        }
+
+        if entry.status == "completed" && entry.overtime_status.nil?
+          attrs[:overtime_status] = check_overtime_status(entry.user, entry)
+        end
+
+        entry.update!(attrs)
       end
       entry
     end

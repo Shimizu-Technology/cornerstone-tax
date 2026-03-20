@@ -16,10 +16,7 @@ class TimeEntryBreak < ApplicationRecord
   end
 
   def close!(end_at = Time.current)
-    update!(
-      end_time: end_at,
-      duration_minutes: ((end_at - start_time) / 60).round
-    )
+    update!(end_time: end_at)
   end
 
   private
