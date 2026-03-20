@@ -43,7 +43,7 @@ class TimeClockService
     # ── Clock Out ──
     def clock_out(user:)
       entry = active_entry_for(user)
-      raise ClockError, "You are not currently clocked in" unless entry
+      raise ClockError, "Not currently clocked in" unless entry
 
       if entry.status == "on_break"
         active_break = entry.active_break
@@ -94,7 +94,7 @@ class TimeClockService
       today = Time.current.in_time_zone(business_timezone).to_date
       schedule = Schedule.for_user(user.id).for_date(today).first
 
-      clock_in_info = can_clock_in_info(user, schedule)
+      clock_in_info = can_clock_in_info(user, schedule, existing_entry: entry)
 
       {
         clocked_in: entry.present?,
@@ -209,7 +209,7 @@ class TimeClockService
       scheduled_start = schedule.start_time
 
       earliest_allowed = scheduled_start.seconds_since_midnight - (buffer * 60)
-      current_seconds = local_seconds_since_midnight
+      current_seconds = now.in_time_zone(business_timezone).seconds_since_midnight
 
       if current_seconds < earliest_allowed
         formatted_start = schedule.formatted_start_time
@@ -219,7 +219,7 @@ class TimeClockService
     end
 
     def calculate_attendance_status(now, schedule)
-      current_seconds = local_seconds_since_midnight
+      current_seconds = now.in_time_zone(business_timezone).seconds_since_midnight
       scheduled_start_seconds = schedule.start_time.seconds_since_midnight
       buffer_seconds = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i * 60
 
@@ -251,8 +251,9 @@ class TimeClockService
       info[:allowed]
     end
 
-    def can_clock_in_info(user, schedule)
-      return { allowed: false, reason: "already_clocked_in" } if active_entry_for(user)
+    def can_clock_in_info(user, schedule, existing_entry: nil)
+      active = existing_entry.nil? ? active_entry_for(user) : existing_entry
+      return { allowed: false, reason: "already_clocked_in" } if active
       return { allowed: false, reason: "no_schedule" } unless schedule
 
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i

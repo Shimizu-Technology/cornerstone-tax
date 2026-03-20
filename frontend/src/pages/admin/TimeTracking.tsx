@@ -201,6 +201,7 @@ export default function TimeTracking() {
   const [reportData, setReportData] = useState<TimeEntryItem[]>([])
   const [reportLoading, setReportLoading] = useState(false)
   const [reportSummary, setReportSummary] = useState({ total_hours: 0, total_break_hours: 0, entry_count: 0 })
+  const [reportTruncated, setReportTruncated] = useState(false)
   
   // Period lock state (CST-43)
   const [currentWeekLocked, setCurrentWeekLocked] = useState(false)
@@ -418,6 +419,7 @@ export default function TimeTracking() {
           total_break_hours: response.data.summary.total_break_hours || 0,
           entry_count: response.data.summary.entry_count
         })
+        setReportTruncated(response.data.pagination?.truncated === true)
       }
     } catch {
       console.error('Failed to load report')
@@ -1579,6 +1581,22 @@ export default function TimeTracking() {
               </div>
             </StaggerItem>
           </StaggerContainer>
+
+          {reportTruncated && !reportLoading && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+              <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-amber-800">
+                  Showing {reportData.length} of {reportSummary.entry_count} entries
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  The detail table below is capped at 500 rows. Summary totals above reflect all {reportSummary.entry_count} entries. Narrow your date range or filters to see all rows.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Summary Tables */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

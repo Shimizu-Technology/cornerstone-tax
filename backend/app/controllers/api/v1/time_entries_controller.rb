@@ -58,7 +58,8 @@ module Api
             current_page: page,
             per_page: per_page,
             total_count: total_count,
-            total_pages: (total_count.to_f / per_page).ceil
+            total_pages: (total_count.to_f / per_page).ceil,
+            truncated: total_count > per_page
           },
           summary: summary
         }
@@ -206,7 +207,13 @@ module Api
 
       # POST /api/v1/time_entries/clock_out
       def clock_out
-        entry = TimeClockService.clock_out(user: current_user)
+        if current_user.admin? && params[:user_id].present?
+          target_user = User.staff.find(params[:user_id])
+        else
+          target_user = current_user
+        end
+
+        entry = TimeClockService.clock_out(user: target_user)
         render json: { time_entry: serialize_time_entry(entry) }
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity

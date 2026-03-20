@@ -573,6 +573,7 @@ export interface TimeEntriesResponse {
     per_page: number;
     total_count: number;
     total_pages: number;
+    truncated?: boolean;
   };
   summary: {
     total_hours: number;
