@@ -15,7 +15,7 @@ class TimeClockService
 
       raise ClockError, "You are already clocked in" if active_entry_for(user)
 
-      schedule = Schedule.for_user(user.id).for_date(today).first
+      schedule = Schedule.for_user(user.id).for_date(today).order(created_at: :desc).first
 
       unless schedule || admin_override_by
         raise ClockError, "No shift scheduled for today. Contact your manager if you need to work today."
@@ -112,7 +112,7 @@ class TimeClockService
     def current_status(user:)
       entry = active_entry_for(user)
       today = Time.current.in_time_zone(business_timezone).to_date
-      schedule = Schedule.for_user(user.id).for_date(today).first
+      schedule = Schedule.for_user(user.id).for_date(today).order(created_at: :desc).first
 
       clock_in_info = can_clock_in_info(user, schedule, existing_entry: entry)
 
