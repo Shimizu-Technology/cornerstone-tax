@@ -6,7 +6,7 @@ class TimeEntryBreak < ApplicationRecord
   validates :start_time, presence: true
   validate :end_time_after_start_time, if: -> { end_time.present? }
 
-  before_save :calculate_duration, if: -> { end_time.present? && duration_minutes.nil? }
+  before_save :calculate_duration, if: -> { end_time.present? && end_time_changed? }
 
   scope :active, -> { where(end_time: nil) }
   scope :completed, -> { where.not(end_time: nil) }
