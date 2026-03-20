@@ -10,7 +10,7 @@ module Api
       # GET /api/v1/time_entries
       def index
         @time_entries = current_user.admin? ? TimeEntry.all : TimeEntry.for_user(current_user)
-        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by, :time_entry_breaks)
+        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by, :overtime_approved_by, :time_entry_breaks)
 
         if params[:user_id].present? && current_user.admin?
           @time_entries = @time_entries.where(user_id: params[:user_id])
@@ -241,7 +241,8 @@ module Api
       def pending_approvals
         return render json: { error: "Admin access required" }, status: :forbidden unless current_user.admin?
 
-        entries = TimeEntry.includes(:user, :schedule)
+        entries = TimeEntry.includes(:user, :schedule, :approved_by, :overtime_approved_by, :time_entry_breaks,
+                                        :time_category, :client, :tax_return, :service_type, :service_task)
           .where(approval_status: "pending")
           .or(TimeEntry.where(overtime_status: "pending"))
           .order(created_at: :desc)
@@ -290,11 +291,20 @@ module Api
 
         today = Time.current.in_time_zone("Guam").to_date
         staff_users = User.staff.order(:first_name, :last_name)
+        staff_ids = staff_users.pluck(:id)
+
+        today_schedules = Schedule.where(user_id: staff_ids, work_date: today).index_by(&:user_id)
+        active_entries = TimeEntry.where(status: %w[clocked_in on_break], user_id: staff_ids)
+                                  .includes(:time_entry_breaks)
+                                  .order(created_at: :desc)
+                                  .index_by(&:user_id)
+        completed_hours = TimeEntry.countable.where(user_id: staff_ids).for_date(today)
+                                   .group(:user_id).sum(:hours)
 
         workers = staff_users.map do |user|
-          schedule = Schedule.for_user(user.id).for_date(today).first
-          active_entry = TimeClockService.active_entry_for(user)
-          completed_hours = TimeClockService.hours_today(user, today)
+          schedule = today_schedules[user.id]
+          active_entry = active_entries[user.id]
+          hours = (completed_hours[user.id] || 0).to_f.round(2)
 
           active_break_record = active_entry&.active_break
 
@@ -326,7 +336,7 @@ module Api
                     end,
             clock_in_at: active_entry&.clock_in_at&.iso8601,
             clock_out_at: active_entry&.clock_out_at&.iso8601,
-            completed_hours: completed_hours.round(2),
+            completed_hours: hours,
             active_break: active_break_record.present?,
             break_started_at: active_break_record&.start_time&.iso8601,
             total_break_minutes: active_entry&.total_break_minutes || 0
@@ -410,6 +420,12 @@ module Api
           } : nil,
           approved_at: entry.approved_at&.iso8601,
           approval_note: entry.approval_note,
+          overtime_approved_by: entry.overtime_approved_by ? {
+            id: entry.overtime_approved_by.id,
+            full_name: entry.overtime_approved_by.full_name
+          } : nil,
+          overtime_approved_at: entry.overtime_approved_at&.iso8601,
+          overtime_note: entry.overtime_note,
           schedule: entry.schedule ? {
             id: entry.schedule.id,
             start_time: entry.schedule.formatted_start_time,

@@ -15,6 +15,7 @@ class TimeEntry < ApplicationRecord
   belongs_to :service_task, optional: true
   belongs_to :schedule, optional: true
   belongs_to :approved_by, class_name: "User", optional: true
+  belongs_to :overtime_approved_by, class_name: "User", optional: true
   has_many :time_entry_breaks, dependent: :destroy
   has_many :linked_operation_tasks, class_name: "OperationTask", foreign_key: "linked_time_entry_id", dependent: :nullify
 
@@ -43,7 +44,7 @@ class TimeEntry < ApplicationRecord
   scope :denied, -> { where(approval_status: "denied") }
   scope :clock_entries, -> { where(entry_method: "clock") }
   scope :manual_entries, -> { where(entry_method: "manual") }
-  scope :countable, -> { where.not(approval_status: "denied").where(status: "completed") }
+  scope :countable, -> { where.not(approval_status: %w[denied pending]).where(status: "completed") }
 
   def locked?
     locked_at.present?

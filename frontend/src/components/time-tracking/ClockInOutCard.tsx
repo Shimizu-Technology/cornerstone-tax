@@ -191,7 +191,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
           </div>
         )}
         {!isClockedIn && !status?.schedule && <NoScheduleMsg />}
-        {!isClockedIn && blockedReason === 'too_early' && <TooEarlyMsg isAdmin={isAdmin} />}
+        {!isClockedIn && blockedReason === 'too_early' && <TooEarlyMsg isAdmin={isAdmin} minutesUntil={status?.minutes_until} />}
 
         <ErrorMsg error={error} />
 
@@ -246,7 +246,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
           {!isClockedIn && blockedReason === 'too_early' && (
             <div className="flex-1 text-center">
               <span className="text-xs text-amber-600 font-medium">
-                Shift hasn't started yet
+                {status?.minutes_until != null ? `Clock in available in ~${status.minutes_until}m` : 'Shift hasn\'t started yet'}
                 {isAdmin && ' — admin override available'}
               </span>
             </div>
@@ -398,7 +398,7 @@ function NoScheduleMsg() {
   )
 }
 
-function TooEarlyMsg({ isAdmin }: { isAdmin: boolean }) {
+function TooEarlyMsg({ isAdmin, minutesUntil }: { isAdmin: boolean; minutesUntil?: number }) {
   return (
     <div className="mb-4 p-3.5 bg-amber-50 rounded-xl border border-amber-200">
       <div className="flex items-start gap-2">
@@ -410,7 +410,7 @@ function TooEarlyMsg({ isAdmin }: { isAdmin: boolean }) {
           <div className="text-xs text-amber-600 mt-0.5">
             {isAdmin
               ? 'Your shift hasn\'t started yet, but you can use admin override.'
-              : 'You can clock in 5 minutes before your shift. This will update automatically.'}
+              : `You can clock in ${minutesUntil != null ? `in ~${minutesUntil} minutes` : 'shortly before your shift'}. This will update automatically.`}
           </div>
         </div>
       </div>

@@ -196,20 +196,20 @@ export default function WhosWorking() {
         </div>
 
         {/* Toggle to show/hide off-duty staff */}
-        {hiddenCount > 0 && (
+        {!showAll && hiddenCount > 0 && (
           <button
-            onClick={() => setShowAll(!showAll)}
+            onClick={() => setShowAll(true)}
             className="mt-3 w-full text-center text-xs text-text-muted hover:text-primary-dark font-medium py-1.5 rounded-lg hover:bg-secondary/40 transition-colors"
           >
-            {showAll ? 'Hide off-duty staff' : `Show ${hiddenCount} more (off duty)`}
+            {`Show ${hiddenCount} more (off duty)`}
           </button>
         )}
-        {showAll && hiddenCount === 0 && workers.length > relevantWorkers.length && (
+        {showAll && workers.some(w => !w.schedule && w.status !== 'clocked_in' && w.status !== 'on_break') && (
           <button
             onClick={() => setShowAll(false)}
             className="mt-3 w-full text-center text-xs text-text-muted hover:text-primary-dark font-medium py-1.5 rounded-lg hover:bg-secondary/40 transition-colors"
           >
-            Show less
+            Hide off-duty staff
           </button>
         )}
       </div>

@@ -154,9 +154,9 @@ class TimeClockService
 
       entry.update!(
         overtime_status: "approved",
-        approved_by: approved_by,
-        approved_at: Time.current,
-        approval_note: note
+        overtime_approved_by: approved_by,
+        overtime_approved_at: Time.current,
+        overtime_note: note
       )
       entry
     end
@@ -168,9 +168,9 @@ class TimeClockService
 
       entry.update!(
         overtime_status: "denied",
-        approved_by: denied_by,
-        approved_at: Time.current,
-        approval_note: note
+        overtime_approved_by: denied_by,
+        overtime_approved_at: Time.current,
+        overtime_note: note
       )
       entry
     end

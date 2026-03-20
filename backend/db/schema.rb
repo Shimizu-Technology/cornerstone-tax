@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_19_090936) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_20_012308) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -387,6 +387,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_19_090936) do
     t.string "entry_method", default: "manual", null: false
     t.decimal "hours", precision: 4, scale: 2, null: false
     t.datetime "locked_at"
+    t.datetime "overtime_approved_at"
+    t.bigint "overtime_approved_by_id"
+    t.text "overtime_note"
     t.string "overtime_status"
     t.bigint "schedule_id"
     t.bigint "service_task_id"
@@ -402,6 +405,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_19_090936) do
     t.index ["approved_by_id"], name: "index_time_entries_on_approved_by_id"
     t.index ["client_id"], name: "index_time_entries_on_client_id"
     t.index ["entry_method"], name: "index_time_entries_on_entry_method"
+    t.index ["overtime_approved_by_id"], name: "index_time_entries_on_overtime_approved_by_id"
     t.index ["schedule_id"], name: "index_time_entries_on_schedule_id"
     t.index ["service_task_id"], name: "index_time_entries_on_service_task_id"
     t.index ["service_type_id"], name: "index_time_entries_on_service_type_id"
@@ -535,6 +539,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_19_090936) do
   add_foreign_key "time_entries", "time_categories"
   add_foreign_key "time_entries", "users"
   add_foreign_key "time_entries", "users", column: "approved_by_id"
+  add_foreign_key "time_entries", "users", column: "overtime_approved_by_id"
   add_foreign_key "time_entry_breaks", "time_entries"
   add_foreign_key "time_period_locks", "users", column: "locked_by_id"
   add_foreign_key "transmittals", "clients"

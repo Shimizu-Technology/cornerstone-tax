@@ -9,6 +9,7 @@ class User < ApplicationRecord
   has_many :audit_logs, dependent: :nullify
   has_many :time_entries, dependent: :destroy
   has_many :approved_time_entries, class_name: "TimeEntry", foreign_key: "approved_by_id", dependent: :nullify
+  has_many :overtime_approved_time_entries, class_name: "TimeEntry", foreign_key: "overtime_approved_by_id", dependent: :nullify
   has_many :schedules, dependent: :destroy
   has_many :created_schedules, class_name: "Schedule", foreign_key: "created_by_id", dependent: :nullify
   has_many :uploaded_documents, class_name: "Document", foreign_key: "uploaded_by_id", dependent: :nullify
