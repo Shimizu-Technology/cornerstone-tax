@@ -152,7 +152,7 @@ class TimeClockService
           approval_note: note
         }
 
-        if entry.status == "completed" && entry.overtime_status.nil?
+        if entry.status == "completed" && entry.overtime_status.in?([nil, "none"])
           attrs[:overtime_status] = check_overtime_status(entry.user, entry)
         end
 

@@ -11,7 +11,7 @@ module Api
       # GET /api/v1/time_entries
       def index
         @time_entries = current_user.admin? ? TimeEntry.all : TimeEntry.for_user(current_user)
-        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by, :overtime_approved_by, :time_entry_breaks)
+        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by, :overtime_approved_by, :time_entry_breaks, :service_type, :service_task)
 
         if params[:user_id].present? && current_user.admin?
           @time_entries = @time_entries.where(user_id: params[:user_id])

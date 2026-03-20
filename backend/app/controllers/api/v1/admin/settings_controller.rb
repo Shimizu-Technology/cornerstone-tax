@@ -22,10 +22,12 @@ module Api
             key_str = key.to_s
             if integer_keys.include?(key_str)
               numeric = Float(value)
+              raise ArgumentError, "out of range" if numeric.infinite? || numeric.nan?
               errors << "#{key_str.humanize} must be a whole number" if numeric != numeric.to_i
               errors << "#{key_str.humanize} must be greater than 0" if numeric <= 0
             elsif float_keys.include?(key_str)
               numeric = Float(value)
+              raise ArgumentError, "out of range" if numeric.infinite? || numeric.nan?
               errors << "#{key_str.humanize} must be greater than 0" if numeric <= 0
             end
           rescue ArgumentError, TypeError
