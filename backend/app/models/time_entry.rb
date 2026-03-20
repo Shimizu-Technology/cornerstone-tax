@@ -80,11 +80,19 @@ class TimeEntry < ApplicationRecord
   end
 
   def total_break_minutes
-    time_entry_breaks.where.not(duration_minutes: nil).sum(:duration_minutes)
+    if time_entry_breaks.loaded?
+      time_entry_breaks.select { |b| b.duration_minutes.present? }.sum(&:duration_minutes)
+    else
+      time_entry_breaks.where.not(duration_minutes: nil).sum(:duration_minutes)
+    end
   end
 
   def active_break
-    time_entry_breaks.where(end_time: nil).first
+    if time_entry_breaks.loaded?
+      time_entry_breaks.find { |b| b.end_time.nil? }
+    else
+      time_entry_breaks.where(end_time: nil).first
+    end
   end
 
   def net_hours

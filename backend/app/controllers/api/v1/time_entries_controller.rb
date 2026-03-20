@@ -257,6 +257,8 @@ module Api
       def approve
         entry = TimeClockService.approve_entry(entry: @time_entry, approved_by: current_user, note: params[:note])
         render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::AuthorizationError => e
+        render json: { error: e.message }, status: :forbidden
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
       end
@@ -265,6 +267,8 @@ module Api
       def deny
         entry = TimeClockService.deny_entry(entry: @time_entry, denied_by: current_user, note: params[:note])
         render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::AuthorizationError => e
+        render json: { error: e.message }, status: :forbidden
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
       end
@@ -273,6 +277,8 @@ module Api
       def approve_overtime
         entry = TimeClockService.approve_overtime(entry: @time_entry, approved_by: current_user, note: params[:note])
         render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::AuthorizationError => e
+        render json: { error: e.message }, status: :forbidden
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
       end
@@ -281,6 +287,8 @@ module Api
       def deny_overtime
         entry = TimeClockService.deny_overtime(entry: @time_entry, denied_by: current_user, note: params[:note])
         render json: { time_entry: serialize_time_entry(entry) }
+      rescue TimeClockService::AuthorizationError => e
+        render json: { error: e.message }, status: :forbidden
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
       end

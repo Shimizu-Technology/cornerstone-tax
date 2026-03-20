@@ -2,6 +2,7 @@
 
 class TimeClockService
   class ClockError < StandardError; end
+  class AuthorizationError < StandardError; end
 
   class << self
     # ── Clock In ──
@@ -121,7 +122,7 @@ class TimeClockService
 
     # ── Admin: Approve Entry ──
     def approve_entry(entry:, approved_by:, note: nil)
-      raise ClockError, "Only admins can approve entries" unless approved_by.admin?
+      raise AuthorizationError, "Only admins can approve entries" unless approved_by.admin?
       raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
       entry.update!(
@@ -135,7 +136,7 @@ class TimeClockService
 
     # ── Admin: Deny Entry ──
     def deny_entry(entry:, denied_by:, note: nil)
-      raise ClockError, "Only admins can deny entries" unless denied_by.admin?
+      raise AuthorizationError, "Only admins can deny entries" unless denied_by.admin?
       raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
       entry.update!(
@@ -149,7 +150,7 @@ class TimeClockService
 
     # ── Admin: Approve Overtime ──
     def approve_overtime(entry:, approved_by:, note: nil)
-      raise ClockError, "Only admins can approve overtime" unless approved_by.admin?
+      raise AuthorizationError, "Only admins can approve overtime" unless approved_by.admin?
       raise ClockError, "Entry does not have pending overtime" unless entry.overtime_status == "pending"
 
       entry.update!(
@@ -163,7 +164,7 @@ class TimeClockService
 
     # ── Admin: Deny Overtime ──
     def deny_overtime(entry:, denied_by:, note: nil)
-      raise ClockError, "Only admins can deny overtime" unless denied_by.admin?
+      raise AuthorizationError, "Only admins can deny overtime" unless denied_by.admin?
       raise ClockError, "Entry does not have pending overtime" unless entry.overtime_status == "pending"
 
       entry.update!(
