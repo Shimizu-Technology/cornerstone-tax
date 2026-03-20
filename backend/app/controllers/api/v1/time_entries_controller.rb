@@ -249,7 +249,7 @@ module Api
 
         render json: {
           pending_entries: entries.map { |e| serialize_time_entry(e) },
-          count: entries.count
+          count: entries.length
         }
       end
 
@@ -300,6 +300,7 @@ module Api
                                   .index_by(&:user_id)
         completed_hours = TimeEntry.countable.where(user_id: staff_ids).for_date(today)
                                    .group(:user_id).sum(:hours)
+        buffer_seconds = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i * 60
 
         workers = staff_users.map do |user|
           schedule = today_schedules[user.id]
@@ -326,7 +327,7 @@ module Api
                       guam_now = Time.current.in_time_zone("Guam")
                       shift_start_seconds = schedule.start_time.seconds_since_midnight
                       current_seconds = guam_now.seconds_since_midnight
-                      if current_seconds > shift_start_seconds + (5 * 60)
+                      if current_seconds > shift_start_seconds + buffer_seconds
                         "late"
                       else
                         "not_clocked_in"

@@ -44,7 +44,7 @@ class TimeEntry < ApplicationRecord
   scope :denied, -> { where(approval_status: "denied") }
   scope :clock_entries, -> { where(entry_method: "clock") }
   scope :manual_entries, -> { where(entry_method: "manual") }
-  scope :countable, -> { where.not(approval_status: %w[denied pending]).where(status: "completed") }
+  scope :countable, -> { where("approval_status IS NULL OR approval_status NOT IN (?)", %w[denied pending]).where(status: "completed") }
 
   def locked?
     locked_at.present?

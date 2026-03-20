@@ -35,13 +35,18 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
   const handleApprove = async (entry: TimeEntry, note?: string) => {
     setActionLoading(entry.id)
     try {
-      const isOvertimeApproval = entry.approval_status !== 'pending' && entry.overtime_status === 'pending'
-      const result = isOvertimeApproval
+      const isOvertimeOnly = entry.approval_status !== 'pending' && entry.overtime_status === 'pending'
+      const result = isOvertimeOnly
         ? await api.approveOvertime(entry.id, note)
         : await api.approveTimeEntry(entry.id, note)
 
       if (!result.error) {
-        setEntries(prev => prev.filter(e => e.id !== entry.id))
+        const stillHasOvertimePending = !isOvertimeOnly && entry.overtime_status === 'pending'
+        if (stillHasOvertimePending) {
+          await fetchPending()
+        } else {
+          setEntries(prev => prev.filter(e => e.id !== entry.id))
+        }
         setNoteInput(null)
         onUpdate?.()
       }
@@ -53,13 +58,18 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
   const handleDeny = async (entry: TimeEntry, note?: string) => {
     setActionLoading(entry.id)
     try {
-      const isOvertimeDenial = entry.approval_status !== 'pending' && entry.overtime_status === 'pending'
-      const result = isOvertimeDenial
+      const isOvertimeOnly = entry.approval_status !== 'pending' && entry.overtime_status === 'pending'
+      const result = isOvertimeOnly
         ? await api.denyOvertime(entry.id, note)
         : await api.denyTimeEntry(entry.id, note)
 
       if (!result.error) {
-        setEntries(prev => prev.filter(e => e.id !== entry.id))
+        const stillHasOvertimePending = !isOvertimeOnly && entry.overtime_status === 'pending'
+        if (stillHasOvertimePending) {
+          await fetchPending()
+        } else {
+          setEntries(prev => prev.filter(e => e.id !== entry.id))
+        }
         setNoteInput(null)
         onUpdate?.()
       }

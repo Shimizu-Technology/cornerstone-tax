@@ -220,11 +220,11 @@ class TimeClockService
     def calculate_attendance_status(now, schedule)
       current_seconds = local_seconds_since_midnight
       scheduled_start_seconds = schedule.start_time.seconds_since_midnight
-      buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i * 60
+      buffer_seconds = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i * 60
 
       if current_seconds < scheduled_start_seconds
         "early"
-      elsif current_seconds <= scheduled_start_seconds + (5 * 60)
+      elsif current_seconds <= scheduled_start_seconds + buffer_seconds
         "on_time"
       else
         "late"
