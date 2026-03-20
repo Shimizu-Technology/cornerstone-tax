@@ -206,14 +206,19 @@ class TimeClockService
     end
 
     # Evaluates whether an entry triggers overtime thresholds.
-    # entry.hours is added manually because for clock_out the entry
-    # hasn't been saved yet — it won't appear in the DB query.
-    def check_overtime_status(user, entry)
+    # include_entry_hours: true when entry is unsaved (clock_out flow),
+    # false when entry is already persisted (edit flow) to avoid double-counting.
+    def check_overtime_status(user, entry, include_entry_hours: true)
       daily_threshold = (Setting.get("overtime_daily_threshold_hours") || "8").to_f
       weekly_threshold = (Setting.get("overtime_weekly_threshold_hours") || "40").to_f
 
-      daily_hours = hours_today(user, entry.work_date) + entry.hours
-      weekly_hours = hours_this_week(user, entry.work_date) + entry.hours
+      daily_hours = hours_today(user, entry.work_date)
+      weekly_hours = hours_this_week(user, entry.work_date)
+
+      if include_entry_hours
+        daily_hours += entry.hours
+        weekly_hours += entry.hours
+      end
 
       if daily_hours > daily_threshold || weekly_hours > weekly_threshold
         "pending"
