@@ -156,6 +156,8 @@ class TimeClockService
     end
 
     # ── Admin: Deny Entry ──
+    # Note: approved_by/approved_at store the acting admin for both approvals
+    # and denials. The approval_status field distinguishes the action taken.
     def deny_entry(entry:, denied_by:, note: nil)
       raise AuthorizationError, "Only admins can deny entries" unless denied_by.admin?
 

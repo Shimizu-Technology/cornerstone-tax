@@ -323,6 +323,8 @@ module Api
                                   .index_by(&:user_id)
         completed_hours = TimeEntry.countable.where(user_id: staff_ids).for_date(today)
                                    .group(:user_id).sum(:hours)
+        clocked_out_today = TimeEntry.where(user_id: staff_ids, work_date: today, status: "completed", entry_method: "clock")
+                                     .distinct.pluck(:user_id).to_set
         buffer_seconds = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i * 60
 
         workers = staff_users.map do |user|
@@ -359,6 +361,8 @@ module Api
             } : nil,
             status: if active_entry
                       active_entry.status
+                    elsif clocked_out_today.include?(user.id)
+                      "clocked_out"
                     elsif schedule
                       guam_now = Time.current.in_time_zone("Guam")
                       shift_start_seconds = schedule.start_time.seconds_since_midnight

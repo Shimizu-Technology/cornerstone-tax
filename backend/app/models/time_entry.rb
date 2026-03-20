@@ -14,7 +14,7 @@ class TimeEntry < ApplicationRecord
   belongs_to :service_type, optional: true
   belongs_to :service_task, optional: true
   belongs_to :schedule, optional: true
-  belongs_to :approved_by, class_name: "User", optional: true
+  belongs_to :approved_by, class_name: "User", optional: true # stores acting admin for both approvals and denials; check approval_status for action type
   belongs_to :overtime_approved_by, class_name: "User", optional: true
   has_many :time_entry_breaks, dependent: :destroy
   has_many :linked_operation_tasks, class_name: "OperationTask", foreign_key: "linked_time_entry_id", dependent: :nullify
