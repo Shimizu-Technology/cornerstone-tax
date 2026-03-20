@@ -136,7 +136,7 @@ module Api
              @time_entry.overtime_status.in?([nil, "none", "pending"]) &&
              (old_values[:hours] != @time_entry.hours.to_f || old_values[:work_date] != @time_entry.work_date.iso8601)
             new_overtime = TimeClockService.check_overtime_status(@time_entry.user, @time_entry, include_entry_hours: false)
-            @time_entry.update_columns(overtime_status: new_overtime)
+            @time_entry.update!(overtime_status: new_overtime)
           end
 
           new_values = {

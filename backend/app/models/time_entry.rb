@@ -45,6 +45,8 @@ class TimeEntry < ApplicationRecord
   scope :denied, -> { where(approval_status: "denied") }
   scope :clock_entries, -> { where(entry_method: "clock") }
   scope :manual_entries, -> { where(entry_method: "manual") }
+  # Clock entries have nil approval_status (they don't go through the approval
+  # flow), so nil is intentionally treated as countable alongside "approved".
   scope :countable, -> { where("approval_status IS NULL OR approval_status NOT IN (?)", %w[denied pending]).where(status: "completed") }
 
   def locked?
