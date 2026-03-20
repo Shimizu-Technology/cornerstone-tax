@@ -216,7 +216,8 @@ module Api
       # POST /api/v1/time_entries/clock_out
       def clock_out
         target_user = resolve_clock_target_user
-        entry = TimeClockService.clock_out(user: target_user)
+        admin_override = (current_user.admin? && target_user.id != current_user.id) ? current_user : nil
+        entry = TimeClockService.clock_out(user: target_user, admin_override_by: admin_override)
         render json: { time_entry: serialize_time_entry(entry) }
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
@@ -225,7 +226,8 @@ module Api
       # POST /api/v1/time_entries/start_break
       def start_break
         target_user = resolve_clock_target_user
-        entry = TimeClockService.start_break(user: target_user)
+        admin_override = (current_user.admin? && target_user.id != current_user.id) ? current_user : nil
+        entry = TimeClockService.start_break(user: target_user, admin_override_by: admin_override)
         render json: { time_entry: serialize_time_entry(entry) }
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
@@ -234,7 +236,8 @@ module Api
       # POST /api/v1/time_entries/end_break
       def end_break
         target_user = resolve_clock_target_user
-        entry = TimeClockService.end_break(user: target_user)
+        admin_override = (current_user.admin? && target_user.id != current_user.id) ? current_user : nil
+        entry = TimeClockService.end_break(user: target_user, admin_override_by: admin_override)
         render json: { time_entry: serialize_time_entry(entry) }
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
@@ -314,7 +317,7 @@ module Api
         staff_ids = staff_users.pluck(:id)
 
         today_schedules = Schedule.where(user_id: staff_ids, work_date: today).index_by(&:user_id)
-        active_entries = TimeEntry.where(status: %w[clocked_in on_break], user_id: staff_ids)
+        active_entries = TimeEntry.where(status: %w[clocked_in on_break], user_id: staff_ids, work_date: today)
                                   .includes(:time_entry_breaks)
                                   .order(created_at: :desc)
                                   .index_by(&:user_id)

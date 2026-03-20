@@ -44,7 +44,7 @@ class TimeClockService
     end
 
     # ── Clock Out ──
-    def clock_out(user:)
+    def clock_out(user:, admin_override_by: nil)
       entry = active_entry_for(user)
       raise ClockError, "Not currently clocked in" unless entry
 
@@ -62,6 +62,7 @@ class TimeClockService
         entry.break_minutes = entry.total_break_minutes
         entry.calculate_hours_from_times
         entry.overtime_status = check_overtime_status(user, entry)
+        entry.admin_override = true if admin_override_by.present?
 
         entry.save!
       end
@@ -70,7 +71,7 @@ class TimeClockService
     end
 
     # ── Start Break ──
-    def start_break(user:)
+    def start_break(user:, admin_override_by: nil)
       entry = active_entry_for(user)
       raise ClockError, "You are not currently clocked in" unless entry
       raise ClockError, "You are already on a break" if entry.status == "on_break"
@@ -78,6 +79,7 @@ class TimeClockService
       ActiveRecord::Base.transaction do
         now = Time.current
         entry.time_entry_breaks.create!(start_time: now)
+        entry.admin_override = true if admin_override_by.present?
         entry.update!(status: "on_break")
       end
 
@@ -87,7 +89,7 @@ class TimeClockService
     end
 
     # ── End Break ──
-    def end_break(user:)
+    def end_break(user:, admin_override_by: nil)
       entry = active_entry_for(user)
       raise ClockError, "You are not currently clocked in" unless entry
       raise ClockError, "You are not currently on a break" unless entry.status == "on_break"
@@ -97,6 +99,7 @@ class TimeClockService
 
       ActiveRecord::Base.transaction do
         active_break.close!
+        entry.admin_override = true if admin_override_by.present?
         entry.update!(status: "clocked_in")
       end
 
