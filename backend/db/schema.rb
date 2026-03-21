@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_18_140716) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_20_073043) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -371,28 +371,62 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_18_140716) do
   end
 
   create_table "time_entries", force: :cascade do |t|
+    t.boolean "admin_override", default: false, null: false
+    t.text "approval_note"
+    t.string "approval_status"
+    t.datetime "approved_at"
+    t.bigint "approved_by_id"
+    t.string "attendance_status"
     t.integer "break_minutes"
     t.bigint "client_id"
+    t.datetime "clock_in_at"
+    t.datetime "clock_out_at"
     t.datetime "created_at", null: false
     t.text "description"
     t.time "end_time"
+    t.string "entry_method", default: "manual", null: false
     t.decimal "hours", precision: 4, scale: 2, null: false
     t.datetime "locked_at"
+    t.datetime "overtime_approved_at"
+    t.bigint "overtime_approved_by_id"
+    t.text "overtime_note"
+    t.string "overtime_status"
+    t.bigint "schedule_id"
     t.bigint "service_task_id"
     t.bigint "service_type_id"
     t.time "start_time"
+    t.string "status", default: "completed", null: false
     t.bigint "tax_return_id"
     t.bigint "time_category_id"
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.date "work_date", null: false
+    t.index ["approval_status"], name: "index_time_entries_on_approval_status"
+    t.index ["approved_by_id"], name: "index_time_entries_on_approved_by_id"
     t.index ["client_id"], name: "index_time_entries_on_client_id"
+    t.index ["entry_method"], name: "index_time_entries_on_entry_method"
+    t.index ["overtime_approved_by_id"], name: "index_time_entries_on_overtime_approved_by_id"
+    t.index ["overtime_status"], name: "index_time_entries_on_overtime_status"
+    t.index ["schedule_id"], name: "index_time_entries_on_schedule_id"
     t.index ["service_task_id"], name: "index_time_entries_on_service_task_id"
     t.index ["service_type_id"], name: "index_time_entries_on_service_type_id"
+    t.index ["status"], name: "index_time_entries_on_status"
     t.index ["tax_return_id"], name: "index_time_entries_on_tax_return_id"
     t.index ["time_category_id"], name: "index_time_entries_on_time_category_id"
     t.index ["user_id"], name: "index_time_entries_on_user_id"
+    t.index ["user_id"], name: "index_time_entries_one_active_per_user", unique: true, where: "((status)::text = ANY ((ARRAY['clocked_in'::character varying, 'on_break'::character varying])::text[]))"
     t.index ["work_date"], name: "index_time_entries_on_work_date"
+  end
+
+  create_table "time_entry_breaks", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "duration_minutes"
+    t.datetime "end_time"
+    t.datetime "start_time", null: false
+    t.bigint "time_entry_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["time_entry_id"], name: "index_time_entry_breaks_on_time_entry_id"
+    t.index ["time_entry_id"], name: "index_time_entry_breaks_one_active_per_entry", unique: true, where: "(end_time IS NULL)"
   end
 
   create_table "time_period_locks", force: :cascade do |t|
@@ -501,11 +535,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_18_140716) do
   add_foreign_key "tax_returns", "users", column: "reviewed_by_id"
   add_foreign_key "tax_returns", "workflow_stages"
   add_foreign_key "time_entries", "clients"
+  add_foreign_key "time_entries", "schedules"
   add_foreign_key "time_entries", "service_tasks"
   add_foreign_key "time_entries", "service_types"
   add_foreign_key "time_entries", "tax_returns"
   add_foreign_key "time_entries", "time_categories"
   add_foreign_key "time_entries", "users"
+  add_foreign_key "time_entries", "users", column: "approved_by_id"
+  add_foreign_key "time_entries", "users", column: "overtime_approved_by_id"
+  add_foreign_key "time_entry_breaks", "time_entries"
   add_foreign_key "time_period_locks", "users", column: "locked_by_id"
   add_foreign_key "transmittals", "clients"
   add_foreign_key "transmittals", "tax_returns"

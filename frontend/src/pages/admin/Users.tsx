@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
 import { FadeUp } from '../../components/ui/MotionComponents'
@@ -30,6 +30,15 @@ export default function Users() {
   const [inviteRole, setInviteRole] = useState<'admin' | 'employee'>('employee')
   const [inviting, setInviting] = useState(false)
   const [error, setError] = useState('')
+  const modalRef = useRef<HTMLDivElement>(null)
+
+  // Auto-focus the first input when the modal opens
+  useEffect(() => {
+    if (showInviteModal && modalRef.current) {
+      const firstInput = modalRef.current.querySelector<HTMLElement>('input, select, textarea')
+      if (firstInput) setTimeout(() => firstInput.focus(), 0)
+    }
+  }, [showInviteModal])
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
@@ -314,12 +323,7 @@ export default function Users() {
                 }
               }
             }}
-            ref={(el) => {
-              if (el) {
-                const firstInput = el.querySelector<HTMLElement>('input, select, textarea')
-                if (firstInput) setTimeout(() => firstInput.focus(), 0)
-              }
-            }}
+            ref={modalRef}
           >
             <div className="flex items-center justify-between mb-6">
               <h2 id="invite-modal-title" className="text-xl font-bold text-primary-dark">Invite User</h2>

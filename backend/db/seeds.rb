@@ -311,6 +311,23 @@ if Rails.env.development? || Rails.env.test?
   end
 end
 
+# ── Time Clock Settings ──
+puts ""
+puts "Creating time clock settings..."
+{
+  "overtime_daily_threshold_hours" => { value: "8", desc: "Daily hours before overtime (default: 8)" },
+  "overtime_weekly_threshold_hours" => { value: "40", desc: "Weekly hours before overtime (default: 40)" },
+  "early_clock_in_buffer_minutes" => { value: "5", desc: "Minutes before scheduled start that clock-in is allowed (default: 5)" }
+}.each do |key, attrs|
+  setting = Setting.find_or_initialize_by(key: key)
+  if setting.new_record?
+    setting.update!(value: attrs[:value], description: attrs[:desc])
+    puts "  ✓ #{key} = #{attrs[:value]}"
+  else
+    puts "  - #{key} already set (#{setting.value})"
+  end
+end
+
 puts ""
 puts "✅ Seeding complete!"
 puts "   - #{WorkflowStage.count} workflow stages"

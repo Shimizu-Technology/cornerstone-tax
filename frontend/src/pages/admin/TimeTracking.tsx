@@ -5,6 +5,10 @@ import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeIn } from '../../components/ui/FadeIn'
+import { formatDateISO } from '../../lib/dateUtils'
+import ClockInOutCard from '../../components/time-tracking/ClockInOutCard'
+import ApprovalQueue from '../../components/time-tracking/ApprovalQueue'
+import WhosWorking from '../../components/time-tracking/WhosWorking'
 
 // Local types to avoid Vite caching issues
 interface TimeCategory {
@@ -23,6 +27,17 @@ interface TimeEntryItem {
   hours: number
   break_minutes: number | null
   description: string | null
+  entry_method?: 'clock' | 'manual'
+  status?: 'clocked_in' | 'on_break' | 'completed'
+  approval_status?: 'pending' | 'approved' | 'denied' | null
+  overtime_status?: 'none' | 'pending' | 'approved' | 'denied' | null
+  attendance_status?: 'early' | 'on_time' | 'late' | null
+  admin_override?: boolean
+  clock_in_at?: string | null
+  clock_out_at?: string | null
+  approved_by?: { id: number; full_name: string } | null
+  approved_at?: string | null
+  approval_note?: string | null
   user: {
     id: number
     email: string
@@ -142,10 +157,6 @@ function getWeekDates(date: Date): Date[] {
   return dates
 }
 
-function formatDateISO(date: Date): string {
-  return date.toISOString().split('T')[0]
-}
-
 function isSameDay(date1: Date, date2: Date): boolean {
   return date1.getFullYear() === date2.getFullYear() &&
          date1.getMonth() === date2.getMonth() &&
@@ -157,6 +168,7 @@ export default function TimeTracking() {
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [entries, setEntries] = useState<TimeEntryItem[]>([])
+  const [entrySummary, setEntrySummary] = useState({ total_hours: 0, total_break_hours: 0, entry_count: 0 })
   const [categories, setCategories] = useState<TimeCategory[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
   const [users, setUsers] = useState<UserOption[]>([])
@@ -178,6 +190,7 @@ export default function TimeTracking() {
     time_category_id: '',
     client_id: '',
   })
+  const [showDenied, setShowDenied] = useState(false)
   
   // Report filters
   const [reportFilters, setReportFilters] = useState({
@@ -189,10 +202,8 @@ export default function TimeTracking() {
   const [reportData, setReportData] = useState<TimeEntryItem[]>([])
   const [reportLoading, setReportLoading] = useState(false)
   const [reportSummary, setReportSummary] = useState({ total_hours: 0, total_break_hours: 0, entry_count: 0 })
+  const [reportTruncated, setReportTruncated] = useState(false)
   
-  // Summary
-  const [totalHours, setTotalHours] = useState(0)
-
   // Period lock state (CST-43)
   const [currentWeekLocked, setCurrentWeekLocked] = useState(false)
   const [currentWeekLockId, setCurrentWeekLockId] = useState<number | null>(null)
@@ -257,7 +268,7 @@ export default function TimeTracking() {
     setError(null)
 
     try {
-      const params: Record<string, string | number> = {}
+      const params: Record<string, string | number> = { per_page: 500 }
       
       if (viewMode === 'day') {
         params.date = formatDateISO(currentDate)
@@ -283,7 +294,11 @@ export default function TimeTracking() {
       
       if (response.data) {
         setEntries(response.data.time_entries as unknown as TimeEntryItem[])
-        setTotalHours(response.data.summary.total_hours)
+        setEntrySummary({
+          total_hours: response.data.summary.total_hours,
+          total_break_hours: response.data.summary.total_break_hours || 0,
+          entry_count: response.data.summary.entry_count
+        })
       } else {
         setError(response.error || 'Failed to load time entries')
       }
@@ -387,10 +402,11 @@ export default function TimeTracking() {
   const loadReport = useCallback(async () => {
     setReportLoading(true)
     try {
-      const params: Record<string, string | number> = {
+      const params: Parameters<typeof api.getTimeEntries>[0] = {
         start_date: reportFilters.start_date,
         end_date: reportFilters.end_date,
-        per_page: 1000, // Get all for reports
+        per_page: 500,
+        exclude_approval_statuses: ['denied', 'pending'],
       }
       
       if (reportFilters.user_id) {
@@ -400,7 +416,7 @@ export default function TimeTracking() {
         params.time_category_id = parseInt(reportFilters.time_category_id)
       }
 
-      const response = await api.getTimeEntries(params as unknown as Parameters<typeof api.getTimeEntries>[0])
+      const response = await api.getTimeEntries(params)
       
       if (response.data) {
         setReportData(response.data.time_entries as unknown as TimeEntryItem[])
@@ -409,6 +425,7 @@ export default function TimeTracking() {
           total_break_hours: response.data.summary.total_break_hours || 0,
           entry_count: response.data.summary.entry_count
         })
+        setReportTruncated(response.data.pagination?.truncated === true)
       }
     } catch {
       console.error('Failed to load report')
@@ -603,8 +620,13 @@ export default function TimeTracking() {
   // Get week dates for week view
   const weekDates = getWeekDates(currentDate)
 
+  // Filter out denied entries unless toggle is on
+  const visibleEntries = showDenied
+    ? entries
+    : entries.filter(e => e.approval_status !== 'denied')
+
   // Group entries by date for week view
-  const entriesByDate = entries.reduce((acc, entry) => {
+  const entriesByDate = visibleEntries.reduce((acc, entry) => {
     const date = entry.work_date
     if (!acc[date]) acc[date] = []
     acc[date].push(entry)
@@ -618,6 +640,10 @@ export default function TimeTracking() {
     acc[dateStr] = dayEntries.reduce((sum, e) => sum + e.hours, 0)
     return acc
   }, {} as Record<string, number>)
+
+  const deniedCount = entries.filter(e => e.approval_status === 'denied').length
+  const deniedHours = entries.filter(e => e.approval_status === 'denied').reduce((sum, e) => sum + e.hours, 0)
+  const visibleTotalHours = showDenied ? entrySummary.total_hours : entrySummary.total_hours - deniedHours
 
   // Calculate report summaries by category and user
   const reportByCategory = reportData.reduce((acc, entry) => {
@@ -663,6 +689,17 @@ export default function TimeTracking() {
         )}
       </div>
       </FadeUp>
+
+      {/* Clock In/Out Card - full width, horizontal on desktop */}
+      <ClockInOutCard onStatusChange={() => loadEntries()} />
+
+      {/* Admin Panels */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <ApprovalQueue onUpdate={() => loadEntries()} />
+          <WhosWorking />
+        </div>
+      )}
       
       {/* Tab Navigation */}
       <div className="border-b border-neutral-warm">
@@ -766,7 +803,7 @@ export default function TimeTracking() {
               }
             </div>
             <div className="text-sm text-primary-dark">
-              Total: <span className="font-semibold text-primary">{totalHours.toFixed(1)} hours</span>
+              Total: <span className="font-semibold text-primary">{visibleTotalHours.toFixed(1)} hours</span>
             </div>
           </div>
           {/* Bottom row: Toggle + Navigation */}
@@ -881,7 +918,7 @@ export default function TimeTracking() {
               }
             </div>
             <div className="text-sm text-primary-dark">
-              Total: <span className="font-semibold text-primary">{totalHours.toFixed(1)} hours</span>
+              Total: <span className="font-semibold text-primary">{visibleTotalHours.toFixed(1)} hours</span>
             </div>
           </div>
         </div>
@@ -918,6 +955,29 @@ export default function TimeTracking() {
           </div>
         )}
       </div>
+
+      {/* Denied entries toggle */}
+      {deniedCount > 0 && (
+        <div className="flex items-center justify-end">
+          <button
+            onClick={() => setShowDenied(!showDenied)}
+            className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+              showDenied
+                ? 'bg-red-50 border-red-200 text-red-700'
+                : 'bg-white border-neutral-warm text-text-muted hover:text-primary-dark hover:border-primary/30'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              {showDenied ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878l4.242 4.242M21 21l-4.35-4.35" />
+              )}
+            </svg>
+            {showDenied ? `Showing ${deniedCount} denied` : `${deniedCount} denied hidden`}
+          </button>
+        </div>
+      )}
 
       {/* Error Display */}
       {error && (
@@ -1008,7 +1068,19 @@ export default function TimeTracking() {
                         <div className="font-bold text-primary-dark flex items-center gap-1">
                           {entry.locked_at ? <LockIcon /> : <ClockIcon />}
                           {entry.hours}h
+                          {entry.approval_status === 'pending' && (
+                            <span className="ml-auto w-2 h-2 rounded-full bg-amber-500" title="Pending approval" />
+                          )}
+                          {entry.approval_status === 'denied' && (
+                            <span className="ml-auto w-2 h-2 rounded-full bg-red-500" title="Denied" />
+                          )}
+                          {entry.overtime_status === 'pending' && (
+                            <span className="ml-auto w-2 h-2 rounded-full bg-orange-500" title="Overtime pending" />
+                          )}
                         </div>
+                        {entry.entry_method === 'clock' && (
+                          <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">CLOCK</div>
+                        )}
                         {entry.formatted_start_time && entry.formatted_end_time && (
                           <div className="text-primary-dark/70 text-[10px]">
                             {entry.formatted_start_time} - {entry.formatted_end_time}
@@ -1018,6 +1090,11 @@ export default function TimeTracking() {
                           <div className="text-primary font-medium truncate text-[10px] sm:text-xs">{entry.time_category.name}</div>
                         )}
                         <div className="text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1">{ownerLabel(entry)}</div>
+                        {entry.approval_note && (
+                          <div className="text-[9px] text-text-muted italic truncate mt-0.5" title={entry.approval_note}>
+                            "{entry.approval_note}"
+                          </div>
+                        )}
                       </div>
                     ))}
                     <button
@@ -1039,7 +1116,7 @@ export default function TimeTracking() {
         /* Day View */
         <FadeIn>
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm hover:shadow-md transition-shadow duration-300">
-          {entries.length === 0 ? (
+          {visibleEntries.length === 0 ? (
             <div className="p-8 text-center">
               <div className="w-12 h-12 mx-auto mb-3 text-primary-dark">
                 <ClockIcon />
@@ -1054,7 +1131,7 @@ export default function TimeTracking() {
             </div>
           ) : (
             <div className="divide-y divide-neutral-warm">
-              {entries.map(entry => (
+              {visibleEntries.map(entry => (
                 <div key={entry.id} className={`p-3 sm:p-4 ${entry.locked_at ? 'bg-amber-50/30' : ''}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
@@ -1079,6 +1156,26 @@ export default function TimeTracking() {
                             Locked
                           </span>
                         )}
+                        {entry.entry_method === 'clock' && (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 font-medium text-xs rounded">
+                            Clock
+                          </span>
+                        )}
+                        {entry.approval_status === 'pending' && (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 font-medium text-xs rounded">
+                            Pending
+                          </span>
+                        )}
+                        {entry.approval_status === 'denied' && (
+                          <span className="px-2 py-0.5 bg-red-100 text-red-700 font-medium text-xs rounded">
+                            Denied
+                          </span>
+                        )}
+                        {entry.overtime_status === 'pending' && (
+                          <span className="px-2 py-0.5 bg-orange-100 text-orange-700 font-medium text-xs rounded">
+                            OT Pending
+                          </span>
+                        )}
                       </div>
                       {/* Owner */}
                       <p className="mt-1 text-xs sm:text-sm text-primary-dark/80 truncate">
@@ -1094,6 +1191,17 @@ export default function TimeTracking() {
                           Client: {entry.client.name}
                           {entry.tax_return && ` (${entry.tax_return.tax_year})`}
                         </p>
+                      )}
+                      {/* Approval info */}
+                      {entry.approved_by && (
+                        <div className="mt-2 text-xs text-text-muted border-t border-neutral-warm/50 pt-2">
+                          <span className={entry.approval_status === 'approved' ? 'text-emerald-600' : 'text-red-500'}>
+                            {entry.approval_status === 'approved' ? 'Approved' : 'Denied'} by {entry.approved_by.full_name}
+                          </span>
+                          {entry.approval_note && (
+                            <p className="mt-0.5 text-primary-dark/70 italic">"{entry.approval_note}"</p>
+                          )}
+                        </div>
                       )}
                     </div>
                     {/* Actions */}
@@ -1156,6 +1264,21 @@ export default function TimeTracking() {
                     <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
                       <LockIcon />
                       <span>This entry is locked and cannot be edited.</span>
+                    </div>
+                  )}
+                  {editingEntry.approved_by && (
+                    <div className={`mt-2 px-3 py-2 rounded-lg text-sm border ${
+                      editingEntry.approval_status === 'approved'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                        : 'bg-red-50 border-red-200 text-red-700'
+                    }`}>
+                      <span className="font-medium">
+                        {editingEntry.approval_status === 'approved' ? 'Approved' : 'Denied'}
+                      </span>
+                      {' '}by {editingEntry.approved_by.full_name}
+                      {editingEntry.approval_note && (
+                        <p className="mt-1 text-xs italic opacity-80">"{editingEntry.approval_note}"</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1465,6 +1588,22 @@ export default function TimeTracking() {
               </div>
             </StaggerItem>
           </StaggerContainer>
+
+          {reportTruncated && !reportLoading && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+              <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-amber-800">
+                  Showing {reportData.length} of {reportSummary.entry_count} entries
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  The detail table below is capped at 500 rows. Summary totals above reflect all {reportSummary.entry_count} entries. Narrow your date range or filters to see all rows.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Summary Tables */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

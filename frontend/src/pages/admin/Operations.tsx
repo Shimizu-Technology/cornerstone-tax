@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { PayrollChecklistBoardResponse, PayrollChecklistPeriodDetailResponse } from '../../lib/api'
-import { formatDate } from '../../lib/dateUtils'
+import { formatDate, formatDateISO } from '../../lib/dateUtils'
 
 interface SelectedCell {
   clientId: number
@@ -15,9 +15,9 @@ interface SelectedCell {
 type ChecklistItem = PayrollChecklistPeriodDetailResponse['items'][0]
 
 function addDaysToIsoDate(isoDate: string, days: number): string {
-  const date = new Date(`${isoDate}T00:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
+  const date = new Date(`${isoDate}T00:00:00`)
+  date.setDate(date.getDate() + days)
+  return formatDateISO(date)
 }
 
 export default function OperationsPage() {
@@ -46,12 +46,12 @@ export default function OperationsPage() {
 
   useEffect(() => {
     const today = new Date()
-    const year = today.getUTCFullYear()
-    const month = today.getUTCMonth()
-    const start = new Date(Date.UTC(year, month, 1))
-    const end = new Date(Date.UTC(year, month + 1, 0))
-    setStartDate(start.toISOString().slice(0, 10))
-    setEndDate(end.toISOString().slice(0, 10))
+    const year = today.getFullYear()
+    const month = today.getMonth()
+    const start = new Date(year, month, 1)
+    const end = new Date(year, month + 1, 0)
+    setStartDate(formatDateISO(start))
+    setEndDate(formatDateISO(end))
   }, [])
 
   const loadBoard = useCallback(async (range?: { start?: string; end?: string }) => {

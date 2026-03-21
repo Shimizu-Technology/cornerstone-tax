@@ -78,7 +78,23 @@ Rails.application.routes.draw do
       resources :audit_logs, only: [:index]
 
       # Time tracking
-      resources :time_entries, only: [:index, :show, :create, :update, :destroy]
+      resources :time_entries, only: [:index, :show, :create, :update, :destroy] do
+        collection do
+          post :clock_in
+          post :clock_out
+          post :start_break
+          post :end_break
+          get :current_status
+          get :pending_approvals
+          get :whos_working
+        end
+        member do
+          post :approve
+          post :deny
+          post :approve_overtime
+          post :deny_overtime
+        end
+      end
       resources :time_categories, only: [:index]
       resources :time_period_locks, only: [:index]
 

@@ -3,6 +3,7 @@ import { FadeUp } from '../../components/ui/MotionComponents'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
+import { formatDateISO } from '../../lib/dateUtils'
 import type { Schedule as ScheduleType, ScheduleTimePreset } from '../../lib/api'
 
 interface UserOption {
@@ -30,10 +31,6 @@ function getWeekStart(date: Date): Date {
   const day = d.getDay()
   d.setDate(d.getDate() - day) // Start on Sunday
   return d
-}
-
-function formatDateISO(date: Date): string {
-  return date.toISOString().split('T')[0]
 }
 
 function getWeekDates(weekStart: Date): Date[] {

@@ -103,3 +103,15 @@ export function formatTableDateTime(dateString: string): string {
 export function formatCreatedDate(dateString: string): string {
   return formatDate(dateString)
 }
+
+/**
+ * Format a Date to an ISO date string (YYYY-MM-DD) using LOCAL time.
+ * IMPORTANT: Do NOT use date.toISOString().split('T')[0] — that uses UTC
+ * and produces the wrong date for timezones ahead of UTC (e.g. Guam UTC+10).
+ */
+export function formatDateISO(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}

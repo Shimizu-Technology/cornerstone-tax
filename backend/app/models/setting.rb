@@ -6,7 +6,10 @@ class Setting < ApplicationRecord
   # Default values for settings
   DEFAULTS = {
     "contact_email" => "dmshimizucpa@gmail.com",
-    "notification_email" => "dmshimizucpa@gmail.com"
+    "notification_email" => "dmshimizucpa@gmail.com",
+    "overtime_daily_threshold_hours" => "8",
+    "overtime_weekly_threshold_hours" => "40",
+    "early_clock_in_buffer_minutes" => "5"
   }.freeze
 
   # Get a setting value (with default fallback)

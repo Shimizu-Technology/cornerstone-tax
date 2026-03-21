@@ -28,8 +28,15 @@ module Api
         clerk_id = decoded["sub"]
         email = decoded["email"] || decoded["primary_email_address"]
 
-        unless email.present?
-          Rails.logger.warn "JWT for clerk_id=#{clerk_id} has no email claim. Invite linking will not work. Ensure Clerk JWT template includes the email claim."
+        # Fallback: if JWT lacks email, fetch it from Clerk Backend API
+        if email.blank?
+          Rails.logger.info "JWT for clerk_id=#{clerk_id} has no email claim. Attempting Clerk API fallback."
+          email = ClerkAuth.fetch_user_email(clerk_id)
+          if email.present?
+            Rails.logger.debug "Clerk API resolved email for clerk_id=#{clerk_id}"
+          else
+            Rails.logger.warn "JWT for clerk_id=#{clerk_id} has no email claim and Clerk API fallback failed. Ensure Clerk JWT template includes the email claim or set CLERK_SECRET_KEY."
+          end
         end
 
         # Find user by clerk_id first

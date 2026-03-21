@@ -52,6 +52,9 @@ export default function Settings() {
   const [savingSystemSettings, setSavingSystemSettings] = useState(false)
   const [systemSettingsSuccess, setSystemSettingsSuccess] = useState('')
   const [systemSettingsError, setSystemSettingsError] = useState('')
+  const [overtimeDailyHours, setOvertimeDailyHours] = useState('8')
+  const [overtimeWeeklyHours, setOvertimeWeeklyHours] = useState('40')
+  const [earlyClockInBuffer, setEarlyClockInBuffer] = useState('5')
   
   // Workflow Stages state
   const [stages, setStages] = useState<AdminWorkflowStageLocal[]>([])
@@ -181,6 +184,9 @@ export default function Settings() {
       setSystemSettings(response.data)
       setContactEmail(response.data.contact_email || 'dmshimizucpa@gmail.com')
       setNotificationEmail(response.data.notification_email || 'dmshimizucpa@gmail.com')
+      setOvertimeDailyHours(response.data.overtime_daily_threshold_hours || '8')
+      setOvertimeWeeklyHours(response.data.overtime_weekly_threshold_hours || '40')
+      setEarlyClockInBuffer(response.data.early_clock_in_buffer_minutes || '5')
     }
     setLoadingSystemSettings(false)
   }, [])
@@ -193,6 +199,9 @@ export default function Settings() {
     const response = await api.updateSystemSettings({
       contact_email: contactEmail,
       notification_email: notificationEmail,
+      overtime_daily_threshold_hours: overtimeDailyHours,
+      overtime_weekly_threshold_hours: overtimeWeeklyHours,
+      early_clock_in_buffer_minutes: earlyClockInBuffer,
     })
     
     if (response.error) {
@@ -1920,6 +1929,64 @@ export default function Settings() {
                     placeholder="dmshimizucpa@gmail.com"
                     className="w-full max-w-md px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
                   />
+                </div>
+
+                {/* Time Clock Settings */}
+                <div className="bg-secondary/30 rounded-xl p-6">
+                  <h3 className="font-semibold text-primary-dark mb-2">Time Clock Rules</h3>
+                  <p className="text-sm text-text-muted mb-4">
+                    Configure overtime thresholds and clock-in rules for employees.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-primary-dark mb-1">
+                        Daily Overtime (hours)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="24"
+                        step="0.5"
+                        value={overtimeDailyHours}
+                        aria-label="Daily overtime threshold hours"
+                        onChange={(e) => setOvertimeDailyHours(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                      />
+                      <p className="text-xs text-text-muted mt-1">Hours before daily overtime kicks in</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-primary-dark mb-1">
+                        Weekly Overtime (hours)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="168"
+                        step="1"
+                        value={overtimeWeeklyHours}
+                        aria-label="Weekly overtime threshold hours"
+                        onChange={(e) => setOvertimeWeeklyHours(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                      />
+                      <p className="text-xs text-text-muted mt-1">Hours before weekly overtime kicks in</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-primary-dark mb-1">
+                        Early Clock-In Buffer (min)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="60"
+                        step="1"
+                        value={earlyClockInBuffer}
+                        aria-label="Early clock-in buffer minutes"
+                        onChange={(e) => setEarlyClockInBuffer(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                      />
+                      <p className="text-xs text-text-muted mt-1">Minutes before shift that clock-in is allowed</p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
