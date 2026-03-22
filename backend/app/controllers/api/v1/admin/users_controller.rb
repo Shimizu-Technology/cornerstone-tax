@@ -17,11 +17,11 @@ module Api
             @users = @users.where(role: params[:role])
           end
 
-          # Filter by status (active = has clerk_id, pending = no clerk_id)
+          # Filter by status
           if params[:status] == "active"
-            @users = @users.where.not(clerk_id: nil)
+            @users = @users.where.not(clerk_id: nil).where.not("clerk_id LIKE 'pending_%'")
           elsif params[:status] == "pending"
-            @users = @users.where(clerk_id: nil)
+            @users = @users.where("clerk_id IS NULL OR clerk_id LIKE 'pending_%'")
           end
 
           render json: {
@@ -139,7 +139,7 @@ module Api
 
         # POST /api/v1/admin/users/:id/resend_invite
         def resend_invite
-          unless @user.clerk_id&.start_with?("pending_")
+          unless @user.clerk_id.blank? || @user.clerk_id.start_with?("pending_")
             return render json: { error: "This user has already activated their account" }, status: :unprocessable_entity
           end
 
@@ -152,14 +152,16 @@ module Api
             email_sent = send_invitation_email(@user)
           rescue StandardError => e
             Rails.logger.error("resend_invite email error for user #{@user.id}: #{e.message}")
-            email_sent = false
+            Rails.cache.delete(cache_key)
+            return render json: { error: "Failed to send invitation email. Please check email configuration." }, status: :unprocessable_entity
           end
 
-          if email_sent
-            render json: { message: "Invitation email resent to #{@user.email}" }
-          else
-            render json: { error: "Failed to send invitation email. Please check email configuration." }, status: :unprocessable_entity
+          unless email_sent
+            Rails.cache.delete(cache_key)
+            return render json: { error: "Failed to send invitation email. Please check email configuration." }, status: :unprocessable_entity
           end
+
+          render json: { message: "Invitation email resent to #{@user.email}" }
         end
 
         private
