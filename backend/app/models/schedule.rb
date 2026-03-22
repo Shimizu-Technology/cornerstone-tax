@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class Schedule < ApplicationRecord
-  belongs_to :user
+  belongs_to :user, optional: true
   belongs_to :created_by, class_name: "User", optional: true
   has_many :time_entries, dependent: :nullify
 

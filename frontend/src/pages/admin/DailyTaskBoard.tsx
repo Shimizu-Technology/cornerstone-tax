@@ -74,7 +74,6 @@ const shiftDate = (dateStr: string, days: number): string => {
 const isToday = (dateStr: string): boolean => dateStr === getGuamDateString()
 
 type TaskStatus = 'not_started' | 'in_progress' | 'dms_reviewing' | 'ready_to_file' | 'ready_for_signature' | 'completed' | 'filed_with_drt' | 'filed_with_irs' | 'pending_info' | 'other' | 'done'
-type TaskPriority = 'low' | 'normal' | 'high' | 'urgent'
 
 const DONE_STATUSES: TaskStatus[] = ['completed', 'filed_with_drt', 'filed_with_irs', 'done']
 
@@ -103,13 +102,6 @@ const STATUS_DISPLAY: Record<string, { label: string; color: string; bg: string 
   pending_info: { label: '9 - Pending Info', color: 'text-yellow-700', bg: 'bg-yellow-50' },
   other: { label: '10 - Other', color: 'text-gray-500', bg: 'bg-gray-50' },
   done: { label: 'Done', color: 'text-green-700', bg: 'bg-green-50' },
-}
-
-const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; bg: string }> = {
-  low: { label: 'Low', color: 'text-gray-500', bg: 'bg-gray-50' },
-  normal: { label: 'Normal', color: 'text-blue-600', bg: 'bg-blue-50' },
-  high: { label: 'High', color: 'text-orange-600', bg: 'bg-orange-50' },
-  urgent: { label: 'Urgent', color: 'text-red-600', bg: 'bg-red-50' },
 }
 
 // ── Inline Editable Cell ──
@@ -568,7 +560,6 @@ export default function DailyTaskBoard() {
   // Drag & drop
   const dragSrc = useRef<number | null>(null)
   const onDragStart = (_e: React.DragEvent, id: number) => { dragSrc.current = id }
-  const onDragOver = (e: React.DragEvent) => e.preventDefault()
   const onDrop = async (e: React.DragEvent, targetId: number) => {
     e.preventDefault(); setDragTargetId(null)
     const srcId = dragSrc.current
