@@ -161,7 +161,9 @@ export default function Users() {
       <div role="tablist" className="flex gap-1 bg-secondary/50 rounded-xl p-1 w-fit">
         <button
           role="tab"
+          id="tab-team"
           aria-selected={activeTab === 'team'}
+          aria-controls="panel-team"
           onClick={() => setActiveTab('team')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'team'
@@ -174,7 +176,9 @@ export default function Users() {
         </button>
         <button
           role="tab"
+          id="tab-clients"
           aria-selected={activeTab === 'clients'}
+          aria-controls="panel-clients"
           onClick={() => setActiveTab('clients')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'clients'
@@ -186,6 +190,13 @@ export default function Users() {
           <span className="ml-1.5 text-xs text-gray-400">({clientUsers.length})</span>
         </button>
       </div>
+
+      {/* Tab Panel */}
+      <div
+        role="tabpanel"
+        id={`panel-${activeTab}`}
+        aria-labelledby={`tab-${activeTab}`}
+      >
 
       {/* Desktop Table */}
       <div className="hidden sm:block bg-white rounded-2xl border border-secondary-dark overflow-hidden">
@@ -426,6 +437,7 @@ export default function Users() {
           </div>
         ))}
       </div>
+      </div>{/* end tabpanel */}
 
       {/* Invite Modal */}
       {showInviteModal && (
