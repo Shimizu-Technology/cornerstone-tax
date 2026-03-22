@@ -314,8 +314,6 @@ module Api
       def whos_working
         return render json: { error: "Admin access required" }, status: :forbidden unless current_user.admin?
 
-        TimeClockService.flag_stale_entries
-
         today = Time.current.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).to_date
         staff_users = User.staff.order(:first_name, :last_name)
         staff_ids = staff_users.pluck(:id)

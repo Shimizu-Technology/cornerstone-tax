@@ -183,6 +183,10 @@ module Api
         target_date = Date.parse(params.require(:target_date))
         include_done = params[:include_done] == "true"
 
+        if source_date == target_date
+          return render json: { error: "Target date must differ from source date" }, status: :bad_request
+        end
+
         source_tasks = DailyTask.for_date(source_date).ordered
         source_tasks = source_tasks.not_done unless include_done
 

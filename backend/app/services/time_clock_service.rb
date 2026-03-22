@@ -247,17 +247,19 @@ class TimeClockService
           end
 
           guam_now = Time.current.in_time_zone(business_timezone)
+          entry.end_time = guam_now
+          entry.clock_out_at = Time.current
+          entry.calculate_hours_from_times
           entry.update!(
-            end_time: guam_now,
-            clock_out_at: Time.current,
+            end_time: entry.end_time,
+            clock_out_at: entry.clock_out_at,
+            hours: entry.hours,
             status: "completed",
             break_minutes: entry.total_break_minutes,
             admin_override: true,
             approval_status: "pending",
             approval_note: "Auto-closed: clocked in for over #{threshold_hours} hours without clocking out"
           )
-          entry.calculate_hours_from_times
-          entry.save!
 
           AuditLog.create!(
             auditable: entry,

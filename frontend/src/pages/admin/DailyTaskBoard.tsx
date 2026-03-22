@@ -35,11 +35,11 @@ function Toast({ message, type, onClose }: { message: string; type: ToastType; o
 
 // ── Helpers ──
 
-const getLocalDateString = (date: Date = new Date()): string => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+const getGuamDateString = (date: Date = new Date()): string => {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Pacific/Guam',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date)
 }
 
 const formatDate = (dateStr: string) => {
@@ -62,10 +62,10 @@ const shiftDate = (dateStr: string, days: number): string => {
   const [y, m, d] = dateStr.split('-').map(Number)
   const date = new Date(y, m - 1, d)
   date.setDate(date.getDate() + days)
-  return getLocalDateString(date)
+  return getGuamDateString(date)
 }
 
-const isToday = (dateStr: string): boolean => dateStr === getLocalDateString()
+const isToday = (dateStr: string): boolean => dateStr === getGuamDateString()
 
 type TaskStatus = 'not_started' | 'in_progress' | 'dms_reviewing' | 'ready_to_file' | 'ready_for_signature' | 'completed' | 'filed_with_drt' | 'filed_with_irs' | 'pending_info' | 'other' | 'done'
 type TaskPriority = 'low' | 'normal' | 'high' | 'urgent'
@@ -489,7 +489,7 @@ function StatsSummary({ tasks }: { tasks: DailyTask[] }) {
 export default function DailyTaskBoard() {
   useEffect(() => { document.title = 'Daily Tasks | Cornerstone Admin' }, [])
 
-  const [currentDate, setCurrentDate] = useState(getLocalDateString())
+  const [currentDate, setCurrentDate] = useState(getGuamDateString())
   const [allTasks, setAllTasks] = useState<DailyTask[]>([])
   const [tasks, setTasks] = useState<DailyTask[]>([])
   const [staff, setStaff] = useState<UserSummary[]>([])
@@ -749,7 +749,7 @@ export default function DailyTaskBoard() {
             <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
           </button>
           {!isToday(currentDate) && (
-            <button onClick={() => setCurrentDate(getLocalDateString())} className="ml-2 text-sm text-primary hover:text-primary/80 font-medium">Today</button>
+            <button onClick={() => setCurrentDate(getGuamDateString())} className="ml-2 text-sm text-primary hover:text-primary/80 font-medium">Today</button>
           )}
         </div>
         <StatsSummary tasks={allTasks} />
