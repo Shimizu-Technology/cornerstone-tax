@@ -72,7 +72,7 @@ class DailyTaskImportService
     ActiveRecord::Base.transaction do
       base_position = DailyTask.for_date(task_date).maximum(:position) || -1
 
-      rows.each_with_index do |row, idx|
+      rows.each do |row|
         title = row["client"].presence
         next if title.blank?
 
@@ -85,7 +85,7 @@ class DailyTaskImportService
         task = DailyTask.create!(
           title: title,
           task_date: task_date,
-          position: base_position + idx + 1,
+          position: base_position + created.size + 1,
           status: status,
           priority: "normal",
           form_service: row["form_service"].presence,

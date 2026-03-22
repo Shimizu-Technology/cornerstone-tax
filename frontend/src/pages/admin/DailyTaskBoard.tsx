@@ -696,9 +696,10 @@ export default function DailyTaskBoard() {
       }
 
       const res = await api.copyDailyTasksToDate(currentDate, target)
-      if (res.data?.copied_count) {
+      if (res.data?.daily_tasks) {
         showToast(`Copied ${res.data.copied_count} task(s) to ${targetLabel}`, 'success')
         setShowCopyPicker(false)
+        if (target === currentDate) loadTasks()
       } else if (res.error) showToast(res.error || 'Failed to copy tasks')
     } finally { setCopyingTasks(false) }
   }
