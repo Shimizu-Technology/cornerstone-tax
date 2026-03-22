@@ -149,6 +149,7 @@ module Api
         created_tasks = []
 
         ActiveRecord::Base.transaction do
+          position_counters = {}
           tasks_params.each do |tp|
             task = DailyTask.new(tp.permit(
               :title, :task_date, :status, :priority, :form_service,
@@ -158,7 +159,10 @@ module Api
             task.created_by = current_user
             task.status_changed_by = current_user
             task.status_changed_at = Time.current
-            task.position = (DailyTask.for_date(task.task_date).maximum(:position) || -1) + 1
+            date_key = task.task_date.to_s
+            position_counters[date_key] ||= DailyTask.for_date(task.task_date).maximum(:position) || -1
+            position_counters[date_key] += 1
+            task.position = position_counters[date_key]
             task.save!
             created_tasks << task
           end
@@ -247,10 +251,11 @@ module Api
 
         created_tasks = []
         ActiveRecord::Base.transaction do
+          base_position = DailyTask.for_date(target_date).maximum(:position)&.to_i || -1
           source_tasks.each_with_index do |source, idx|
             task = source.dup
             task.task_date = target_date
-            task.position = idx
+            task.position = base_position + idx + 1
             task.completed_at = nil
             task.completed_by = nil
             # Intentionally preserves source task's status so staff can see
