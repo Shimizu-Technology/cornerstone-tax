@@ -200,7 +200,9 @@ module Api
       # POST /api/v1/daily_tasks/import_spreadsheet
       def import_spreadsheet
         task_date = Date.parse(params.require(:task_date))
-        rows = params.require(:rows).map { |r| r.permit(:client, :form_service, :comments, :staff, :reviewed_by, :status).to_h }
+        rows = params.require(:rows).map do |r|
+          r.permit(:client, :form_service, :comments, :staff_id, :reviewed_by_id, :resolved_status).to_h
+        end
 
         service = DailyTaskImportService.new(nil, user: current_user)
         result = service.import!(task_date: task_date, rows: rows)
@@ -216,8 +218,7 @@ module Api
 
         render json: {
           daily_tasks: result[:created].map { |t| serialize_task(t) },
-          imported_count: result[:created].size,
-          warnings: result[:warnings]
+          imported_count: result[:created].size
         }, status: :created
       rescue Date::Error
         render json: { error: "Invalid date format" }, status: :bad_request

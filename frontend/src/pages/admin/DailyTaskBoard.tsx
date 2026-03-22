@@ -562,9 +562,6 @@ export default function DailyTaskBoard() {
       const res = await api.importDailyTasks(importTargetDate, validRows)
       if (res.data?.daily_tasks) {
         showToast(`Imported ${res.data.imported_count} task(s) successfully`, 'success')
-        if (res.data.warnings?.length) {
-          res.data.warnings.forEach(w => showToast(w))
-        }
         setImportPreview(null)
         if (importTargetDate === currentDate) loadTasks()
       } else {
@@ -574,11 +571,11 @@ export default function DailyTaskBoard() {
     finally { setImportLoading(false) }
   }
 
-  const updateImportRow = (idx: number, field: keyof ImportPreviewRow, value: string) => {
+  const updateImportRow = (idx: number, updates: Partial<ImportPreviewRow>) => {
     setImportPreview(prev => {
       if (!prev) return prev
       const updated = [...prev]
-      updated[idx] = { ...updated[idx], [field]: value }
+      updated[idx] = { ...updated[idx], ...updates }
       return updated
     })
   }
@@ -588,7 +585,7 @@ export default function DailyTaskBoard() {
   }
 
   const addImportRow = () => {
-    setImportPreview(prev => prev ? [...prev, { client: '', form_service: '', comments: '', staff: '', reviewed_by: '', status: '' }] : prev)
+    setImportPreview(prev => prev ? [...prev, { client: '', form_service: '', comments: '', staff_id: null, reviewed_by_id: null, resolved_status: 'not_started' }] : prev)
   }
 
   useEffect(() => {
@@ -1012,44 +1009,68 @@ export default function DailyTaskBoard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {importPreview.map((row, i) => (
-                    <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 group">
-                      <td className="px-1 py-1 text-gray-400 font-mono text-xs">{i + 1}</td>
-                      <td className="px-1 py-1">
-                        <input value={row.client || ''} onChange={e => updateImportRow(i, 'client', e.target.value)}
-                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent font-medium text-gray-900"
-                          placeholder="Client name..." />
-                      </td>
-                      <td className="px-1 py-1">
-                        <input value={row.form_service || ''} onChange={e => updateImportRow(i, 'form_service', e.target.value)}
-                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
-                      </td>
-                      <td className="px-1 py-1">
-                        <input value={row.comments || ''} onChange={e => updateImportRow(i, 'comments', e.target.value)}
-                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
-                      </td>
-                      <td className="px-1 py-1">
-                        <input value={row.staff || ''} onChange={e => updateImportRow(i, 'staff', e.target.value)}
-                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
-                      </td>
-                      <td className="px-1 py-1">
-                        <input value={row.reviewed_by || ''} onChange={e => updateImportRow(i, 'reviewed_by', e.target.value)}
-                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
-                      </td>
-                      <td className="px-1 py-1">
-                        <input value={row.status || ''} onChange={e => updateImportRow(i, 'status', e.target.value)}
-                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
-                      </td>
-                      <td className="px-1 py-1">
-                        <button onClick={() => removeImportRow(i)} title="Remove row"
-                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all rounded">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {importPreview.map((row, i) => {
+                    const staffMatch = row.staff_id != null
+                    const reviewerMatch = row.reviewed_by_id != null
+                    const noStaffText = !row.staff_text
+                    const noReviewerText = !row.reviewed_by_text
+                    return (
+                      <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 group">
+                        <td className="px-1 py-1 text-gray-400 font-mono text-xs">{i + 1}</td>
+                        <td className="px-1 py-1">
+                          <input value={row.client || ''} onChange={e => updateImportRow(i, { client: e.target.value })}
+                            className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent font-medium text-gray-900"
+                            placeholder="Client name..." />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input value={row.form_service || ''} onChange={e => updateImportRow(i, { form_service: e.target.value })}
+                            className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input value={row.comments || ''} onChange={e => updateImportRow(i, { comments: e.target.value })}
+                            className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
+                        </td>
+                        <td className="px-1 py-1">
+                          <select value={row.staff_id ?? ''} onChange={e => updateImportRow(i, { staff_id: e.target.value ? Number(e.target.value) : null })}
+                            className={`w-full text-sm border rounded px-1.5 py-1 cursor-pointer ${
+                              !staffMatch && !noStaffText ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-transparent hover:border-gray-300 bg-transparent text-gray-700'
+                            } focus:border-primary focus:ring-1 focus:ring-primary`}>
+                            <option value="">—</option>
+                            {staff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                          </select>
+                          {!staffMatch && !noStaffText && (
+                            <div className="text-[10px] text-amber-600 px-1 mt-0.5">"{row.staff_text}" not matched</div>
+                          )}
+                        </td>
+                        <td className="px-1 py-1">
+                          <select value={row.reviewed_by_id ?? ''} onChange={e => updateImportRow(i, { reviewed_by_id: e.target.value ? Number(e.target.value) : null })}
+                            className={`w-full text-sm border rounded px-1.5 py-1 cursor-pointer ${
+                              !reviewerMatch && !noReviewerText ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-transparent hover:border-gray-300 bg-transparent text-gray-700'
+                            } focus:border-primary focus:ring-1 focus:ring-primary`}>
+                            <option value="">—</option>
+                            {staff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                          </select>
+                          {!reviewerMatch && !noReviewerText && (
+                            <div className="text-[10px] text-amber-600 px-1 mt-0.5">"{row.reviewed_by_text}" not matched</div>
+                          )}
+                        </td>
+                        <td className="px-1 py-1">
+                          <select value={row.resolved_status || 'not_started'} onChange={e => updateImportRow(i, { resolved_status: e.target.value })}
+                            className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-700 cursor-pointer">
+                            {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-1 py-1">
+                          <button onClick={() => removeImportRow(i)} title="Remove row"
+                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all rounded">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
               <button onClick={addImportRow}
@@ -1062,7 +1083,7 @@ export default function DailyTaskBoard() {
             </div>
 
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
-              <p className="text-xs text-gray-500">Click any cell to edit. Rows without a client name are skipped. Unrecognized staff default to unassigned.</p>
+              <p className="text-xs text-gray-500">Click cells to edit. Use dropdowns for staff &amp; status. Amber = unmatched from spreadsheet.</p>
               <div className="flex gap-2">
                 <button onClick={() => setImportPreview(null)}
                   className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors">

@@ -41,13 +41,31 @@ class DailyTaskImportService
   end
 
   def preview
-    rows, sheet_name = parse_rows
-    { rows: rows, staff_map: @staff_map.keys, sheet_name: sheet_name }
+    raw_rows, sheet_name = parse_rows
+
+    resolved = raw_rows.map do |row|
+      assigned = resolve_staff(row["staff"])
+      reviewed = resolve_staff(row["reviewed_by"])
+      status = resolve_status(row["status"])
+
+      {
+        client: row["client"].presence || "",
+        form_service: row["form_service"].presence || "",
+        comments: row["comments"].presence || "",
+        staff_text: row["staff"].presence || "",
+        staff_id: assigned&.id,
+        reviewed_by_text: row["reviewed_by"].presence || "",
+        reviewed_by_id: reviewed&.id,
+        status_text: row["status"].presence || "",
+        resolved_status: status,
+      }
+    end
+
+    { rows: resolved, sheet_name: sheet_name }
   end
 
   def import!(task_date:, rows:)
     created = []
-    warnings = []
 
     ActiveRecord::Base.transaction do
       base_position = DailyTask.for_date(task_date).maximum(:position) || -1
@@ -56,12 +74,11 @@ class DailyTaskImportService
         title = row["client"].presence
         next if title.blank?
 
-        assigned = resolve_staff(row["staff"])
-        reviewed = resolve_staff(row["reviewed_by"])
-        status = resolve_status(row["status"])
+        status = row["resolved_status"].presence || "not_started"
+        status = "not_started" unless DailyTask::STATUSES.include?(status)
 
-        warnings << "Row #{idx + 1}: Staff '#{row['staff']}' not found" if row["staff"].present? && assigned.nil?
-        warnings << "Row #{idx + 1}: Reviewer '#{row['reviewed_by']}' not found" if row["reviewed_by"].present? && reviewed.nil?
+        assigned_id = row["staff_id"].presence
+        reviewed_id = row["reviewed_by_id"].presence
 
         task = DailyTask.create!(
           title: title,
@@ -71,8 +88,8 @@ class DailyTaskImportService
           priority: "normal",
           form_service: row["form_service"].presence,
           comments: row["comments"].presence,
-          assigned_to: assigned,
-          reviewed_by: reviewed,
+          assigned_to_id: assigned_id,
+          reviewed_by_id: reviewed_id,
           created_by: @user,
           status_changed_by: @user,
           status_changed_at: Time.current,
@@ -83,7 +100,7 @@ class DailyTaskImportService
       end
     end
 
-    { created: created, warnings: warnings }
+    { created: created }
   end
 
   private

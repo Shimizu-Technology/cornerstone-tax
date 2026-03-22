@@ -1016,9 +1016,12 @@ export interface ImportPreviewRow {
   client: string;
   form_service?: string;
   comments?: string;
-  staff?: string;
-  reviewed_by?: string;
-  status?: string;
+  staff_text?: string;
+  staff_id?: number | null;
+  reviewed_by_text?: string;
+  reviewed_by_id?: number | null;
+  status_text?: string;
+  resolved_status?: string;
 }
 
 // API functions
@@ -2072,7 +2075,7 @@ export const api = {
   },
 
   importDailyTasks: (taskDate: string, rows: ImportPreviewRow[]) =>
-    fetchApi<DailyTasksResponse & { imported_count: number; warnings: string[] }>('/api/v1/daily_tasks/import_spreadsheet', {
+    fetchApi<DailyTasksResponse & { imported_count: number }>('/api/v1/daily_tasks/import_spreadsheet', {
       method: 'POST',
       body: JSON.stringify({ task_date: taskDate, rows }),
     }),
