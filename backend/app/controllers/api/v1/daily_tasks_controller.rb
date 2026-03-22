@@ -121,6 +121,8 @@ module Api
       # POST /api/v1/daily_tasks/reorder
       def reorder
         positions = params.require(:positions)
+        return render json: { success: true } if positions.empty?
+
         ActiveRecord::Base.transaction do
           positions.each do |pos|
             DailyTask.where(id: pos[:id]).update_all(position: pos[:position])

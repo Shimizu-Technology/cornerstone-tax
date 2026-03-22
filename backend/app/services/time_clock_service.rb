@@ -238,6 +238,7 @@ class TimeClockService
     def flag_stale_entries(threshold_hours: 12)
       cutoff = threshold_hours.hours.ago
       stale = TimeEntry.clocked_in.where("clock_in_at < ?", cutoff)
+      count = stale.count
 
       stale.find_each do |entry|
         ActiveRecord::Base.transaction do
@@ -267,7 +268,7 @@ class TimeClockService
         end
       end
 
-      stale.size
+      count
     end
 
     def hours_today(user, date = Date.current)

@@ -104,6 +104,26 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
     return `${h12}:${m.toString().padStart(2, '0')} ${period}`
   }
 
+  const guamNow = () => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Pacific/Guam',
+      hour: 'numeric', minute: 'numeric', hour12: false,
+    }).formatToParts(new Date())
+    const h = parseInt(parts.find(p => p.type === 'hour')!.value)
+    const m = parseInt(parts.find(p => p.type === 'minute')!.value)
+    return { hours: h, minutes: m, totalMin: h * 60 + m }
+  }
+
+  const guamHHMM = (date: Date) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Pacific/Guam',
+      hour: 'numeric', minute: 'numeric', hour12: false,
+    }).formatToParts(date)
+    const h = parts.find(p => p.type === 'hour')!.value.padStart(2, '0')
+    const m = parts.find(p => p.type === 'minute')!.value.padStart(2, '0')
+    return `${h}:${m}`
+  }
+
   const isPastSchedule = () => {
     if (!status?.schedule || !status?.clocked_in) return false
     const endParts = status.schedule.end_time.match(/(\d+):(\d+)\s*(AM|PM)/i)
@@ -114,24 +134,21 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
     if (period === 'PM' && hours !== 12) hours += 12
     if (period === 'AM' && hours === 12) hours = 0
     const schedEnd = hours * 60 + minutes
-    const now = new Date()
-    const currentMin = now.getHours() * 60 + now.getMinutes()
+    const { totalMin: currentMin } = guamNow()
     return currentMin > schedEnd + 30
   }
 
   const correctionBeforeClockIn = (() => {
     if (!correctionTime || !status?.clock_in_at) return false
-    const d = new Date(status.clock_in_at)
-    const clockInHHMM = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+    const clockInHHMM = guamHHMM(new Date(status.clock_in_at))
     return correctionTime <= clockInHHMM
   })()
 
   const handleClockOut = () => {
     if (isPastSchedule()) {
-      const endTime = status?.schedule?.end_time || ''
-      const nowDate = new Date()
-      const hh = nowDate.getHours().toString().padStart(2, '0')
-      const mm = nowDate.getMinutes().toString().padStart(2, '0')
+      const { hours: h, minutes: m } = guamNow()
+      const hh = h.toString().padStart(2, '0')
+      const mm = m.toString().padStart(2, '0')
       setCorrectionTime(`${hh}:${mm}`)
       setShowCorrectionModal(true)
       return

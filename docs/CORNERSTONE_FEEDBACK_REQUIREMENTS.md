@@ -161,6 +161,41 @@ Currently the 10 daily task statuses are hardcoded in the model and frontend con
 - Update frontend to fetch statuses from API instead of hardcoded `STATUS_OPTIONS`
 - Migration to seed current statuses as initial data
 
+### GPS Geofencing for Time Clock (Office-Only Clock In/Out)
+Restrict clock-in and clock-out to employees who are physically at the office, similar to warehouse clock-in systems (e.g., Amazon). Uses the browser's Geolocation API so it works on both desktop and mobile.
+
+**When to implement:** When the team is ready to enforce location-based attendance, or if remote clock-in abuse becomes a concern.
+
+**Implementation approach:**
+
+*Admin Settings:*
+- New settings: `geofence_enabled` (boolean toggle), `office_latitude`, `office_longitude`, `geofence_radius_meters` (default ~150m)
+- Settings UI with a map preview showing the office pin and radius circle
+- Option to enter address and geocode to lat/lng, or drop a pin on a map
+
+*Frontend (ClockInOutCard):*
+- On clock-in/out attempt (when geofence is enabled), request browser geolocation via `navigator.geolocation.getCurrentPosition()`
+- Send employee's `latitude` and `longitude` with the clock-in/out API request
+- Handle permission denied gracefully — show a clear message explaining location is required
+- Show a loading state while acquiring GPS ("Checking your location...")
+
+*Backend (TimeClockService):*
+- Validate distance using the Haversine formula (no external API needed — pure math)
+- If distance > configured radius → reject with error: "You must be at the office to clock in (you appear to be ~X meters away)"
+- Store `clock_in_latitude` and `clock_in_longitude` on the time entry for audit purposes
+- Admin override bypasses geofence check (admins can clock someone in remotely)
+
+*Edge cases to handle:*
+- **Location permission denied**: Block clock-in, show instructions on how to enable location in browser settings
+- **GPS inaccuracy indoors**: Use a generous radius (~150m minimum) to avoid false rejections; consider allowing a configurable buffer
+- **Remote work days**: Admin can either disable geofence per-employee/per-day via a schedule flag, or temporarily disable globally
+- **GPS spoofing**: Low risk for a small firm; no additional protection needed beyond standard browser geolocation
+- **Admin exemption**: Configurable — admins can optionally be exempt from geofence, or subject to it like everyone else
+
+*Database changes:*
+- Add `clock_in_latitude` and `clock_in_longitude` (decimal) columns to `time_entries` for audit trail
+- New settings keys: `geofence_enabled`, `office_latitude`, `office_longitude`, `geofence_radius_meters`
+
 ### WebSocket Real-Time Updates (Daily Task Board & Beyond)
 Currently the Daily Task Board uses 5-second polling for near-real-time updates. This works well for a small team but should be upgraded to proper WebSockets as the team or feature set grows.
 
