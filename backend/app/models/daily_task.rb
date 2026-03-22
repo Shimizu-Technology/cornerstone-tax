@@ -21,7 +21,7 @@ class DailyTask < ApplicationRecord
   belongs_to :service_type, optional: true
   belongs_to :assigned_to, class_name: "User", optional: true
   belongs_to :reviewed_by, class_name: "User", optional: true
-  belongs_to :created_by, class_name: "User"
+  belongs_to :created_by, class_name: "User", optional: true
   belongs_to :status_changed_by, class_name: "User", optional: true
   belongs_to :completed_by, class_name: "User", optional: true
 

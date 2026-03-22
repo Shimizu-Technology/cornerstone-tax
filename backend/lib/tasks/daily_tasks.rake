@@ -29,14 +29,14 @@ namespace :daily_tasks do
       "10 - Other" => "other",
     }
 
-    def resolve_staff(name, staff_map)
+    resolve_staff = ->(name, smap) do
       return nil if name.blank?
-      staff_map[name.to_s.strip.downcase]
+      smap[name.to_s.strip.downcase]
     end
 
-    def resolve_status(raw, status_map)
+    resolve_status = ->(raw, smap) do
       return "not_started" if raw.blank?
-      status_map[raw.to_s.strip] || "not_started"
+      smap[raw.to_s.strip] || "not_started"
     end
 
     # ═══════════════════════════════════════════
@@ -85,9 +85,9 @@ namespace :daily_tasks do
 
     ActiveRecord::Base.transaction do
       tasks_19.each do |t|
-        assigned = resolve_staff(t[:staff], staff_map)
-        reviewed = resolve_staff(t[:reviewed], staff_map)
-        status = resolve_status(t[:status], status_map)
+        assigned = resolve_staff.call(t[:staff], staff_map)
+        reviewed = resolve_staff.call(t[:reviewed], staff_map)
+        status = resolve_status.call(t[:status], status_map)
 
         full_comments = [t[:comments], t[:extra]].compact.join(" | ").presence
 

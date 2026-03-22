@@ -54,8 +54,14 @@ const formatDateLong = (dateStr: string) => {
 
 const formatShortDate = (isoStr: string | null) => {
   if (!isoStr) return '—'
-  const d = new Date(isoStr)
-  return `${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Pacific/Guam',
+    month: 'numeric', day: 'numeric', year: '2-digit',
+  }).formatToParts(new Date(isoStr))
+  const month = parts.find(p => p.type === 'month')!.value
+  const day = parts.find(p => p.type === 'day')!.value
+  const year = parts.find(p => p.type === 'year')!.value
+  return `${month}/${day}/${year}`
 }
 
 const shiftDate = (dateStr: string, days: number): string => {
@@ -530,7 +536,7 @@ export default function DailyTaskBoard() {
       if (!savingRef.current && res.data?.daily_tasks) setAllTasks(res.data.daily_tasks)
       else if (res.error) setError(res.error)
     } catch { setError('Failed to load tasks') }
-    finally { setLoading(false) }
+    finally { if (!silent) setLoading(false) }
   }, [currentDate])
 
   useEffect(() => { loadTasks() }, [loadTasks])
