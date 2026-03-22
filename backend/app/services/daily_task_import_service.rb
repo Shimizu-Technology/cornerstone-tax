@@ -193,7 +193,10 @@ class DailyTaskImportService
   def build_staff_map
     map = {}
     User.staff.each do |u|
-      map[u.first_name&.downcase] = u if u.first_name.present?
+      key = u.first_name&.downcase
+      if key.present? && !map.key?(key)
+        map[key] = u
+      end
       map[u.full_name&.downcase] = u
     end
     dms_user = User.find_by(email: "dmshimizucpa@gmail.com")

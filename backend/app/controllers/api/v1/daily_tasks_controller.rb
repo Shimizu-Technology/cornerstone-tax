@@ -195,6 +195,9 @@ module Api
         }
       rescue DailyTaskImportService::ImportError => e
         render json: { error: e.message }, status: :unprocessable_entity
+      rescue StandardError => e
+        Rails.logger.error("Import preview failed: #{e.class} - #{e.message}")
+        render json: { error: "Failed to parse file: #{e.message}" }, status: :unprocessable_entity
       end
 
       # POST /api/v1/daily_tasks/import_spreadsheet
@@ -224,6 +227,9 @@ module Api
         render json: { error: "Invalid date format" }, status: :bad_request
       rescue ActionController::ParameterMissing => e
         render json: { error: e.message }, status: :bad_request
+      rescue StandardError => e
+        Rails.logger.error("Import failed: #{e.class} - #{e.message}")
+        render json: { error: "Import failed: #{e.message}" }, status: :unprocessable_entity
       end
 
       # POST /api/v1/daily_tasks/copy_to_date
