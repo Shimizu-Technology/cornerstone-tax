@@ -278,10 +278,13 @@ function TaskRow({ task, staff, onUpdate, onDelete, showToast, onSaving, dragHan
     if (!confirm('Delete this task?')) return
     setDeleting(true)
     onSaving(true)
-    const res = await api.deleteDailyTask(task.id)
-    if (!res.error) onDelete(task.id)
-    else { showToast(res.error || 'Failed to delete task'); setDeleting(false) }
-    setTimeout(() => onSaving(false), 2000)
+    try {
+      const res = await api.deleteDailyTask(task.id)
+      if (!res.error) onDelete(task.id)
+      else { showToast(res.error || 'Failed to delete task'); setDeleting(false) }
+    } finally {
+      setTimeout(() => onSaving(false), 2000)
+    }
   }
 
   const statusCfg = STATUS_DISPLAY[task.status] || STATUS_DISPLAY.not_started
@@ -535,8 +538,7 @@ export default function DailyTaskBoard() {
 
   const loadTasks = useCallback(async (silent = false) => {
     if (silent && savingRef.current) return
-    if (!silent) setLoading(true)
-    setError(null)
+    if (!silent) { setLoading(true); setError(null) }
     try {
       const res = await api.getDailyTasks({ task_date: currentDate, include_done: true })
       if (!savingRef.current && res.data?.daily_tasks) setAllTasks(res.data.daily_tasks)
