@@ -203,13 +203,19 @@ class DailyTaskImportService
 
   def build_staff_map
     map = {}
+    collided_first_names = Set.new
     User.staff.each do |u|
       key = u.first_name&.downcase
-      if key.present? && !map.key?(key)
-        map[key] = u
+      if key.present?
+        if map.key?(key)
+          collided_first_names << key
+        else
+          map[key] = u
+        end
       end
       map[u.full_name&.downcase] = u
     end
+    collided_first_names.each { |k| map.delete(k) }
     dms_user = User.find_by(email: ADMIN_EMAIL)
     map["dms"] = dms_user if dms_user
     map
