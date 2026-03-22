@@ -148,13 +148,7 @@ module Api
             return render json: { error: "Invitation was already sent recently. Please wait a minute before resending." }, status: :too_many_requests
           end
 
-          begin
-            email_sent = send_invitation_email(@user)
-          rescue StandardError => e
-            Rails.logger.error("resend_invite email error for user #{@user.id}: #{e.message}")
-            Rails.cache.delete(cache_key)
-            return render json: { error: "Failed to send invitation email. Please check email configuration." }, status: :unprocessable_entity
-          end
+          email_sent = send_invitation_email(@user)
 
           unless email_sent
             Rails.cache.delete(cache_key)
