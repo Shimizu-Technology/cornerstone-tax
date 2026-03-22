@@ -100,6 +100,15 @@ class DailyTaskImportService
         )
         created << task
       end
+
+      created.each do |task|
+        AuditLog.log(
+          auditable: task,
+          action: "created",
+          user: @user,
+          metadata: "Imported daily task from spreadsheet: #{task.title}"
+        )
+      end
     end
 
     { created: created }

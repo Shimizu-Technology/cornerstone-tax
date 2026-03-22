@@ -214,15 +214,6 @@ module Api
         service = DailyTaskImportService.new(nil, user: current_user)
         result = service.import!(task_date: task_date, rows: rows)
 
-        result[:created].each do |task|
-          AuditLog.log(
-            auditable: task,
-            action: "created",
-            user: current_user,
-            metadata: "Imported daily task from spreadsheet: #{task.title}"
-          )
-        end
-
         render json: {
           daily_tasks: result[:created].map { |t| serialize_task(t) },
           imported_count: result[:created].size
