@@ -25,6 +25,7 @@ class User < ApplicationRecord
   has_many :reviewed_daily_tasks, class_name: "DailyTask", foreign_key: "reviewed_by_id", dependent: :nullify
   has_many :created_daily_tasks, class_name: "DailyTask", foreign_key: "created_by_id", dependent: :nullify
   has_many :completed_daily_tasks, class_name: "DailyTask", foreign_key: "completed_by_id", dependent: :nullify
+  has_many :status_changed_daily_tasks, class_name: "DailyTask", foreign_key: "status_changed_by_id", dependent: :nullify
 
   validates :clerk_id, presence: true, uniqueness: true
   validates :email, presence: true

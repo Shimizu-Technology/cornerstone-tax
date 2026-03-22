@@ -581,8 +581,13 @@ export default function DailyTaskBoard() {
     arr.splice(ti, 0, moved)
     const reordered = arr.map((t, i) => ({ ...t, position: i }))
     setAllTasks(reordered)
-    const res = await api.reorderDailyTasks(reordered.map((t, i) => ({ id: t.id, position: i })))
-    if (res.error) { showToast('Failed to save new order — will refresh'); loadTasks(true) }
+    savingRef.current = true
+    try {
+      const res = await api.reorderDailyTasks(reordered.map((t, i) => ({ id: t.id, position: i })))
+      if (res.error) { showToast('Failed to save new order — will refresh'); loadTasks(true) }
+    } finally {
+      setTimeout(() => { savingRef.current = false }, 2000)
+    }
   }
   const onDragEnd = () => { dragSrc.current = null; setDragTargetId(null) }
 
@@ -655,6 +660,7 @@ export default function DailyTaskBoard() {
   const handlePrint = () => {
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
     const dateLabel = formatDateLong(currentDate)
     const total = tasks.length
     const done = tasks.filter(t => DONE_STATUSES.includes(t.status)).length
@@ -663,14 +669,14 @@ export default function DailyTaskBoard() {
       const statusLabel = STATUS_DISPLAY[t.status]?.label ?? t.status
       return `<tr>
         <td style="text-align:center;color:#888">${i + 1}</td>
-        <td style="font-weight:600">${t.title}</td>
-        <td>${t.form_service ?? ''}</td>
-        <td style="font-size:8.5pt;color:#444">${t.comments ?? ''}</td>
-        <td>${t.assigned_to?.name ?? ''}</td>
-        <td>${t.reviewed_by?.name ?? ''}</td>
-        <td>${statusLabel}</td>
+        <td style="font-weight:600">${esc(t.title)}</td>
+        <td>${esc(t.form_service ?? '')}</td>
+        <td style="font-size:8.5pt;color:#444">${esc(t.comments ?? '')}</td>
+        <td>${esc(t.assigned_to?.name ?? '')}</td>
+        <td>${esc(t.reviewed_by?.name ?? '')}</td>
+        <td>${esc(statusLabel)}</td>
         <td style="font-size:8.5pt">${formatShortDate(t.status_changed_at ?? null)}</td>
-        <td style="font-size:8.5pt">${t.status_changed_by?.name ?? ''}</td>
+        <td style="font-size:8.5pt">${esc(t.status_changed_by?.name ?? '')}</td>
       </tr>`
     }).join('')
 
