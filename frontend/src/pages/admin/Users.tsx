@@ -408,7 +408,7 @@ export default function Users() {
                     disabled={resendingId === user.id}
                     className="px-3 py-2 text-primary hover:bg-primary/5 rounded-lg text-sm font-medium disabled:opacity-50"
                   >
-                    {resendingId === user.id ? 'Sending...' : 'Resend'}
+                    {resendingId === user.id ? 'Sending...' : 'Resend Invite'}
                   </button>
                 )}
                 <button
