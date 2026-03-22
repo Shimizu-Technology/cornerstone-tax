@@ -248,32 +248,36 @@ class TimeClockService
       count = stale.count
 
       stale.find_each do |entry|
-        ActiveRecord::Base.transaction do
-          if entry.status == "on_break"
-            entry.active_break&.close!
+        begin
+          ActiveRecord::Base.transaction do
+            if entry.status == "on_break"
+              entry.active_break&.close!
+            end
+
+            guam_now = Time.current.in_time_zone(business_timezone)
+            entry.end_time = guam_now
+            entry.clock_out_at = Time.current
+            entry.calculate_hours_from_times
+            entry.update!(
+              end_time: entry.end_time,
+              clock_out_at: entry.clock_out_at,
+              hours: entry.hours,
+              status: "completed",
+              break_minutes: entry.total_break_minutes,
+              admin_override: true,
+              approval_status: "pending",
+              approval_note: "Auto-closed: clocked in for over #{threshold_hours} hours without clocking out"
+            )
+
+            AuditLog.create!(
+              auditable: entry,
+              action: "updated",
+              user: nil,
+              metadata: "System auto-closed stale time entry (>#{threshold_hours}h) for #{entry.user&.full_name}"
+            )
           end
-
-          guam_now = Time.current.in_time_zone(business_timezone)
-          entry.end_time = guam_now
-          entry.clock_out_at = Time.current
-          entry.calculate_hours_from_times
-          entry.update!(
-            end_time: entry.end_time,
-            clock_out_at: entry.clock_out_at,
-            hours: entry.hours,
-            status: "completed",
-            break_minutes: entry.total_break_minutes,
-            admin_override: true,
-            approval_status: "pending",
-            approval_note: "Auto-closed: clocked in for over #{threshold_hours} hours without clocking out"
-          )
-
-          AuditLog.create!(
-            auditable: entry,
-            action: "updated",
-            user: nil,
-            metadata: "System auto-closed stale time entry (>#{threshold_hours}h) for #{entry.user&.full_name}"
-          )
+        rescue StandardError => e
+          Rails.logger.error("Failed to auto-close stale entry #{entry.id}: #{e.message}")
         end
       end
 

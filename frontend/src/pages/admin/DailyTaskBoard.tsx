@@ -661,7 +661,11 @@ export default function DailyTaskBoard() {
     savingRef.current = true
     try {
       const res = await api.reorderDailyTasks(reordered.map((t, i) => ({ id: t.id, position: i })))
-      if (res.error) { showToast('Failed to save new order — will refresh'); loadTasks(true) }
+      if (res.error) {
+        showToast('Failed to save new order — refreshing')
+        savingRef.current = false
+        loadTasks()
+      }
     } finally {
       if (savingTimeoutRef.current) clearTimeout(savingTimeoutRef.current)
       savingTimeoutRef.current = setTimeout(() => { savingRef.current = false }, 2000)

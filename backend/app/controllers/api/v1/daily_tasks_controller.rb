@@ -130,15 +130,15 @@ module Api
           positions.each do |pos|
             DailyTask.where(id: pos[:id]).update_all(position: pos[:position])
           end
-        end
 
-        AuditLog.create!(
-          auditable_type: "DailyTask",
-          auditable_id: positions.first[:id],
-          action: "updated",
-          user: current_user,
-          metadata: "Reordered #{positions.size} daily task(s)"
-        )
+          AuditLog.create!(
+            auditable_type: "DailyTask",
+            auditable_id: positions.first[:id],
+            action: "updated",
+            user: current_user,
+            metadata: "Reordered #{positions.size} daily task(s)"
+          )
+        end
 
         render json: { success: true }
       end

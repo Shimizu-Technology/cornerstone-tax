@@ -126,6 +126,8 @@ module Api
         update_params = time_entry_params.except(:user_id)
 
         unless current_user.admin?
+          # Intentional: any employee edit to an approved/denied entry OR any manual entry
+          # requires re-approval. Clock entries with nil status (legacy) are left as-is.
           if @time_entry.approval_status.in?(["approved", "denied"]) || @time_entry.entry_method == "manual"
             update_params[:approval_status] = "pending"
             update_params[:approval_note] = "Employee edited time entry — awaiting admin review" unless @time_entry.approval_status == "pending"
