@@ -158,8 +158,10 @@ export default function Users() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-secondary/50 rounded-xl p-1 w-fit">
+      <div role="tablist" className="flex gap-1 bg-secondary/50 rounded-xl p-1 w-fit">
         <button
+          role="tab"
+          aria-selected={activeTab === 'team'}
           onClick={() => setActiveTab('team')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'team'
@@ -171,6 +173,8 @@ export default function Users() {
           <span className="ml-1.5 text-xs text-gray-400">({teamUsers.length})</span>
         </button>
         <button
+          role="tab"
+          aria-selected={activeTab === 'clients'}
           onClick={() => setActiveTab('clients')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'clients'
