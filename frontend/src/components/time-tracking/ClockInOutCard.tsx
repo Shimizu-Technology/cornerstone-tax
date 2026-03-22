@@ -162,8 +162,8 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
       setActionLoading(true)
       setError(null)
       try {
-        const today = new Date().toISOString().split('T')[0]
-        const result = await api.clockOut(`${today}T${correctionTime}:00`)
+        const guamDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Guam', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+        const result = await api.clockOut(`${guamDate}T${correctionTime}:00`)
         if (result?.error) {
           setError(result.error)
           await fetchStatus()

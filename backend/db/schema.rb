@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_20_223356) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_22_091714) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -332,7 +332,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_20_223356) do
     t.text "notes"
     t.time "start_time", null: false
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.bigint "user_id"
     t.date "work_date", null: false
     t.index ["created_by_id"], name: "index_schedules_on_created_by_id"
     t.index ["user_id", "work_date"], name: "index_schedules_on_user_id_and_work_date"
@@ -430,7 +430,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_20_223356) do
     t.bigint "tax_return_id"
     t.bigint "time_category_id"
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.bigint "user_id"
     t.date "work_date", null: false
     t.index ["approval_status"], name: "index_time_entries_on_approval_status"
     t.index ["approved_by_id"], name: "index_time_entries_on_approved_by_id"

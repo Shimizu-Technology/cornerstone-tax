@@ -194,6 +194,8 @@ module Api
             task.position = idx
             task.completed_at = nil
             task.completed_by = nil
+            # Intentionally preserves source task's status so staff can see
+            # carry-over progress (e.g. "pending_info" items still need attention).
             task.status_changed_at = Time.current
             task.status_changed_by = current_user
             task.created_by = current_user
