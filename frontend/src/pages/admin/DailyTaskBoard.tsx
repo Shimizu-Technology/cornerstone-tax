@@ -555,9 +555,11 @@ export default function DailyTaskBoard() {
 
   const confirmImport = async () => {
     if (!importPreview) return
+    const validRows = importPreview.filter(r => r.client?.trim())
+    if (validRows.length === 0) { showToast('No rows with a client name to import'); return }
     setImportLoading(true)
     try {
-      const res = await api.importDailyTasks(importTargetDate, importPreview)
+      const res = await api.importDailyTasks(importTargetDate, validRows)
       if (res.data?.daily_tasks) {
         showToast(`Imported ${res.data.imported_count} task(s) successfully`, 'success')
         if (res.data.warnings?.length) {
@@ -570,6 +572,23 @@ export default function DailyTaskBoard() {
       }
     } catch { showToast('Import failed') }
     finally { setImportLoading(false) }
+  }
+
+  const updateImportRow = (idx: number, field: keyof ImportPreviewRow, value: string) => {
+    setImportPreview(prev => {
+      if (!prev) return prev
+      const updated = [...prev]
+      updated[idx] = { ...updated[idx], [field]: value }
+      return updated
+    })
+  }
+
+  const removeImportRow = (idx: number) => {
+    setImportPreview(prev => prev ? prev.filter((_, i) => i !== idx) : prev)
+  }
+
+  const addImportRow = () => {
+    setImportPreview(prev => prev ? [...prev, { client: '', form_service: '', comments: '', staff: '', reviewed_by: '', status: '' }] : prev)
   }
 
   useEffect(() => {
@@ -982,41 +1001,76 @@ export default function DailyTaskBoard() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider">
-                    <th className="px-2 py-2 text-left w-8">#</th>
-                    <th className="px-2 py-2 text-left">Client</th>
-                    <th className="px-2 py-2 text-left">Form/Service</th>
-                    <th className="px-2 py-2 text-left">Comments</th>
-                    <th className="px-2 py-2 text-left">Staff</th>
-                    <th className="px-2 py-2 text-left">Reviewed By</th>
-                    <th className="px-2 py-2 text-left">Status</th>
+                    <th className="px-1 py-2 text-left w-8">#</th>
+                    <th className="px-1 py-2 text-left" style={{ minWidth: 150 }}>Client</th>
+                    <th className="px-1 py-2 text-left" style={{ minWidth: 130 }}>Form/Service</th>
+                    <th className="px-1 py-2 text-left" style={{ minWidth: 180 }}>Comments</th>
+                    <th className="px-1 py-2 text-left" style={{ minWidth: 90 }}>Staff</th>
+                    <th className="px-1 py-2 text-left" style={{ minWidth: 90 }}>Reviewed By</th>
+                    <th className="px-1 py-2 text-left" style={{ minWidth: 100 }}>Status</th>
+                    <th className="w-8 px-1 py-2" />
                   </tr>
                 </thead>
                 <tbody>
                   {importPreview.map((row, i) => (
-                    <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-2 py-2 text-gray-400 font-mono text-xs">{i + 1}</td>
-                      <td className="px-2 py-2 font-medium text-gray-900">{row.client || <span className="text-gray-300 italic">empty</span>}</td>
-                      <td className="px-2 py-2 text-gray-600">{row.form_service || '—'}</td>
-                      <td className="px-2 py-2 text-gray-600 max-w-xs truncate">{row.comments || '—'}</td>
-                      <td className="px-2 py-2 text-gray-600">{row.staff || '—'}</td>
-                      <td className="px-2 py-2 text-gray-600">{row.reviewed_by || '—'}</td>
-                      <td className="px-2 py-2 text-gray-600">{row.status || '—'}</td>
+                    <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 group">
+                      <td className="px-1 py-1 text-gray-400 font-mono text-xs">{i + 1}</td>
+                      <td className="px-1 py-1">
+                        <input value={row.client || ''} onChange={e => updateImportRow(i, 'client', e.target.value)}
+                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent font-medium text-gray-900"
+                          placeholder="Client name..." />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input value={row.form_service || ''} onChange={e => updateImportRow(i, 'form_service', e.target.value)}
+                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input value={row.comments || ''} onChange={e => updateImportRow(i, 'comments', e.target.value)}
+                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input value={row.staff || ''} onChange={e => updateImportRow(i, 'staff', e.target.value)}
+                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input value={row.reviewed_by || ''} onChange={e => updateImportRow(i, 'reviewed_by', e.target.value)}
+                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input value={row.status || ''} onChange={e => updateImportRow(i, 'status', e.target.value)}
+                          className="w-full text-sm border border-transparent hover:border-gray-300 focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-1 bg-transparent text-gray-600" />
+                      </td>
+                      <td className="px-1 py-1">
+                        <button onClick={() => removeImportRow(i)} title="Remove row"
+                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all rounded">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <button onClick={addImportRow}
+                className="mt-2 text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add row
+              </button>
             </div>
 
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
-              <p className="text-xs text-gray-500">Unrecognized staff names will be left unassigned. Unknown statuses default to &ldquo;Not Started.&rdquo;</p>
+              <p className="text-xs text-gray-500">Click any cell to edit. Rows without a client name are skipped. Unrecognized staff default to unassigned.</p>
               <div className="flex gap-2">
                 <button onClick={() => setImportPreview(null)}
                   className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors">
                   Cancel
                 </button>
-                <button onClick={confirmImport} disabled={importLoading || importPreview.length === 0}
+                <button onClick={confirmImport} disabled={importLoading || importPreview.filter(r => r.client?.trim()).length === 0}
                   className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors font-medium">
-                  {importLoading ? 'Importing...' : `Import ${importPreview.length} Task(s)`}
+                  {importLoading ? 'Importing...' : `Import ${importPreview.filter(r => r.client?.trim()).length} Task(s)`}
                 </button>
               </div>
             </div>
