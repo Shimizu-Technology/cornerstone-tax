@@ -51,6 +51,21 @@ Rails.application.routes.draw do
           post :reopen
         end
       end
+
+      resources :daily_tasks, only: [:index, :show, :create, :update, :destroy] do
+        collection do
+          get :my_tasks
+          post :reorder
+          post :bulk_create
+          post :copy_to_date
+          post :preview_import
+          post :import_spreadsheet
+        end
+        member do
+          post :complete
+          post :reopen
+        end
+      end
       resources :tax_returns, only: [:index, :show, :update] do
         member do
           post :assign

@@ -47,6 +47,12 @@ class AuditLog < ApplicationRecord
                     else
                       "tax return ##{auditable_id}"
                     end
+                  when "DailyTask"
+                    if auditable
+                      "daily task \"#{auditable.title}\" (#{auditable.task_date})"
+                    else
+                      "daily task ##{auditable_id}"
+                    end
                   else
                     "#{auditable_type.underscore.humanize.downcase} ##{auditable_id}"
                   end

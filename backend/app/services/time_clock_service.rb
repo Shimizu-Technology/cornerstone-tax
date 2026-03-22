@@ -46,7 +46,7 @@ class TimeClockService
     end
 
     # ── Clock Out ──
-    def clock_out(user:, admin_override_by: nil)
+    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil)
       entry = active_entry_for(user)
       raise ClockError, "Not currently clocked in" unless entry
 
@@ -58,8 +58,28 @@ class TimeClockService
 
         now = Time.current
         guam_now = now.in_time_zone(business_timezone)
-        entry.end_time = guam_now
-        entry.clock_out_at = now
+
+        if corrected_end_time.present?
+          begin
+            parsed = ActiveSupport::TimeZone[business_timezone].parse(corrected_end_time)
+          rescue ArgumentError
+            raise ClockError, "Invalid corrected time format"
+          end
+          if parsed <= entry.start_time.in_time_zone(business_timezone)
+            raise ClockError, "Corrected time (#{parsed.strftime('%I:%M %p')}) must be after your clock-in time (#{entry.start_time.in_time_zone(business_timezone).strftime('%I:%M %p')})"
+          end
+          if parsed > guam_now
+            raise ClockError, "Corrected time (#{parsed.strftime('%I:%M %p')}) cannot be in the future"
+          end
+          entry.end_time = parsed
+          entry.clock_out_at = now
+          entry.approval_status = "pending"
+          entry.approval_note = "Employee corrected clock-out time to #{parsed.strftime('%I:%M %p')}"
+        else
+          entry.end_time = guam_now
+          entry.clock_out_at = now
+        end
+
         entry.status = "completed"
         entry.break_minutes = entry.total_break_minutes
         entry.calculate_hours_from_times
@@ -220,6 +240,48 @@ class TimeClockService
 
     def active_entry_for(user)
       TimeEntry.clocked_in.for_user(user).order(created_at: :desc).first
+    end
+
+    def flag_stale_entries(threshold_hours: 12)
+      cutoff = threshold_hours.hours.ago
+      stale = TimeEntry.clocked_in.where("clock_in_at < ?", cutoff)
+      count = stale.count
+
+      stale.find_each do |entry|
+        begin
+          ActiveRecord::Base.transaction do
+            if entry.status == "on_break"
+              entry.active_break&.close!
+            end
+
+            guam_now = Time.current.in_time_zone(business_timezone)
+            entry.end_time = guam_now
+            entry.clock_out_at = Time.current
+            entry.calculate_hours_from_times
+            entry.update!(
+              end_time: entry.end_time,
+              clock_out_at: entry.clock_out_at,
+              hours: entry.hours,
+              status: "completed",
+              break_minutes: entry.total_break_minutes,
+              admin_override: true,
+              approval_status: "pending",
+              approval_note: "Auto-closed: clocked in for over #{threshold_hours} hours without clocking out"
+            )
+
+            AuditLog.create!(
+              auditable: entry,
+              action: "updated",
+              user: nil,
+              metadata: "System auto-closed stale time entry (>#{threshold_hours}h) for #{entry.user&.full_name}"
+            )
+          end
+        rescue StandardError => e
+          Rails.logger.error("Failed to auto-close stale entry #{entry.id}: #{e.message}")
+        end
+      end
+
+      count
     end
 
     def hours_today(user, date = Date.current)

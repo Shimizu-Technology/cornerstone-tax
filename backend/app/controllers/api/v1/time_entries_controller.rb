@@ -126,8 +126,11 @@ module Api
         update_params = time_entry_params.except(:user_id)
 
         unless current_user.admin?
-          if @time_entry.approval_status.in?(%w[approved denied]) && @time_entry.manual_entry?
+          # Intentional: any employee edit to an approved/denied entry OR any manual entry
+          # requires re-approval. Clock entries with nil status (legacy) are left as-is.
+          if @time_entry.approval_status.in?(["approved", "denied"]) || @time_entry.entry_method == "manual"
             update_params[:approval_status] = "pending"
+            update_params[:approval_note] = "Employee edited time entry — awaiting admin review" unless @time_entry.approval_status == "pending"
           end
         end
 
@@ -217,7 +220,8 @@ module Api
       def clock_out
         target_user = resolve_clock_target_user
         admin_override = (current_user.admin? && target_user.id != current_user.id) ? current_user : nil
-        entry = TimeClockService.clock_out(user: target_user, admin_override_by: admin_override)
+        corrected_end = params[:corrected_end_time]
+        entry = TimeClockService.clock_out(user: target_user, admin_override_by: admin_override, corrected_end_time: corrected_end)
         render json: { time_entry: serialize_time_entry(entry) }
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
@@ -448,11 +452,12 @@ module Api
       end
 
       def serialize_time_entry(entry)
+        tz = TimeClockService::BUSINESS_TIMEZONE
         {
           id: entry.id,
           work_date: entry.work_date.iso8601,
-          start_time: entry.start_time&.strftime("%H:%M"),
-          end_time: entry.end_time&.strftime("%H:%M"),
+          start_time: entry.start_time&.in_time_zone(tz)&.strftime("%H:%M"),
+          end_time: entry.end_time&.in_time_zone(tz)&.strftime("%H:%M"),
           formatted_start_time: entry.formatted_start_time,
           formatted_end_time: entry.formatted_end_time,
           hours: entry.hours.to_f,

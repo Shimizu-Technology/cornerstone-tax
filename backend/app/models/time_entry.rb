@@ -7,7 +7,7 @@ class TimeEntry < ApplicationRecord
   APPROVAL_STATUSES = %w[pending approved denied].freeze
   OVERTIME_STATUSES = %w[none pending approved denied].freeze
 
-  belongs_to :user
+  belongs_to :user, optional: true
   belongs_to :client, optional: true
   belongs_to :tax_return, optional: true
   belongs_to :time_category, optional: true
@@ -124,11 +124,11 @@ class TimeEntry < ApplicationRecord
   end
 
   def formatted_start_time
-    start_time&.strftime("%I:%M %p")&.sub(/^0/, "")
+    start_time&.in_time_zone(TimeClockService::BUSINESS_TIMEZONE)&.strftime("%I:%M %p")&.sub(/^0/, "")
   end
 
   def formatted_end_time
-    end_time&.strftime("%I:%M %p")&.sub(/^0/, "")
+    end_time&.in_time_zone(TimeClockService::BUSINESS_TIMEZONE)&.strftime("%I:%M %p")&.sub(/^0/, "")
   end
 
   private

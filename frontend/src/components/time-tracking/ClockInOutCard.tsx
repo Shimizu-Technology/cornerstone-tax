@@ -18,6 +18,8 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
   const [error, setError] = useState<string | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [breakElapsed, setBreakElapsed] = useState(0)
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false)
+  const [correctionTime, setCorrectionTime] = useState('')
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const isOnBreakRef = useRef(false)
@@ -69,6 +71,13 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [status?.clocked_in])
 
+  // Re-sync with server every 60s while clocked in to prevent drift
+  useEffect(() => {
+    if (!status?.clocked_in) return
+    const syncInterval = setInterval(() => fetchStatus(), 60_000)
+    return () => clearInterval(syncInterval)
+  }, [status?.clocked_in, fetchStatus])
+
   // Reset break elapsed when break state changes
   useEffect(() => {
     if (!status?.active_break) {
@@ -87,6 +96,92 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
     return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
   }
 
+  const fmt12 = (time24: string) => {
+    if (!time24) return '—'
+    const [h, m] = time24.split(':').map(Number)
+    const period = h >= 12 ? 'PM' : 'AM'
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${h12}:${m.toString().padStart(2, '0')} ${period}`
+  }
+
+  const guamNow = () => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Pacific/Guam',
+      hour: 'numeric', minute: 'numeric', hour12: false,
+    }).formatToParts(new Date())
+    const h = parseInt(parts.find(p => p.type === 'hour')!.value)
+    const m = parseInt(parts.find(p => p.type === 'minute')!.value)
+    return { hours: h, minutes: m, totalMin: h * 60 + m }
+  }
+
+  const guamHHMM = (date: Date) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Pacific/Guam',
+      hour: 'numeric', minute: 'numeric', hour12: false,
+    }).formatToParts(date)
+    const h = parts.find(p => p.type === 'hour')!.value.padStart(2, '0')
+    const m = parts.find(p => p.type === 'minute')!.value.padStart(2, '0')
+    return `${h}:${m}`
+  }
+
+  const isPastSchedule = () => {
+    if (!status?.schedule || !status?.clocked_in) return false
+    const endParts = status.schedule.end_time.match(/(\d+):(\d+)\s*(AM|PM)/i)
+    if (!endParts) return false
+    let hours = parseInt(endParts[1])
+    const minutes = parseInt(endParts[2])
+    const period = endParts[3].toUpperCase()
+    if (period === 'PM' && hours !== 12) hours += 12
+    if (period === 'AM' && hours === 12) hours = 0
+    const schedEnd = hours * 60 + minutes
+    const { totalMin: currentMin } = guamNow()
+    return currentMin > schedEnd + 30
+  }
+
+  const correctionBeforeClockIn = (() => {
+    if (!correctionTime || !status?.clock_in_at) return false
+    const clockInHHMM = guamHHMM(new Date(status.clock_in_at))
+    return correctionTime <= clockInHHMM
+  })()
+
+  const handleClockOut = () => {
+    if (isPastSchedule()) {
+      const { hours: h, minutes: m } = guamNow()
+      const hh = h.toString().padStart(2, '0')
+      const mm = m.toString().padStart(2, '0')
+      setCorrectionTime(`${hh}:${mm}`)
+      setShowCorrectionModal(true)
+      return
+    }
+    handleAction('clock_out')
+  }
+
+  const handleCorrectedClockOut = async (useCorrection: boolean) => {
+    setShowCorrectionModal(false)
+    if (useCorrection && correctionTime) {
+      setActionLoading(true)
+      setError(null)
+      try {
+        const guamDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Guam', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+        const result = await api.clockOut(`${guamDate}T${correctionTime}:00`)
+        if (result?.error) {
+          setError(result.error)
+          await fetchStatus()
+        } else {
+          await fetchStatus()
+          onStatusChange?.()
+        }
+      } catch {
+        setError('Action failed. Please try again.')
+        await fetchStatus()
+      } finally {
+        setActionLoading(false)
+      }
+    } else {
+      handleAction('clock_out')
+    }
+  }
+
   const handleAction = async (action: 'clock_in' | 'clock_out' | 'start_break' | 'end_break', adminOverride = false) => {
     setActionLoading(true)
     setError(null)
@@ -98,10 +193,16 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
         end_break: () => api.endBreak(),
       }
       const result = await fn[action]()
-      if (result?.error) setError(result.error)
-      else { await fetchStatus(); onStatusChange?.() }
+      if (result?.error) {
+        setError(result.error)
+        await fetchStatus()
+      } else {
+        await fetchStatus()
+        onStatusChange?.()
+      }
     } catch {
       setError('Action failed. Please try again.')
+      await fetchStatus()
     } finally {
       setActionLoading(false)
     }
@@ -218,7 +319,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
                   {actionLoading ? <Spinner className="border-primary-dark/30 border-t-primary-dark" /> : <><PauseIcon /> Start Break</>}
                 </button>
               )}
-              <button onClick={() => handleAction('clock_out')} disabled={actionLoading} className={`w-full ${btnPrimary}`}>
+              <button onClick={handleClockOut} disabled={actionLoading} className={`w-full ${btnPrimary}`}>
                 {actionLoading ? <Spinner /> : <><StopIcon /> Clock Out</>}
               </button>
             </>
@@ -278,7 +379,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
                     {actionLoading ? <Spinner className="border-primary-dark/30 border-t-primary-dark" /> : <><PauseIcon /> Start Break</>}
                   </button>
                 )}
-                <button onClick={() => handleAction('clock_out')} disabled={actionLoading} className={btnPrimary}>
+                <button onClick={handleClockOut} disabled={actionLoading} className={btnPrimary}>
                   {actionLoading ? <Spinner /> : <><StopIcon /> Clock Out</>}
                 </button>
               </>
@@ -323,6 +424,61 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
           <TimelineSection clockInAt={status.clock_in_at} breaks={status.breaks || []} fmtTime={fmtTime} compact />
         )}
       </div>
+
+      {/* Clock-out correction modal */}
+      {showCorrectionModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowCorrectionModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Late Clock Out</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Your shift was scheduled to end at <span className="font-medium">{status?.schedule?.end_time}</span>.
+                  Did you forget to clock out?
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-5">
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">What time did you actually stop working?</label>
+              <input
+                type="time"
+                value={correctionTime}
+                onChange={e => setCorrectionTime(e.target.value)}
+                className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary ${
+                  correctionBeforeClockIn ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                }`}
+              />
+              {correctionBeforeClockIn ? (
+                <p className="text-xs text-red-500 mt-1.5">Time must be after your clock-in ({fmtTime(status!.clock_in_at!)})</p>
+              ) : (
+                <p className="text-xs text-gray-400 mt-1.5">This will be submitted for admin approval.</p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleCorrectedClockOut(true)}
+                disabled={!correctionTime || correctionBeforeClockIn}
+                className="flex-1 min-h-[44px] bg-primary text-white font-semibold rounded-xl text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                Clock Out at {fmt12(correctionTime)}
+              </button>
+              <button
+                onClick={() => handleCorrectedClockOut(false)}
+                className="flex-1 min-h-[44px] border border-gray-300 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 transition-colors"
+              >
+                I worked until now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

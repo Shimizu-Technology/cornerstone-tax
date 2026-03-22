@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_20_073043) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_22_101903) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -107,6 +107,37 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_20_073043) do
     t.index ["email"], name: "index_clients_on_email"
     t.index ["has_tax_returns"], name: "index_clients_on_has_tax_returns"
     t.index ["last_name", "first_name"], name: "index_clients_on_last_name_and_first_name"
+  end
+
+  create_table "daily_tasks", force: :cascade do |t|
+    t.bigint "assigned_to_id"
+    t.bigint "client_id"
+    t.text "comments"
+    t.datetime "completed_at"
+    t.bigint "completed_by_id"
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.date "due_date"
+    t.string "form_service"
+    t.integer "position", default: 0, null: false
+    t.string "priority", default: "normal", null: false
+    t.bigint "reviewed_by_id"
+    t.bigint "service_type_id"
+    t.string "status", default: "not_started", null: false
+    t.datetime "status_changed_at"
+    t.bigint "status_changed_by_id"
+    t.date "task_date", null: false
+    t.bigint "tax_return_id"
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assigned_to_id"], name: "index_daily_tasks_on_assigned_to_id"
+    t.index ["client_id"], name: "index_daily_tasks_on_client_id"
+    t.index ["due_date"], name: "index_daily_tasks_pending_by_due_date", where: "((status)::text <> 'done'::text)"
+    t.index ["service_type_id"], name: "index_daily_tasks_on_service_type_id"
+    t.index ["status"], name: "index_daily_tasks_on_status"
+    t.index ["task_date", "position"], name: "index_daily_tasks_on_task_date_and_position"
+    t.index ["task_date", "status"], name: "index_daily_tasks_on_task_date_and_status"
+    t.index ["tax_return_id"], name: "index_daily_tasks_on_tax_return_id"
   end
 
   create_table "dependents", force: :cascade do |t|
@@ -301,7 +332,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_20_073043) do
     t.text "notes"
     t.time "start_time", null: false
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.bigint "user_id"
     t.date "work_date", null: false
     t.index ["created_by_id"], name: "index_schedules_on_created_by_id"
     t.index ["user_id", "work_date"], name: "index_schedules_on_user_id_and_work_date"
@@ -399,7 +430,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_20_073043) do
     t.bigint "tax_return_id"
     t.bigint "time_category_id"
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.bigint "user_id"
     t.date "work_date", null: false
     t.index ["approval_status"], name: "index_time_entries_on_approval_status"
     t.index ["approved_by_id"], name: "index_time_entries_on_approved_by_id"
@@ -508,6 +539,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_20_073043) do
   add_foreign_key "client_operation_assignments", "users", column: "created_by_id"
   add_foreign_key "client_service_types", "clients"
   add_foreign_key "client_service_types", "service_types"
+  add_foreign_key "daily_tasks", "clients"
+  add_foreign_key "daily_tasks", "service_types"
+  add_foreign_key "daily_tasks", "tax_returns"
+  add_foreign_key "daily_tasks", "users", column: "assigned_to_id"
+  add_foreign_key "daily_tasks", "users", column: "completed_by_id"
+  add_foreign_key "daily_tasks", "users", column: "created_by_id"
+  add_foreign_key "daily_tasks", "users", column: "reviewed_by_id"
+  add_foreign_key "daily_tasks", "users", column: "status_changed_by_id"
   add_foreign_key "dependents", "clients"
   add_foreign_key "documents", "tax_returns"
   add_foreign_key "documents", "users", column: "uploaded_by_id"

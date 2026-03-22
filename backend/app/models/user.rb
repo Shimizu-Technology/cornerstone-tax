@@ -7,10 +7,10 @@ class User < ApplicationRecord
   has_many :reviewed_tax_returns, class_name: "TaxReturn", foreign_key: "reviewed_by_id", dependent: :nullify
   has_many :workflow_events, dependent: :nullify
   has_many :audit_logs, dependent: :nullify
-  has_many :time_entries, dependent: :destroy
+  has_many :time_entries, dependent: :nullify
   has_many :approved_time_entries, class_name: "TimeEntry", foreign_key: "approved_by_id", dependent: :nullify
   has_many :overtime_approved_time_entries, class_name: "TimeEntry", foreign_key: "overtime_approved_by_id", dependent: :nullify
-  has_many :schedules, dependent: :destroy
+  has_many :schedules, dependent: :nullify
   has_many :created_schedules, class_name: "Schedule", foreign_key: "created_by_id", dependent: :nullify
   has_many :uploaded_documents, class_name: "Document", foreign_key: "uploaded_by_id", dependent: :nullify
   has_many :created_transmittals, class_name: "Transmittal", foreign_key: "created_by_id", dependent: :nullify
@@ -21,6 +21,11 @@ class User < ApplicationRecord
   has_many :completed_operation_tasks, class_name: "OperationTask", foreign_key: "completed_by_id", dependent: :nullify
   has_many :default_operation_template_tasks, class_name: "OperationTemplateTask", foreign_key: "default_assignee_id", dependent: :nullify
   has_many :created_operation_templates, class_name: "OperationTemplate", foreign_key: "created_by_id", dependent: :nullify
+  has_many :assigned_daily_tasks, class_name: "DailyTask", foreign_key: "assigned_to_id", dependent: :nullify
+  has_many :reviewed_daily_tasks, class_name: "DailyTask", foreign_key: "reviewed_by_id", dependent: :nullify
+  has_many :created_daily_tasks, class_name: "DailyTask", foreign_key: "created_by_id", dependent: :nullify
+  has_many :completed_daily_tasks, class_name: "DailyTask", foreign_key: "completed_by_id", dependent: :nullify
+  has_many :status_changed_daily_tasks, class_name: "DailyTask", foreign_key: "status_changed_by_id", dependent: :nullify
 
   validates :clerk_id, presence: true, uniqueness: true
   validates :email, presence: true
