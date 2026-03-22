@@ -952,6 +952,35 @@ export interface PayrollChecklistPeriodDetailResponse {
   }>;
 }
 
+// Daily Tasks
+export interface DailyTask {
+  id: number;
+  title: string;
+  task_date: string;
+  position: number;
+  status: 'not_started' | 'in_progress' | 'dms_reviewing' | 'ready_to_file' | 'ready_for_signature' | 'completed' | 'filed_with_drt' | 'filed_with_irs' | 'pending_info' | 'other' | 'done';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  form_service: string | null;
+  comments: string | null;
+  due_date: string | null;
+  client: { id: number; name: string } | null;
+  tax_return: { id: number; tax_year: number; filing_status: string } | null;
+  service_type: { id: number; name: string } | null;
+  assigned_to: { id: number; name: string } | null;
+  reviewed_by: { id: number; name: string } | null;
+  created_by: { id: number; name: string } | null;
+  status_changed_at: string | null;
+  status_changed_by: { id: number; name: string } | null;
+  completed_at: string | null;
+  completed_by: { id: number; name: string } | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DailyTasksResponse {
+  daily_tasks: DailyTask[];
+}
+
 // API functions
 export const api = {
   // Auth
@@ -1555,9 +1584,10 @@ export const api = {
       }),
     }),
 
-  clockOut: () =>
+  clockOut: (correctedEndTime?: string) =>
     fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/clock_out', {
       method: 'POST',
+      ...(correctedEndTime ? { body: JSON.stringify({ corrected_end_time: correctedEndTime }) } : {}),
     }),
 
   startBreak: () =>
@@ -1882,5 +1912,116 @@ export const api = {
     fetchApi<{ user: { id: number; email: string; role: string; client_id: number | null }; invitation_email_sent: boolean }>('/api/v1/admin/users', {
       method: 'POST',
       body: JSON.stringify({ role: 'client', client_id: clientId, email, first_name: firstName, last_name: lastName }),
+    }),
+
+  // ── Daily Tasks ──
+
+  getDailyTasks: (params?: {
+    task_date?: string;
+    status?: string;
+    assigned_to_id?: number;
+    client_id?: number;
+    priority?: string;
+    include_done?: boolean;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.task_date) searchParams.set('task_date', params.task_date);
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.assigned_to_id) searchParams.set('assigned_to_id', params.assigned_to_id.toString());
+    if (params?.client_id) searchParams.set('client_id', params.client_id.toString());
+    if (params?.priority) searchParams.set('priority', params.priority);
+    if (params?.include_done) searchParams.set('include_done', 'true');
+    const query = searchParams.toString();
+    return fetchApi<DailyTasksResponse>(`/api/v1/daily_tasks${query ? `?${query}` : ''}`);
+  },
+
+  getMyDailyTasks: (params?: { task_date?: string; include_done?: boolean }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.task_date) searchParams.set('task_date', params.task_date);
+    if (params?.include_done) searchParams.set('include_done', 'true');
+    const query = searchParams.toString();
+    return fetchApi<DailyTasksResponse>(`/api/v1/daily_tasks/my_tasks${query ? `?${query}` : ''}`);
+  },
+
+  getDailyTask: (id: number) =>
+    fetchApi<{ daily_task: DailyTask }>(`/api/v1/daily_tasks/${id}`),
+
+  createDailyTask: (data: {
+    title: string;
+    task_date: string;
+    status?: string;
+    priority?: string;
+    form_service?: string;
+    comments?: string;
+    due_date?: string;
+    client_id?: number | null;
+    tax_return_id?: number | null;
+    service_type_id?: number | null;
+    assigned_to_id?: number | null;
+    reviewed_by_id?: number | null;
+  }) =>
+    fetchApi<{ daily_task: DailyTask }>('/api/v1/daily_tasks', {
+      method: 'POST',
+      body: JSON.stringify({ daily_task: data }),
+    }),
+
+  updateDailyTask: (id: number, data: Partial<{
+    title: string;
+    task_date: string;
+    status: string;
+    priority: string;
+    form_service: string;
+    comments: string;
+    due_date: string | null;
+    client_id: number | null;
+    tax_return_id: number | null;
+    service_type_id: number | null;
+    assigned_to_id: number | null;
+    reviewed_by_id: number | null;
+  }>) =>
+    fetchApi<{ daily_task: DailyTask }>(`/api/v1/daily_tasks/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ daily_task: data }),
+    }),
+
+  deleteDailyTask: (id: number) =>
+    fetchApi<void>(`/api/v1/daily_tasks/${id}`, {
+      method: 'DELETE',
+    }),
+
+  completeDailyTask: (id: number) =>
+    fetchApi<{ daily_task: DailyTask }>(`/api/v1/daily_tasks/${id}/complete`, {
+      method: 'POST',
+    }),
+
+  reopenDailyTask: (id: number) =>
+    fetchApi<{ daily_task: DailyTask }>(`/api/v1/daily_tasks/${id}/reopen`, {
+      method: 'POST',
+    }),
+
+  reorderDailyTasks: (positions: Array<{ id: number; position: number }>) =>
+    fetchApi<{ success: boolean }>('/api/v1/daily_tasks/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ positions }),
+    }),
+
+  bulkCreateDailyTasks: (tasks: Array<{
+    title: string;
+    task_date: string;
+    status?: string;
+    priority?: string;
+    form_service?: string;
+    comments?: string;
+    assigned_to_id?: number | null;
+  }>) =>
+    fetchApi<DailyTasksResponse>('/api/v1/daily_tasks/bulk_create', {
+      method: 'POST',
+      body: JSON.stringify({ daily_tasks: tasks }),
+    }),
+
+  copyDailyTasksToDate: (sourceDate: string, targetDate: string, includeDone?: boolean) =>
+    fetchApi<DailyTasksResponse & { copied_count: number }>('/api/v1/daily_tasks/copy_to_date', {
+      method: 'POST',
+      body: JSON.stringify({ source_date: sourceDate, target_date: targetDate, include_done: includeDone ? 'true' : 'false' }),
     }),
 };

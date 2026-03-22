@@ -2,222 +2,173 @@
 
 **Date:** March 18, 2026
 **Source:** Written feedback document from Cornerstone Accounting & Business Services
+**Last Updated:** March 20, 2026
 
 ---
 
-## Recommended Build Order
+## Status Overview
 
-| Phase | Item | Priority | Effort |
-|-------|------|----------|--------|
-| 1A | Multiple 1099 Entry Support | Highest | Small |
-| 1B | Centralized Document Upload | Highest | Medium |
-| 1C | Client Portal with Status Tracking | Highest | Large |
-| 2 | Better Dependent Guidance | Medium | Very Small |
-| 3 | Time Clock / Employee Attendance Rules (5A–5D) | Lower | Large |
-
----
-
-## 1. Multiple 1099 Entry Support
-
-### Problem
-The intake form currently only allows one 1099 entry per type. Clients with multiple 1099s of the same type (e.g., two 1099-INT forms from different banks) get stuck because there's no way to add more than one payer per 1099 type.
-
-### Root Cause
-In the frontend, `form_1099_payer_names` is typed as `Record<string, string>` — a single payer name per 1099 type. The backend and database already support multiple income sources per type.
-
-### What Needs to Change
-
-**Frontend only — no backend changes required.**
-
-| File | Change |
-|------|--------|
-| `frontend/src/types/intake.ts` | Change `form_1099_payer_names` from `Record<string, string>` to `Record<string, string[]>` |
-| `frontend/src/pages/intake/IntakeForm.tsx` | Update `StepIncomeSources` to render multiple payer inputs per 1099 type with "Add Another" and remove buttons (mirror the W-2 employer pattern) |
-| `frontend/src/pages/intake/IntakeForm.tsx` | Update `toggle1099Type` to initialize with `['']` instead of clearing |
-| `frontend/src/pages/intake/IntakeForm.tsx` | Update `handleSubmit` to flatMap payer arrays into individual income_source entries |
-
-### Backend (no changes)
-- `CreateIntakeService` already iterates over `income_sources` array and creates one `IncomeSource` per entry
-- `income_sources` table already supports multiple rows per `source_type` per `tax_return`
-
-### Expected Result
-A client with 2+ 1099s of the same type can enter all of them without getting stuck.
+| Phase | Item | Priority | Effort | Status |
+|-------|------|----------|--------|--------|
+| 1A | Multiple 1099 Entry Support | Highest | Small | **DONE** |
+| 1B | Centralized Document Upload | Highest | Medium | **Partially Done** — see implementation plan below |
+| 1C | Client Portal with Status Tracking | Highest | Large | **DONE** |
+| 2 | Better Dependent Guidance | Medium | Very Small | **DONE** |
+| 3 | Time Clock / Employee Attendance Rules (5A–5D) | Lower | Large | **DONE** — PR `feature/time-clock-attendance` |
 
 ---
 
-## 2. Centralized Document Upload
+## 1. Multiple 1099 Entry Support — DONE
 
-### Problem
-Clients upload some files through the site but still email other tax documents separately. This splits information across multiple places and makes tracking harder.
-
-### Current State
-- Document upload exists on the **admin tax return detail page** only (staff-only)
-- S3 presigned upload/download works end-to-end
-- Document types supported: W-2, 1099, ID, Prior Return, Other
-- `uploaded_by_id` is optional on the Document model (ready for client uploads)
-
-### What Needs to Change
-
-| Area | Change |
-|------|--------|
-| **Document model** | Add `supporting_documents` to `DOCUMENT_TYPES` |
-| **Client-facing upload** | Create a document upload component accessible to clients (ties into Client Portal — Item 3) |
-| **Intake form integration** | Consider adding optional document upload step to the intake form |
-| **Reusable upload component** | Extract `DocumentUpload` into a shared component usable in admin, client portal, and intake |
-| **API authorization** | Add client-scoped document endpoints (client can only see/upload for their own tax returns) |
-
-### Dependencies
-- Partially depends on **Item 3 (Client Portal)** for the client-facing upload surface
-- Can be started independently by adding upload to the intake form
-
-### Expected Result
-All client tax documents stay attached to the client record in one place instead of being split between the site and email.
+### What Was Built
+- `form_1099_payer_names` changed from `Record<string, string>` to `Record<string, PayerEntry[]>` (stable React keys via `id` + `name`)
+- "Add Another {type}" button per 1099 type with remove buttons (mirrors W-2 employer pattern)
+- `handleSubmit` uses `flatMap` to turn payer arrays into individual `income_source` entries
+- Frontend-only change; backend already supported multiple income sources per type
 
 ---
 
-## 3. Client Portal with Status Tracking
+## 2. Centralized Document Upload — PARTIALLY DONE
 
-### Problem
-Clients do not have a clear way to see the status of their return, and staff need a better way to track where each client is in the process.
+### What's Already Built
+- **Admin document upload** — Full CRUD on tax return detail page (presign → S3 → register, view, download, delete)
+- **Portal document upload** — Client-scoped upload/view on portal documents page with notification on upload
+- **S3 infrastructure** — Presign flow, validation (PDF/JPEG/PNG, 50MB), download URLs all working
+- **Client-scoped API** — `Api::V1::Portal::DocumentsController` with `current_client` scoping
+- **Document types** — w2, 1099, id, prior_return, other
 
-### Current State
-- `User` model already has `role: "client"` with `client_id` linkage
-- Clerk auth infrastructure is in place
-- Workflow stages are already configurable in the admin
-- No client-facing routes, pages, or API endpoints exist
+### What's Still Needed
 
-### What Needs to Be Built
+#### 2A. Add `supporting_documents` document type (Trivial)
+Clients need to upload bank statements, mortgage interest statements (1098), property tax records, childcare receipts, charitable donation receipts, business expense records, student loan interest (1098-E), tuition statements (1098-T), etc. Currently these all go under "Other" which is vague.
 
-#### Backend
-| Area | Change |
-|------|--------|
-| **Client API controller** | New `Api::V1::Portal::*` controllers with client-scoped access |
-| **Authorization** | `require_client!` concern — client can only access their own data |
-| **Endpoints needed** | `GET /portal/me` (profile), `GET /portal/tax_returns` (my returns + status), `GET /portal/documents` (my documents), `POST /portal/documents` (upload) |
-| **Intake continuation** | Endpoint to retrieve/update incomplete intake (future) |
+**Changes:**
+- `backend/app/models/document.rb` — Add `supporting_documents` to `DOCUMENT_TYPES`
+- `frontend/src/lib/documentConstants.ts` — Add `{ value: 'supporting_documents', label: 'Supporting Documents' }` to `DOCUMENT_TYPES`
 
-#### Frontend
-| Area | Change |
-|------|--------|
-| **Routes** | `/portal`, `/portal/returns`, `/portal/returns/:id`, `/portal/documents` |
-| **Pages** | `PortalDashboard`, `PortalReturnStatus`, `PortalDocuments` |
-| **Layout** | `PortalLayout` — simpler than admin, client-friendly |
-| **Auth** | Client login flow via Clerk (separate from staff login) |
-| **Document upload** | Reuse shared upload component within portal |
+#### 2B. Document upload step in the intake form (Medium — the key missing piece)
 
-#### Suggested Statuses (from Cornerstone team)
-These map to configurable workflow stages:
-1. Intake Started
-2. Waiting on Documents
-3. Documents Received
-4. In Review
-5. In Progress
-6. Ready to File
-7. Filed
-8. Completed
-9. Not Moving Forward
+**The Problem:** Clients fill out intake, submit, then email W-2s and 1099s separately. Documents end up split across the site and email.
 
-### Expected Result
-Both staff and clients can see where things stand without searching through messages or email threads. Clients can log in, view return status, see missing documents, and upload files.
+**The Challenge:** The intake form is unauthenticated — the tax return doesn't exist until `CreateIntakeService` runs after submit.
 
----
+**Recommended Approach: Post-Submission Upload (Option A)**
 
-## 4. Better Dependent Guidance
+Rather than uploading during form fill (which requires managing orphaned S3 files if someone abandons the form), show a document upload screen *after* successful submission:
 
-### Problem
-Users are confused about whether they can claim a dependent, especially older children or children in college.
+1. `CreateIntakeService` creates the client + tax return as today
+2. The API response returns the `tax_return_id` (it may already — verify)
+3. Instead of showing just a "Success!" message, show a new step: **"Upload Your Documents"**
+4. This step shows smart prompts based on the income sources they selected:
+   - Selected W-2? → "Please upload your W-2 from {employer name}"
+   - Selected 1099-INT? → "Please upload your 1099-INT from {payer name}"
+   - Always show: "Upload your Photo ID" and "Upload any other supporting documents"
+5. Uses a new lightweight **intake document upload endpoint** (no auth required, scoped to the just-created tax return via a one-time token or the tax return ID)
+6. "Skip — I'll upload later" button for clients who don't have documents handy
+7. Documents are attached to the tax return, visible in admin and portal immediately
 
-### Current State
-The dependent section has one line of helper text: *"Add any dependents you want to claim on your tax return."* No field-level guidance exists.
+**Backend changes needed:**
+- New `Api::V1::IntakeDocumentsController` with `presign` and `create` actions
+- Scoped to the tax return ID returned from intake submission
+- Security: either a short-lived token returned with the intake response, or rate-limited by tax return ID + time window (e.g., only allow uploads within 1 hour of creation)
+- Triggers `DocumentUploadNotificationJob` same as portal uploads
 
-### What Needs to Change
+**Frontend changes needed:**
+- New `StepDocumentUpload` component in the intake form
+- Shown after successful submission (step 9, after Authorization)
+- Smart prompts based on selected income sources and employer/payer names
+- Drag-and-drop upload with document type pre-selection
+- Progress states and success confirmation per file
+- "Skip" and "Done" buttons
 
-| File | Change |
-|------|--------|
-| `frontend/src/pages/intake/IntakeForm.tsx` | Add helper text in the `StepDependents` component explaining college-age dependent eligibility |
+**Why this approach:**
+- No orphaned S3 files from abandoned forms
+- Simpler implementation (tax return already exists when uploading)
+- Clear two-step UX: "Submit info" → "Upload documents"
+- Client sees exactly what documents are expected based on their income sources
 
-### Suggested Wording (from Cornerstone team)
-> "You may still be able to claim your child as a dependent even if they are in college, depending on age, student status, support, and residency."
+#### 2C. Shared DocumentUpload component (Nice-to-have, can defer)
 
-### Expected Result
-Less confusion and fewer repeated questions during intake.
+Currently admin (`DocumentUpload.tsx`) and portal (`PortalDocuments.tsx`) have separate upload implementations. Extracting a shared component would reduce duplication. This is a refactor that can wait — both implementations work independently.
 
 ---
 
-## 5. Time Clock / Employee Attendance Rules
+## 3. Client Portal with Status Tracking — DONE
 
-### Problem
-The clock-in and clock-out system needs stricter controls so staff follow schedule rules and overtime is managed properly.
+### What Was Built
+- `Api::V1::Portal::*` controllers with `require_client!` authorization
+- Client-scoped access (can only see own data)
+- Portal pages: Dashboard, Return Status, Documents, Settings, Notifications
+- Client login flow via Clerk (separate from staff login)
+- Document upload within portal
+- Real-time status tracking with configurable workflow stages
+- In-app notification system
+- Document viewer (inline PDF/image viewing)
 
-### Current State
-- Time tracking is **100% manual entry** — no clock in/out system
-- No same-day validation (overlapping entries allowed)
-- No schedule-based validation (no link between schedules and time entries in the DB)
-- No overtime tracking or approval workflow
-- Schedules exist but are only connected to time entries via URL prefill (no DB relationship)
+---
 
-### Sub-Items
+## 4. Better Dependent Guidance — DONE
 
-#### 5A. Same-Day Clock In/Out Lock
-| Area | Change |
-|------|--------|
-| **Backend validation** | Time entries can only be created/edited for the current day unless admin overrides |
-| **Model** | Add `admin_override` boolean to `time_entries` |
-| **Controller** | Reject backdated entries from non-admin users |
+### What Was Built
+- Blue info box in `StepDependents` with the suggested wording:
+  > "You may still be able to claim your child as a dependent even if they are in college, depending on age, student status, support, and residency. If you're unsure, go ahead and add them — our team will verify eligibility during the review."
 
-**Expected result:** No backdated time entries without admin approval.
+---
 
-#### 5B. Schedule-Based Validation
-| Area | Change |
-|------|--------|
-| **Database** | Add `schedule_id` foreign key to `time_entries` |
-| **Backend logic** | When creating a time entry, look up the user's schedule for that day |
-| **Validation** | Flag entries as early, on-time, late, or over-scheduled-hours |
-| **Response data** | Include schedule comparison info in time entry responses |
+## 5. Time Clock / Employee Attendance Rules — DONE
 
-**Expected result:** The system knows whether an employee is early, on time, late, or going over scheduled hours.
+### What Was Built (PR: `feature/time-clock-attendance`)
 
-#### 5C. Early Clock-In Approval
-| Area | Change |
-|------|--------|
-| **Approval model** | New `time_entry_approvals` table (or `approval_status` on `time_entries`) |
-| **Backend logic** | If `start_time < scheduled_start_time`, require approval |
-| **Workflow** | Manager/admin approval flow (approve/deny early clock-in) |
-| **UI** | Approval queue in admin dashboard |
+All sub-items (5A–5D) implemented:
 
-**Expected result:** Employees cannot start early unless approved.
+- **TimeClockService** — Centralized service for all clock/break/approval logic
+- **Clock in/out with break tracking** — Real-time timer UI, start/end break actions
+- **Schedule-based validation** — Configurable early clock-in buffer, post-shift guard, attendance status (early/on-time/late)
+- **Manual entry approval workflow** — Manual entries require admin approval; employees can resubmit denied entries
+- **Overtime detection & approval** — Configurable daily (>8h) and weekly (>40h) thresholds, separate overtime approval queue
+- **"Today's Team" admin panel** — Live dashboard showing who's working, on break, late, done, or no-show
+- **Database safety** — Partial unique indexes (one active clock-in per user, one active break per entry), row-level locking on approvals, transactions for multi-step operations
+- **Admin overrides** — Clock in/out/break for other employees, override schedule restrictions
+- **Timezone handling** — Consistent Guam timezone throughout, `formatDateISO` shared utility
 
-#### 5D. Overtime Approval Rule
-| Area | Change |
-|------|--------|
-| **Backend logic** | Track daily (>8h) and weekly (>40h) hours per employee |
-| **Approval** | If entry would push employee into overtime, require approval |
-| **Request flow** | Employee requests overtime → admin approves → entry allowed |
-| **Notification** | Could tie into Cornerstone team chat for approval |
-
-**Expected result:** Overtime is controlled and documented.
-
-### Database Changes Required
-```
-time_entries:
-  + schedule_id (bigint, FK, nullable)
-  + admin_override (boolean, default: false)
-  + approval_status (string: pending/approved/denied, nullable)
-  + approved_by_id (bigint, FK to users, nullable)
-  + approved_at (datetime, nullable)
-  + overtime_approved (boolean, default: false)
-```
-
-Or alternatively, a separate `time_entry_approvals` table for a cleaner audit trail.
-
-### Expected Result
-The time clock system has schedule awareness, same-day restrictions, early clock-in approval, and overtime controls.
+### Database additions:
+- `time_entries`: schedule_id, entry_method, status, clock_in_at, clock_out_at, admin_override, attendance_status, approval_status, approved_by_id, approved_at, approval_note, overtime_status, overtime_approved_by_id, overtime_approved_at, overtime_note
+- `time_entry_breaks`: time_entry_id, start_time, end_time, duration_minutes
+- Partial unique indexes for active clock-ins and active breaks
 
 ---
 
 ## Notes for Development (from Cornerstone team)
 
-- Multiple 1099s likely need a has_many relationship instead of a single field/value → **Already supported in DB; frontend is the bottleneck**
-- Document uploads should be tied directly to the client record or tax return record → **Already tied to tax_return; need client-facing access**
-- Status tracking should be visible on both internal admin/staff dashboard and client-facing portal → **Workflow stages exist; need client portal**
-- Time clock logic should be schedule-aware and include an approval override path → **Requires significant new backend logic**
+- Multiple 1099s likely need a has_many relationship instead of a single field/value → **DONE — frontend uses `PayerEntry[]`; backend already supported it**
+- Document uploads should be tied directly to the client record or tax return record → **DONE for admin & portal; intake upload still needed**
+- Status tracking should be visible on both internal admin/staff dashboard and client-facing portal → **DONE — workflow stages visible in both**
+- Time clock logic should be schedule-aware and include an approval override path → **DONE — full implementation with configurable rules**
+
+---
+
+## Future Enhancements (Documented for Later)
+
+### Configurable Task Statuses (Daily Task Board)
+Currently the 10 daily task statuses are hardcoded in the model and frontend constants (`not_started`, `in_progress`, `dms_reviewing`, `ready_to_file`, `ready_for_signature`, `completed`, `filed_with_drt`, `filed_with_irs`, `pending_info`, `other`). These match Cornerstone's current workflow and are unlikely to change frequently.
+
+**When to implement:** If Cornerstone requests custom statuses, or if we onboard additional firms with different workflows.
+
+**Implementation approach:**
+- Create a `task_statuses` database table (name, label, display_order, color, is_done_status)
+- Admin settings UI for managing statuses (add/rename/reorder/archive)
+- Update `DailyTask` model to validate against DB statuses instead of a constant
+- Update frontend to fetch statuses from API instead of hardcoded `STATUS_OPTIONS`
+- Migration to seed current statuses as initial data
+
+### WebSocket Real-Time Updates (Daily Task Board & Beyond)
+Currently the Daily Task Board uses 5-second polling for near-real-time updates. This works well for a small team but should be upgraded to proper WebSockets as the team or feature set grows.
+
+**When to implement:** When the team grows beyond ~10 concurrent users, or when we want instant updates across other features (time clock, notifications, client portal status).
+
+**Implementation approach:**
+- ActionCable is already loaded in the Rails app (`config/cable.yml` configured for async/dev, solid_cable/production)
+- Create a `DailyTasksChannel` that broadcasts on task create/update/delete/reorder
+- Frontend subscribes via `@rails/actioncable` npm package
+- Replace polling with WebSocket subscription; keep polling as fallback for reconnect
+- Extend pattern to other real-time features: time clock "Today's Team", notification badges, portal status updates

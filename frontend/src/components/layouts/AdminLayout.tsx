@@ -20,6 +20,7 @@ const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/admin', icon: HomeIcon },
   { name: 'Clients', href: '/admin/clients', icon: UsersIcon },
   { name: 'Tax Returns', href: '/admin/returns', icon: DocumentIcon },
+  { name: 'Daily Tasks', href: '/admin/tasks', icon: TaskListIcon },
   { name: 'Activity', href: '/admin/activity', icon: ActivityIcon },
   { name: 'Payroll Checklist', href: '/admin/operations', icon: ChecklistIcon },
   { name: 'Time Tracking', href: '/admin/time', icon: ClockIcon },
@@ -97,6 +98,14 @@ function ChecklistIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5h11M9 12h11M9 19h11M5 5l1.5 1.5L8 5m-3 7l1.5 1.5L8 12m-3 7l1.5 1.5L8 19" />
+    </svg>
+  )
+}
+
+function TaskListIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
     </svg>
   )
 }

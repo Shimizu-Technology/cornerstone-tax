@@ -124,11 +124,11 @@ class TimeEntry < ApplicationRecord
   end
 
   def formatted_start_time
-    start_time&.strftime("%I:%M %p")&.sub(/^0/, "")
+    start_time&.in_time_zone(TimeClockService::BUSINESS_TIMEZONE)&.strftime("%I:%M %p")&.sub(/^0/, "")
   end
 
   def formatted_end_time
-    end_time&.strftime("%I:%M %p")&.sub(/^0/, "")
+    end_time&.in_time_zone(TimeClockService::BUSINESS_TIMEZONE)&.strftime("%I:%M %p")&.sub(/^0/, "")
   end
 
   private

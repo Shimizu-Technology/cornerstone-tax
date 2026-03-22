@@ -34,6 +34,7 @@ const Settings = lazy(() => import("./pages/admin/Settings"))
 const TimeTracking = lazy(() => import("./pages/admin/TimeTracking"))
 const Schedule = lazy(() => import("./pages/admin/Schedule"))
 const Operations = lazy(() => import("./pages/admin/Operations"))
+const DailyTaskBoard = lazy(() => import("./pages/admin/DailyTaskBoard"))
 
 // Portal Pages — lazy loaded
 const PortalDashboard = lazy(() => import("./pages/portal/PortalDashboard"))
@@ -101,6 +102,7 @@ function App() {
           } />
           <Route path="time" element={<Suspense fallback={<AdminLoadingFallback />}><TimeTracking /></Suspense>} />
           <Route path="operations" element={<Suspense fallback={<AdminLoadingFallback />}><Operations /></Suspense>} />
+          <Route path="tasks" element={<Suspense fallback={<AdminLoadingFallback />}><DailyTaskBoard /></Suspense>} />
           <Route path="schedule" element={<Suspense fallback={<AdminLoadingFallback />}><Schedule /></Suspense>} />
         </Route>
 

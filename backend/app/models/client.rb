@@ -14,6 +14,7 @@ class Client < ApplicationRecord
   has_many :operation_templates, through: :client_operation_assignments
   has_many :operation_cycles, dependent: :destroy
   has_many :operation_tasks, dependent: :destroy
+  has_many :daily_tasks, dependent: :nullify
 
   validates :first_name, presence: true
   validates :last_name, presence: true
