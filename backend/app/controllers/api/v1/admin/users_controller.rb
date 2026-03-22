@@ -10,7 +10,7 @@ module Api
 
         # GET /api/v1/admin/users
         def index
-          @users = User.order(created_at: :desc)
+          @users = User.includes(:client).order(created_at: :desc)
 
           # Filter by role
           if params[:role].present?
@@ -143,8 +143,14 @@ module Api
             return render json: { error: "This user has already activated their account" }, status: :unprocessable_entity
           end
 
+          cache_key = "resend_invite_cooldown:#{@user.id}"
+          if Rails.cache.exist?(cache_key)
+            return render json: { error: "Invitation was already sent recently. Please wait a minute before resending." }, status: :too_many_requests
+          end
+
           email_sent = send_invitation_email(@user)
           if email_sent
+            Rails.cache.write(cache_key, true, expires_in: 1.minute)
             render json: { message: "Invitation email resent to #{@user.email}" }
           else
             render json: { error: "Failed to send invitation email. Please check email configuration." }, status: :unprocessable_entity
