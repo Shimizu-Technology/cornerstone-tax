@@ -528,6 +528,7 @@ export default function DailyTaskBoard() {
   const [importPreview, setImportPreview] = useState<ImportPreviewRow[] | null>(null)
   const [importLoading, setImportLoading] = useState(false)
   const [importTargetDate, setImportTargetDate] = useState(currentDate)
+  const [importSheetName, setImportSheetName] = useState<string | null>(null)
 
   const showToast = useCallback((message: string, type: ToastType = 'error') => {
     setToast({ message, type })
@@ -544,6 +545,7 @@ export default function DailyTaskBoard() {
         if (res.data.rows.length === 0) { showToast('No rows found in the uploaded file'); return }
         setImportPreview(res.data.rows)
         setImportTargetDate(currentDate)
+        setImportSheetName(res.data.sheet_name)
       } else {
         showToast(res.error || 'Failed to parse file')
       }
@@ -960,7 +962,9 @@ export default function DailyTaskBoard() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Import Preview</h2>
-                <p className="text-sm text-gray-500 mt-0.5">{importPreview.length} row(s) found &mdash; review before importing</p>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {importPreview.length} row(s) found{importSheetName ? ` from sheet "${importSheetName}"` : ''} &mdash; review before importing
+                </p>
               </div>
               <button onClick={() => setImportPreview(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>

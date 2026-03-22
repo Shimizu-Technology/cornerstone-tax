@@ -2068,7 +2068,7 @@ export const api = {
   previewDailyTaskImport: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return fetchApiMultipart<{ rows: ImportPreviewRow[]; row_count: number }>('/api/v1/daily_tasks/preview_import', formData);
+    return fetchApiMultipart<{ rows: ImportPreviewRow[]; row_count: number; sheet_name: string | null }>('/api/v1/daily_tasks/preview_import', formData);
   },
 
   importDailyTasks: (taskDate: string, rows: ImportPreviewRow[]) =>

@@ -30,6 +30,8 @@ class DailyTaskImportService
     "Done" => "done",
   }.freeze
 
+  MAX_HEADER_SCAN_ROWS = 15
+
   class ImportError < StandardError; end
 
   def initialize(file, user:)
@@ -39,8 +41,8 @@ class DailyTaskImportService
   end
 
   def preview
-    rows = parse_rows
-    { rows: rows, staff_map: @staff_map.keys }
+    rows, sheet_name = parse_rows
+    { rows: rows, staff_map: @staff_map.keys, sheet_name: sheet_name }
   end
 
   def import!(task_date:, rows:)
@@ -88,22 +90,60 @@ class DailyTaskImportService
 
   def parse_rows
     spreadsheet = open_spreadsheet
-    header_row = spreadsheet.row(1)
-    col_map = map_columns(header_row)
 
-    raise ImportError, "Could not find a 'Client' column in the spreadsheet header row" unless col_map["client"]
+    best_sheet = nil
+    best_header_row = nil
+    best_col_map = nil
+    best_match_count = 0
 
+    spreadsheet.sheets.each do |sheet_name|
+      spreadsheet.default_sheet = sheet_name
+      next if spreadsheet.last_row.nil? || spreadsheet.last_row < 2
+
+      header_row_num, col_map = find_header_row(spreadsheet)
+      next unless col_map&.key?("client")
+
+      match_count = col_map.size
+      if match_count > best_match_count
+        best_match_count = match_count
+        best_sheet = sheet_name
+        best_header_row = header_row_num
+        best_col_map = col_map
+      end
+    end
+
+    unless best_col_map&.key?("client")
+      sheets_tried = spreadsheet.sheets.join(", ")
+      raise ImportError, "Could not find a 'Client' column header in any sheet. " \
+                         "Sheets scanned: #{sheets_tried}. " \
+                         "Make sure your spreadsheet has a header row with a 'Client' column."
+    end
+
+    spreadsheet.default_sheet = best_sheet
     rows = []
-    (2..spreadsheet.last_row).each do |i|
+    ((best_header_row + 1)..spreadsheet.last_row).each do |i|
       raw = spreadsheet.row(i)
       row = {}
-      col_map.each do |field, col_idx|
+      best_col_map.each do |field, col_idx|
         row[field] = raw[col_idx]&.to_s&.strip
       end
       next if row.values.all?(&:blank?)
       rows << row
     end
-    rows
+
+    [rows, best_sheet]
+  end
+
+  def find_header_row(spreadsheet)
+    scan_limit = [spreadsheet.last_row, MAX_HEADER_SCAN_ROWS].min
+
+    (1..scan_limit).each do |row_num|
+      raw_row = spreadsheet.row(row_num)
+      col_map = map_columns(raw_row)
+      return [row_num, col_map] if col_map.key?("client")
+    end
+
+    [nil, nil]
   end
 
   def open_spreadsheet
@@ -119,6 +159,8 @@ class DailyTaskImportService
 
   def map_columns(header_row)
     col_map = {}
+    return col_map if header_row.nil?
+
     header_row.each_with_index do |cell, idx|
       next if cell.blank?
       normalized = cell.to_s.strip.downcase

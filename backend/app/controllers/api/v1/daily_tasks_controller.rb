@@ -188,7 +188,11 @@ module Api
 
         service = DailyTaskImportService.new(params[:file], user: current_user)
         result = service.preview
-        render json: { rows: result[:rows], row_count: result[:rows].size }
+        render json: {
+          rows: result[:rows],
+          row_count: result[:rows].size,
+          sheet_name: result[:sheet_name]
+        }
       rescue DailyTaskImportService::ImportError => e
         render json: { error: e.message }, status: :unprocessable_entity
       end
