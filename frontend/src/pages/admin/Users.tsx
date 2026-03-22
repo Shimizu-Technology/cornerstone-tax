@@ -363,8 +363,12 @@ export default function Users() {
                 <div>
                   <p className="font-medium text-gray-900">{user.display_name || user.email.split('@')[0]}</p>
                   <p className="text-sm text-gray-500 break-all">{user.email}</p>
-                  {activeTab === 'clients' && user.client_name && (
-                    <p className="text-xs text-blue-600 mt-0.5">Client: {user.client_name}</p>
+                  {activeTab === 'clients' && (
+                    <p className="text-xs mt-0.5">
+                      {user.client_name
+                        ? <span className="text-blue-600">Client: {user.client_name}</span>
+                        : <span className="text-gray-400 italic">No linked client</span>}
+                    </p>
                   )}
                   <p className="text-xs text-gray-400">
                     {activeTab === 'clients' ? 'Invited' : 'Joined'} {formatDateTime(user.created_at)}

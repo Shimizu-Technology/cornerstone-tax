@@ -144,13 +144,18 @@ module Api
           end
 
           cache_key = "resend_invite_cooldown:#{@user.id}"
-          if Rails.cache.exist?(cache_key)
+          unless Rails.cache.write(cache_key, true, expires_in: 1.minute, unless_exist: true)
             return render json: { error: "Invitation was already sent recently. Please wait a minute before resending." }, status: :too_many_requests
           end
 
-          email_sent = send_invitation_email(@user)
+          begin
+            email_sent = send_invitation_email(@user)
+          rescue StandardError => e
+            Rails.logger.error("resend_invite email error for user #{@user.id}: #{e.message}")
+            email_sent = false
+          end
+
           if email_sent
-            Rails.cache.write(cache_key, true, expires_in: 1.minute)
             render json: { message: "Invitation email resent to #{@user.email}" }
           else
             render json: { error: "Failed to send invitation email. Please check email configuration." }, status: :unprocessable_entity
@@ -176,8 +181,8 @@ module Api
             role: user.role,
             client_id: user.client_id,
             client_name: user.client&.full_name,
-            is_active: !user.clerk_id&.start_with?("pending_"),
-            is_pending: user.clerk_id&.start_with?("pending_"),
+            is_active: user.clerk_id.present? && !user.clerk_id.start_with?("pending_"),
+            is_pending: user.clerk_id.blank? || user.clerk_id.start_with?("pending_"),
             created_at: user.created_at.iso8601,
             updated_at: user.updated_at.iso8601
           }
