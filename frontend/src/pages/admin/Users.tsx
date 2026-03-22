@@ -19,7 +19,7 @@ export default function Users() {
   const [inviteRole, setInviteRole] = useState<'admin' | 'employee'>('employee')
   const [inviting, setInviting] = useState(false)
   const [error, setError] = useState('')
-  const [resendingId, setResendingId] = useState<number | null>(null)
+  const [resendingIds, setResendingIds] = useState<Set<number>>(new Set())
   const modalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -116,7 +116,7 @@ export default function Users() {
   }
 
   const handleResendInvite = async (user: AdminUser) => {
-    setResendingId(user.id)
+    setResendingIds(prev => new Set(prev).add(user.id))
     try {
       const response = await api.resendInvite(user.id)
       if (response.error) {
@@ -127,7 +127,7 @@ export default function Users() {
     } catch (err) {
       alert('Failed to resend invite')
     } finally {
-      setResendingId(null)
+      setResendingIds(prev => { const next = new Set(prev); next.delete(user.id); return next })
     }
   }
 
@@ -298,10 +298,10 @@ export default function Users() {
                         {user.is_pending && (
                           <button
                             onClick={() => handleResendInvite(user)}
-                            disabled={resendingId === user.id}
+                            disabled={resendingIds.has(user.id)}
                             className="text-primary hover:text-primary-dark text-sm font-medium disabled:opacity-50"
                           >
-                            {resendingId === user.id ? 'Sending...' : 'Resend Invite'}
+                            {resendingIds.has(user.id) ? 'Sending...' : 'Resend Invite'}
                           </button>
                         )}
                         <button
@@ -405,10 +405,10 @@ export default function Users() {
                 {user.is_pending && (
                   <button
                     onClick={() => handleResendInvite(user)}
-                    disabled={resendingId === user.id}
+                    disabled={resendingIds.has(user.id)}
                     className="px-3 py-2 text-primary hover:bg-primary/5 rounded-lg text-sm font-medium disabled:opacity-50"
                   >
-                    {resendingId === user.id ? 'Sending...' : 'Resend Invite'}
+                    {resendingIds.has(user.id) ? 'Sending...' : 'Resend Invite'}
                   </button>
                 )}
                 <button
