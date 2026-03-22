@@ -54,12 +54,14 @@ module Api
       def update
         previous = snapshot(@task)
 
-        if @task.update(update_params)
-          handle_status_change!
-          log_update(previous, @task)
-          render json: { daily_task: serialize_task(@task) }
-        else
-          render json: { error: @task.errors.full_messages.join(", ") }, status: :unprocessable_entity
+        ActiveRecord::Base.transaction do
+          if @task.update(update_params)
+            handle_status_change!
+            log_update(previous, @task)
+            render json: { daily_task: serialize_task(@task) }
+          else
+            render json: { error: @task.errors.full_messages.join(", ") }, status: :unprocessable_entity
+          end
         end
       end
 

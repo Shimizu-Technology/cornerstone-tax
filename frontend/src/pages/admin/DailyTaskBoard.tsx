@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../../lib/api'
-import type { DailyTask, UserSummary, ClientSummary } from '../../lib/api'
+import type { DailyTask, UserSummary } from '../../lib/api'
 
 // ── Toast Notification ──
 
@@ -245,12 +245,13 @@ function AddTaskRow({ taskDate, staff, onAdd, showToast }: {
 
 // ── Desktop Task Row (spreadsheet-style) ──
 
-function TaskRow({ task, staff, onUpdate, onDelete, showToast, dragHandlers, isDragTarget }: {
+function TaskRow({ task, staff, onUpdate, onDelete, showToast, onSaving, dragHandlers, isDragTarget }: {
   task: DailyTask
   staff: UserSummary[]
   onUpdate: (t: DailyTask) => void
   onDelete: (id: number) => void
   showToast: (msg: string, type?: ToastType) => void
+  onSaving: (saving: boolean) => void
   dragHandlers: {
     onDragStart: (e: React.DragEvent, id: number) => void
     onDragOver: (e: React.DragEvent) => void
@@ -263,17 +264,24 @@ function TaskRow({ task, staff, onUpdate, onDelete, showToast, dragHandlers, isD
   const isDone = DONE_STATUSES.includes(task.status)
 
   const save = async (field: string, value: unknown) => {
-    const res = await api.updateDailyTask(task.id, { [field]: value ?? null } as Record<string, unknown>)
-    if (res.data?.daily_task) onUpdate(res.data.daily_task)
-    else showToast(res.error || 'Failed to save change')
+    onSaving(true)
+    try {
+      const res = await api.updateDailyTask(task.id, { [field]: value ?? null } as Record<string, unknown>)
+      if (res.data?.daily_task) onUpdate(res.data.daily_task)
+      else showToast(res.error || 'Failed to save change')
+    } finally {
+      setTimeout(() => onSaving(false), 2000)
+    }
   }
 
   const handleDelete = async () => {
     if (!confirm('Delete this task?')) return
     setDeleting(true)
+    onSaving(true)
     const res = await api.deleteDailyTask(task.id)
     if (!res.error) onDelete(task.id)
     else { showToast(res.error || 'Failed to delete task'); setDeleting(false) }
+    setTimeout(() => onSaving(false), 2000)
   }
 
   const statusCfg = STATUS_DISPLAY[task.status] || STATUS_DISPLAY.not_started
@@ -369,10 +377,11 @@ function TaskRow({ task, staff, onUpdate, onDelete, showToast, dragHandlers, isD
 
 // ── Mobile Task Card ──
 
-function TaskCard({ task, staff, onUpdate, onDelete, showToast }: {
+function TaskCard({ task, staff, onUpdate, onDelete, showToast, onSaving }: {
   task: DailyTask; staff: UserSummary[]
   onUpdate: (t: DailyTask) => void; onDelete: (id: number) => void
   showToast: (msg: string, type?: ToastType) => void
+  onSaving: (saving: boolean) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -380,9 +389,14 @@ function TaskCard({ task, staff, onUpdate, onDelete, showToast }: {
   const statusCfg = STATUS_DISPLAY[task.status] || STATUS_DISPLAY.not_started
 
   const save = async (field: string, value: unknown) => {
-    const res = await api.updateDailyTask(task.id, { [field]: value ?? null } as Record<string, unknown>)
-    if (res.data?.daily_task) onUpdate(res.data.daily_task)
-    else showToast(res.error || 'Failed to save change')
+    onSaving(true)
+    try {
+      const res = await api.updateDailyTask(task.id, { [field]: value ?? null } as Record<string, unknown>)
+      if (res.data?.daily_task) onUpdate(res.data.daily_task)
+      else showToast(res.error || 'Failed to save change')
+    } finally {
+      setTimeout(() => onSaving(false), 2000)
+    }
   }
 
   return (
@@ -491,7 +505,6 @@ export default function DailyTaskBoard() {
   const [allTasks, setAllTasks] = useState<DailyTask[]>([])
   const [tasks, setTasks] = useState<DailyTask[]>([])
   const [staff, setStaff] = useState<UserSummary[]>([])
-  const [_clients, setClients] = useState<ClientSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showDone, setShowDone] = useState(true)
@@ -501,6 +514,8 @@ export default function DailyTaskBoard() {
   const [viewMode, setViewMode] = useState<'all' | 'my'>('all')
   const [dragTargetId, setDragTargetId] = useState<number | null>(null)
   const [copyingTasks, setCopyingTasks] = useState(false)
+  const [showCopyPicker, setShowCopyPicker] = useState(false)
+  const [copyTargetDate, setCopyTargetDate] = useState(shiftDate(currentDate, 1))
   const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -511,10 +526,9 @@ export default function DailyTaskBoard() {
   }, [])
 
   useEffect(() => {
-    Promise.all([api.getUsers(), api.getClients({ per_page: 500 }), api.getCurrentUser()])
-      .then(([u, c, me]) => {
+    Promise.all([api.getUsers(), api.getCurrentUser()])
+      .then(([u, me]) => {
         if (u.data?.users) setStaff(u.data.users.filter((x: UserSummary) => x.role === 'admin' || x.role === 'employee'))
-        if (c.data?.clients) setClients(c.data.clients)
         if (me.data?.user) setCurrentUserId(me.data.user.id)
       })
   }, [])
@@ -584,38 +598,37 @@ export default function DailyTaskBoard() {
 
   const handleAdded = (t: DailyTask) => setAllTasks(p => [...p, t])
   const handleUpdated = (u: DailyTask) => {
-    savingRef.current = true
     setAllTasks(p => p.map(t => t.id === u.id ? u : t))
-    setTimeout(() => { savingRef.current = false }, 2000)
   }
   const handleDeleted = (id: number) => {
-    savingRef.current = true
     setAllTasks(p => p.filter(t => t.id !== id))
-    setTimeout(() => { savingRef.current = false }, 2000)
   }
+  const handleSaving = (saving: boolean) => { savingRef.current = saving }
 
-  const copyToNextDay = async () => {
-    const next = shiftDate(currentDate, 1)
-    const nextLabel = formatDate(next)
+  const copyToDate = async () => {
+    const target = copyTargetDate
+    const targetLabel = formatDate(target)
     const toCopy = allTasks.filter(t => !DONE_STATUSES.includes(t.status))
 
     setCopyingTasks(true)
     try {
-      const check = await api.getDailyTasks({ task_date: next, include_done: true })
+      const check = await api.getDailyTasks({ task_date: target, include_done: true })
       const existingCount = check.data?.daily_tasks?.length ?? 0
 
       if (existingCount > 0) {
         const proceed = confirm(
-          `${nextLabel} already has ${existingCount} task${existingCount !== 1 ? 's' : ''}.\n\n` +
+          `${targetLabel} already has ${existingCount} task${existingCount !== 1 ? 's' : ''}.\n\n` +
           `Copying will add ${toCopy.length} more task${toCopy.length !== 1 ? 's' : ''} (not replace existing ones).\n\n` +
           `Continue?`
         )
         if (!proceed) { setCopyingTasks(false); return }
       }
 
-      const res = await api.copyDailyTasksToDate(currentDate, next)
-      if (res.data?.copied_count) showToast(`Copied ${res.data.copied_count} task(s) to ${nextLabel}`, 'success')
-      else if (res.error) showToast(res.error || 'Failed to copy tasks')
+      const res = await api.copyDailyTasksToDate(currentDate, target)
+      if (res.data?.copied_count) {
+        showToast(`Copied ${res.data.copied_count} task(s) to ${targetLabel}`, 'success')
+        setShowCopyPicker(false)
+      } else if (res.error) showToast(res.error || 'Failed to copy tasks')
     } finally { setCopyingTasks(false) }
   }
 
@@ -727,14 +740,37 @@ export default function DailyTaskBoard() {
             </svg>
             Print
           </button>
-          <button onClick={copyToNextDay}
-            disabled={copyingTasks || allTasks.filter(t => !DONE_STATUSES.includes(t.status)).length === 0}
-            className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-            </svg>
-            {copyingTasks ? 'Copying...' : 'Copy to Next Day'}
-          </button>
+          <div className="relative">
+            <button onClick={() => { setCopyTargetDate(shiftDate(currentDate, 1)); setShowCopyPicker(!showCopyPicker) }}
+              disabled={copyingTasks || allTasks.filter(t => !DONE_STATUSES.includes(t.status)).length === 0}
+              className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+              </svg>
+              {copyingTasks ? 'Copying...' : 'Copy to...'}
+            </button>
+            {showCopyPicker && (
+              <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg p-4 z-30 w-72">
+                <div className="text-sm font-medium text-gray-700 mb-2">Copy {allTasks.filter(t => !DONE_STATUSES.includes(t.status)).length} open task(s) to:</div>
+                <input type="date" value={copyTargetDate} onChange={e => setCopyTargetDate(e.target.value)}
+                  min={shiftDate(currentDate, 1)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3 focus:ring-2 focus:ring-primary focus:border-primary" />
+                {copyTargetDate && copyTargetDate !== currentDate && (
+                  <div className="text-xs text-gray-500 mb-3">{formatDateLong(copyTargetDate)}</div>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={copyToDate} disabled={!copyTargetDate || copyTargetDate === currentDate || copyingTasks}
+                    className="flex-1 text-sm bg-primary text-white px-3 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors font-medium">
+                    {copyingTasks ? 'Copying...' : 'Copy'}
+                  </button>
+                  <button onClick={() => setShowCopyPicker(false)}
+                    className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -841,7 +877,7 @@ export default function DailyTaskBoard() {
               <tbody>
                 {tasks.map(task => (
                   <TaskRow key={task.id} task={task} staff={staff}
-                    onUpdate={handleUpdated} onDelete={handleDeleted} showToast={showToast}
+                    onUpdate={handleUpdated} onDelete={handleDeleted} showToast={showToast} onSaving={handleSaving}
                     dragHandlers={{ onDragStart, onDragOver: (e: React.DragEvent) => { e.preventDefault(); setDragTargetId(task.id) }, onDrop, onDragEnd }}
                     isDragTarget={dragTargetId === task.id} />
                 ))}
@@ -857,7 +893,7 @@ export default function DailyTaskBoard() {
       {!loading && (
         <div className="md:hidden space-y-2">
           {tasks.map(task => (
-            <TaskCard key={task.id} task={task} staff={staff} onUpdate={handleUpdated} onDelete={handleDeleted} showToast={showToast} />
+            <TaskCard key={task.id} task={task} staff={staff} onUpdate={handleUpdated} onDelete={handleDeleted} showToast={showToast} onSaving={handleSaving} />
           ))}
           {tasks.length === 0 && <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">No tasks for this day.</div>}
           <AddTaskRow taskDate={currentDate} staff={staff} onAdd={handleAdded} showToast={showToast} />
