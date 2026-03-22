@@ -60,7 +60,11 @@ class TimeClockService
         guam_now = now.in_time_zone(business_timezone)
 
         if corrected_end_time.present?
-          parsed = ActiveSupport::TimeZone[business_timezone].parse(corrected_end_time)
+          begin
+            parsed = ActiveSupport::TimeZone[business_timezone].parse(corrected_end_time)
+          rescue ArgumentError
+            raise ClockError, "Invalid corrected time format"
+          end
           if parsed <= entry.start_time.in_time_zone(business_timezone)
             raise ClockError, "Corrected time (#{parsed.strftime('%I:%M %p')}) must be after your clock-in time (#{entry.start_time.in_time_zone(business_timezone).strftime('%I:%M %p')})"
           end
