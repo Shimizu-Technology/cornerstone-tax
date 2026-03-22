@@ -68,6 +68,9 @@ class TimeClockService
           if parsed <= entry.start_time.in_time_zone(business_timezone)
             raise ClockError, "Corrected time (#{parsed.strftime('%I:%M %p')}) must be after your clock-in time (#{entry.start_time.in_time_zone(business_timezone).strftime('%I:%M %p')})"
           end
+          if parsed > guam_now
+            raise ClockError, "Corrected time (#{parsed.strftime('%I:%M %p')}) cannot be in the future"
+          end
           entry.end_time = parsed
           entry.clock_out_at = now
           entry.approval_status = "pending"

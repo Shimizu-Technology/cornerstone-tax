@@ -1,0 +1,157 @@
+# frozen_string_literal: true
+
+class DailyTaskImportService
+  HEADER_ALIASES = {
+    "client" => %w[client client\ name name],
+    "form_service" => %w[form/service form form\ service service form/svc],
+    "comments" => %w[comments comment notes note],
+    "staff" => %w[staff assigned\ to assigned preparer],
+    "reviewed_by" => %w[reviewed\ by reviewed reviewer],
+    "status" => %w[status],
+  }.freeze
+
+  STATUS_MAP = {
+    "1 - Not Started" => "not_started",
+    "2 - In Progress" => "in_progress",
+    "3 - DMS Reviewing" => "dms_reviewing",
+    "4 - Ready to collate/prep for filing" => "ready_to_file",
+    "4 - Ready to File" => "ready_to_file",
+    "5 - Ready for Client Signature" => "ready_for_signature",
+    "5 - Ready for Signature" => "ready_for_signature",
+    "6 - Completed" => "completed",
+    "7 - Completed - Filed with DRT" => "filed_with_drt",
+    "7 - Filed with DRT" => "filed_with_drt",
+    "8 - Completed - Filed with IRS" => "filed_with_irs",
+    "8 - Filed with IRS" => "filed_with_irs",
+    "9 - Pending Information" => "pending_info",
+    "9 - Pending Info" => "pending_info",
+    "9 - Other" => "other",
+    "10 - Other" => "other",
+    "Done" => "done",
+  }.freeze
+
+  class ImportError < StandardError; end
+
+  def initialize(file, user:)
+    @file = file
+    @user = user
+    @staff_map = build_staff_map
+  end
+
+  def preview
+    rows = parse_rows
+    { rows: rows, staff_map: @staff_map.keys }
+  end
+
+  def import!(task_date:, rows:)
+    created = []
+    warnings = []
+
+    ActiveRecord::Base.transaction do
+      base_position = DailyTask.for_date(task_date).maximum(:position) || -1
+
+      rows.each_with_index do |row, idx|
+        title = row["client"].presence
+        next if title.blank?
+
+        assigned = resolve_staff(row["staff"])
+        reviewed = resolve_staff(row["reviewed_by"])
+        status = resolve_status(row["status"])
+
+        warnings << "Row #{idx + 1}: Staff '#{row['staff']}' not found" if row["staff"].present? && assigned.nil?
+        warnings << "Row #{idx + 1}: Reviewer '#{row['reviewed_by']}' not found" if row["reviewed_by"].present? && reviewed.nil?
+
+        task = DailyTask.create!(
+          title: title,
+          task_date: task_date,
+          position: base_position + idx + 1,
+          status: status,
+          priority: "normal",
+          form_service: row["form_service"].presence,
+          comments: row["comments"].presence,
+          assigned_to: assigned,
+          reviewed_by: reviewed,
+          created_by: @user,
+          status_changed_by: @user,
+          status_changed_at: Time.current,
+          completed_at: DailyTask::DONE_STATUSES.include?(status) ? Time.current : nil,
+          completed_by: DailyTask::DONE_STATUSES.include?(status) ? @user : nil,
+        )
+        created << task
+      end
+    end
+
+    { created: created, warnings: warnings }
+  end
+
+  private
+
+  def parse_rows
+    spreadsheet = open_spreadsheet
+    header_row = spreadsheet.row(1)
+    col_map = map_columns(header_row)
+
+    raise ImportError, "Could not find a 'Client' column in the spreadsheet header row" unless col_map["client"]
+
+    rows = []
+    (2..spreadsheet.last_row).each do |i|
+      raw = spreadsheet.row(i)
+      row = {}
+      col_map.each do |field, col_idx|
+        row[field] = raw[col_idx]&.to_s&.strip
+      end
+      next if row.values.all?(&:blank?)
+      rows << row
+    end
+    rows
+  end
+
+  def open_spreadsheet
+    case File.extname(@file.original_filename).downcase
+    when ".xlsx", ".xls"
+      Roo::Spreadsheet.open(@file.path)
+    when ".csv"
+      Roo::CSV.new(@file.path)
+    else
+      raise ImportError, "Unsupported file format. Please upload .xlsx, .xls, or .csv"
+    end
+  end
+
+  def map_columns(header_row)
+    col_map = {}
+    header_row.each_with_index do |cell, idx|
+      next if cell.blank?
+      normalized = cell.to_s.strip.downcase
+      HEADER_ALIASES.each do |field, aliases|
+        if aliases.include?(normalized) && !col_map.key?(field)
+          col_map[field] = idx
+        end
+      end
+    end
+    col_map
+  end
+
+  def build_staff_map
+    map = {}
+    User.staff.each do |u|
+      map[u.first_name&.downcase] = u if u.first_name.present?
+      map[u.full_name&.downcase] = u
+    end
+    dms_user = User.find_by(email: "dmshimizucpa@gmail.com")
+    map["dms"] = dms_user if dms_user
+    map
+  end
+
+  def resolve_staff(name)
+    return nil if name.blank?
+    @staff_map[name.to_s.strip.downcase]
+  end
+
+  def resolve_status(raw)
+    return "not_started" if raw.blank?
+    STATUS_MAP[raw.to_s.strip] || begin
+      match = DailyTask::STATUSES.find { |s| s == raw.to_s.strip.downcase.tr(" ", "_") }
+      match || "not_started"
+    end
+  end
+end

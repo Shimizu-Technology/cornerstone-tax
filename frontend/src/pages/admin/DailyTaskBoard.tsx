@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../../lib/api'
-import type { DailyTask, UserSummary } from '../../lib/api'
+import type { DailyTask, UserSummary, ImportPreviewRow } from '../../lib/api'
 
 // ── Toast Notification ──
 
@@ -88,6 +88,7 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: 'filed_with_irs', label: '8 - Filed with IRS' },
   { value: 'pending_info', label: '9 - Pending Info' },
   { value: 'other', label: '10 - Other' },
+  { value: 'done', label: 'Done' },
 ]
 
 const STATUS_DISPLAY: Record<string, { label: string; color: string; bg: string }> = {
@@ -523,10 +524,51 @@ export default function DailyTaskBoard() {
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const savingRef = useRef(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importPreview, setImportPreview] = useState<ImportPreviewRow[] | null>(null)
+  const [importLoading, setImportLoading] = useState(false)
+  const [importTargetDate, setImportTargetDate] = useState(currentDate)
 
   const showToast = useCallback((message: string, type: ToastType = 'error') => {
     setToast({ message, type })
   }, [])
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImportLoading(true)
+    try {
+      const res = await api.previewDailyTaskImport(file)
+      if (res.data?.rows) {
+        if (res.data.rows.length === 0) { showToast('No rows found in the uploaded file'); return }
+        setImportPreview(res.data.rows)
+        setImportTargetDate(currentDate)
+      } else {
+        showToast(res.error || 'Failed to parse file')
+      }
+    } catch { showToast('Failed to upload file') }
+    finally { setImportLoading(false) }
+  }
+
+  const confirmImport = async () => {
+    if (!importPreview) return
+    setImportLoading(true)
+    try {
+      const res = await api.importDailyTasks(importTargetDate, importPreview)
+      if (res.data?.daily_tasks) {
+        showToast(`Imported ${res.data.imported_count} task(s) successfully`, 'success')
+        if (res.data.warnings?.length) {
+          res.data.warnings.forEach(w => showToast(w))
+        }
+        setImportPreview(null)
+        if (importTargetDate === currentDate) loadTasks()
+      } else {
+        showToast(res.error || 'Import failed')
+      }
+    } catch { showToast('Import failed') }
+    finally { setImportLoading(false) }
+  }
 
   useEffect(() => {
     Promise.all([api.getUsers(), api.getCurrentUser()])
@@ -742,6 +784,15 @@ export default function DailyTaskBoard() {
             </svg>
             Print
           </button>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} className="hidden" />
+          <button onClick={() => fileInputRef.current?.click()}
+            disabled={importLoading}
+            className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            {importLoading ? 'Parsing...' : 'Upload'}
+          </button>
           <div className="relative">
             <button onClick={() => { setCopyTargetDate(shiftDate(currentDate, 1)); setShowCopyPicker(!showCopyPicker) }}
               disabled={copyingTasks || allTasks.filter(t => !DONE_STATUSES.includes(t.status)).length === 0}
@@ -899,6 +950,73 @@ export default function DailyTaskBoard() {
           ))}
           {tasks.length === 0 && <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">No tasks for this day.</div>}
           <AddTaskRow taskDate={currentDate} staff={staff} onAdd={handleAdded} showToast={showToast} />
+        </div>
+      )}
+
+      {/* ═══ IMPORT PREVIEW MODAL ═══ */}
+      {importPreview && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setImportPreview(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Import Preview</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{importPreview.length} row(s) found &mdash; review before importing</p>
+              </div>
+              <button onClick={() => setImportPreview(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="px-6 py-3 border-b border-gray-100 flex items-center gap-3">
+              <label className="text-sm font-medium text-gray-700">Import to date:</label>
+              <input type="date" value={importTargetDate} onChange={e => setImportTargetDate(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary" />
+              <span className="text-xs text-gray-500">{formatDateLong(importTargetDate)}</span>
+            </div>
+
+            <div className="overflow-auto flex-1 px-6 py-3">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider">
+                    <th className="px-2 py-2 text-left w-8">#</th>
+                    <th className="px-2 py-2 text-left">Client</th>
+                    <th className="px-2 py-2 text-left">Form/Service</th>
+                    <th className="px-2 py-2 text-left">Comments</th>
+                    <th className="px-2 py-2 text-left">Staff</th>
+                    <th className="px-2 py-2 text-left">Reviewed By</th>
+                    <th className="px-2 py-2 text-left">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importPreview.map((row, i) => (
+                    <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-2 py-2 text-gray-400 font-mono text-xs">{i + 1}</td>
+                      <td className="px-2 py-2 font-medium text-gray-900">{row.client || <span className="text-gray-300 italic">empty</span>}</td>
+                      <td className="px-2 py-2 text-gray-600">{row.form_service || '—'}</td>
+                      <td className="px-2 py-2 text-gray-600 max-w-xs truncate">{row.comments || '—'}</td>
+                      <td className="px-2 py-2 text-gray-600">{row.staff || '—'}</td>
+                      <td className="px-2 py-2 text-gray-600">{row.reviewed_by || '—'}</td>
+                      <td className="px-2 py-2 text-gray-600">{row.status || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
+              <p className="text-xs text-gray-500">Unrecognized staff names will be left unassigned. Unknown statuses default to &ldquo;Not Started.&rdquo;</p>
+              <div className="flex gap-2">
+                <button onClick={() => setImportPreview(null)}
+                  className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors">
+                  Cancel
+                </button>
+                <button onClick={confirmImport} disabled={importLoading || importPreview.length === 0}
+                  className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors font-medium">
+                  {importLoading ? 'Importing...' : `Import ${importPreview.length} Task(s)`}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

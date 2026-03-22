@@ -108,6 +108,37 @@ async function fetchApiPublic<T>(
   return fetchApi(endpoint, options, false);
 }
 
+async function fetchApiMultipart<T>(
+  endpoint: string,
+  formData: FormData
+): Promise<ApiResponse<T>> {
+  try {
+    const headers: Record<string, string> = {};
+    if (getAuthToken) {
+      const token = await getAuthToken();
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    const responseText = await response.text();
+    let data;
+    try {
+      data = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      return { error: `Server returned an invalid response (${response.status})`, errors: [] };
+    }
+    if (!response.ok) return { error: data?.error || 'Something went wrong', errors: data?.errors || [] };
+    return { data };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Network error', errors: [] };
+  }
+}
+
 // Types
 export interface IntakeSubmitResponse {
   message: string;
@@ -979,6 +1010,15 @@ export interface DailyTask {
 
 export interface DailyTasksResponse {
   daily_tasks: DailyTask[];
+}
+
+export interface ImportPreviewRow {
+  client: string;
+  form_service?: string;
+  comments?: string;
+  staff?: string;
+  reviewed_by?: string;
+  status?: string;
 }
 
 // API functions
@@ -2023,5 +2063,17 @@ export const api = {
     fetchApi<DailyTasksResponse & { copied_count: number }>('/api/v1/daily_tasks/copy_to_date', {
       method: 'POST',
       body: JSON.stringify({ source_date: sourceDate, target_date: targetDate, include_done: includeDone ? 'true' : 'false' }),
+    }),
+
+  previewDailyTaskImport: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return fetchApiMultipart<{ rows: ImportPreviewRow[]; row_count: number }>('/api/v1/daily_tasks/preview_import', formData);
+  },
+
+  importDailyTasks: (taskDate: string, rows: ImportPreviewRow[]) =>
+    fetchApi<DailyTasksResponse & { imported_count: number; warnings: string[] }>('/api/v1/daily_tasks/import_spreadsheet', {
+      method: 'POST',
+      body: JSON.stringify({ task_date: taskDate, rows }),
     }),
 };

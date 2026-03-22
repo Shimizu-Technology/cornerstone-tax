@@ -58,6 +58,8 @@ Rails.application.routes.draw do
           post :reorder
           post :bulk_create
           post :copy_to_date
+          post :preview_import
+          post :import_spreadsheet
         end
         member do
           post :complete

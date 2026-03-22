@@ -56,6 +56,7 @@ module Api
 
         ActiveRecord::Base.transaction do
           if @task.update(update_params)
+            recalculate_position_if_date_changed!
             handle_status_change!
             log_update(previous, @task)
             render json: { daily_task: serialize_task(@task) }
@@ -179,6 +180,47 @@ module Api
         render json: { error: e.message }, status: :unprocessable_entity
       end
 
+      # POST /api/v1/daily_tasks/preview_import
+      def preview_import
+        unless params[:file].present?
+          return render json: { error: "No file uploaded" }, status: :bad_request
+        end
+
+        service = DailyTaskImportService.new(params[:file], user: current_user)
+        result = service.preview
+        render json: { rows: result[:rows], row_count: result[:rows].size }
+      rescue DailyTaskImportService::ImportError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # POST /api/v1/daily_tasks/import_spreadsheet
+      def import_spreadsheet
+        task_date = Date.parse(params.require(:task_date))
+        rows = params.require(:rows).map { |r| r.permit(:client, :form_service, :comments, :staff, :reviewed_by, :status).to_h }
+
+        service = DailyTaskImportService.new(nil, user: current_user)
+        result = service.import!(task_date: task_date, rows: rows)
+
+        result[:created].each do |task|
+          AuditLog.log(
+            auditable: task,
+            action: "created",
+            user: current_user,
+            metadata: "Imported daily task from spreadsheet: #{task.title}"
+          )
+        end
+
+        render json: {
+          daily_tasks: result[:created].map { |t| serialize_task(t) },
+          imported_count: result[:created].size,
+          warnings: result[:warnings]
+        }, status: :created
+      rescue Date::Error
+        render json: { error: "Invalid date format" }, status: :bad_request
+      rescue ActionController::ParameterMissing => e
+        render json: { error: e.message }, status: :bad_request
+      end
+
       # POST /api/v1/daily_tasks/copy_to_date
       def copy_to_date
         source_date = Date.parse(params.require(:source_date))
@@ -296,6 +338,13 @@ module Api
         elsif !@task.status.in?(DailyTask::DONE_STATUSES) && @task.completed_at.present?
           @task.update_columns(completed_at: nil, completed_by_id: nil)
         end
+      end
+
+      def recalculate_position_if_date_changed!
+        return unless @task.saved_change_to_task_date?
+
+        max_pos = DailyTask.for_date(@task.task_date).where.not(id: @task.id).maximum(:position) || -1
+        @task.update_columns(position: max_pos + 1)
       end
 
       def snapshot(task)
