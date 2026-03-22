@@ -128,7 +128,7 @@ module Api
         unless current_user.admin?
           if @time_entry.approval_status.in?(["approved", "denied"]) || @time_entry.entry_method == "manual"
             update_params[:approval_status] = "pending"
-            update_params[:approval_note] = "Employee edited time entry — awaiting admin review"
+            update_params[:approval_note] = "Employee edited time entry — awaiting admin review" unless @time_entry.approval_status == "pending"
           end
         end
 

@@ -524,6 +524,7 @@ export default function DailyTaskBoard() {
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const savingRef = useRef(false)
+  const savingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importPreview, setImportPreview] = useState<ImportPreviewRow[] | null>(null)
   const [importLoading, setImportLoading] = useState(false)
@@ -662,7 +663,8 @@ export default function DailyTaskBoard() {
       const res = await api.reorderDailyTasks(reordered.map((t, i) => ({ id: t.id, position: i })))
       if (res.error) { showToast('Failed to save new order — will refresh'); loadTasks(true) }
     } finally {
-      setTimeout(() => { savingRef.current = false }, 2000)
+      if (savingTimeoutRef.current) clearTimeout(savingTimeoutRef.current)
+      savingTimeoutRef.current = setTimeout(() => { savingRef.current = false }, 2000)
     }
   }
   const onDragEnd = () => { dragSrc.current = null; setDragTargetId(null) }
