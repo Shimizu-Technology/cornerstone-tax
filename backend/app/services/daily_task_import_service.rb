@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class DailyTaskImportService
+  ADMIN_EMAIL = ENV.fetch("DEFAULT_ADMIN_EMAIL", "dmshimizucpa@gmail.com").freeze
+
   HEADER_ALIASES = {
     "client" => %w[client client\ name name],
     "form_service" => %w[form/service form form\ service service form/svc],
@@ -199,7 +201,7 @@ class DailyTaskImportService
       end
       map[u.full_name&.downcase] = u
     end
-    dms_user = User.find_by(email: "dmshimizucpa@gmail.com")
+    dms_user = User.find_by(email: ADMIN_EMAIL)
     map["dms"] = dms_user if dms_user
     map
   end

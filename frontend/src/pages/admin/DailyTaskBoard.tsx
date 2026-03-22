@@ -557,6 +557,15 @@ export default function DailyTaskBoard() {
     if (!importPreview) return
     const validRows = importPreview.filter(r => r.client?.trim())
     if (validRows.length === 0) { showToast('No rows with a client name to import'); return }
+
+    // Check for existing tasks on target date to prevent accidental duplicates
+    const existingRes = await api.getDailyTasks({ task_date: importTargetDate, include_done: true })
+    const existingCount = existingRes.data?.daily_tasks?.length ?? 0
+    if (existingCount > 0) {
+      const ok = confirm(`The date ${formatDateLong(importTargetDate)} already has ${existingCount} task(s).\n\nImporting will add ${validRows.length} more. Continue?`)
+      if (!ok) return
+    }
+
     setImportLoading(true)
     try {
       const res = await api.importDailyTasks(importTargetDate, validRows)

@@ -309,6 +309,8 @@ module Api
           tasks = tasks.not_done
         end
 
+        tasks = tasks.limit(500) unless params[:task_date].present?
+
         tasks
       end
 

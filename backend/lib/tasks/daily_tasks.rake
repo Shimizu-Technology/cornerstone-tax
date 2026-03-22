@@ -9,10 +9,10 @@ namespace :daily_tasks do
       staff_map[u.first_name&.downcase] = u
     end
     # Special mapping: "DMS" = Dafne M Shimizu
-    staff_map["dms"] = User.find_by(email: "dmshimizucpa@gmail.com")
+    staff_map["dms"] = User.find_by(email: DailyTaskImportService::ADMIN_EMAIL)
 
     # The admin user who "created" these tasks
-    admin_user = User.find_by(email: "dmshimizucpa@gmail.com") || User.admins.first
+    admin_user = User.find_by(email: DailyTaskImportService::ADMIN_EMAIL) || User.admins.first
 
     # Status mapping from spreadsheet → our model statuses
     status_map = {
