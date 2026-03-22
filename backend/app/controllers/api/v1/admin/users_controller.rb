@@ -6,7 +6,7 @@ module Api
       class UsersController < BaseController
         before_action :authenticate_user!
         before_action :require_admin!
-        before_action :set_user, only: [:show, :update, :destroy]
+        before_action :set_user, only: [:show, :update, :destroy, :resend_invite]
 
         # GET /api/v1/admin/users
         def index
@@ -135,6 +135,20 @@ module Api
           # Or we can just destroy - for now let's just destroy
           @user.destroy
           head :no_content
+        end
+
+        # POST /api/v1/admin/users/:id/resend_invite
+        def resend_invite
+          unless @user.clerk_id&.start_with?("pending_")
+            return render json: { error: "This user has already activated their account" }, status: :unprocessable_entity
+          end
+
+          email_sent = send_invitation_email(@user)
+          if email_sent
+            render json: { message: "Invitation email resent to #{@user.email}" }
+          else
+            render json: { error: "Failed to send invitation email. Please check email configuration." }, status: :unprocessable_entity
+          end
         end
 
         private

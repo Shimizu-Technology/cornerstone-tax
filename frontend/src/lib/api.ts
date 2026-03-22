@@ -397,7 +397,9 @@ export interface AdminUser {
   last_name: string | null;
   display_name: string;
   full_name: string;
-  role: 'admin' | 'employee';
+  role: 'admin' | 'employee' | 'client';
+  client_id: number | null;
+  client_name: string | null;
   is_active: boolean;
   is_pending: boolean;
   created_at: string;
@@ -1522,13 +1524,13 @@ export const api = {
   getAdminUsers: () =>
     fetchApi<{ users: AdminUser[] }>('/api/v1/admin/users'),
 
-  inviteUser: (data: { email: string; first_name: string; last_name?: string; role: 'admin' | 'employee' }) =>
+  inviteUser: (data: { email: string; first_name: string; last_name?: string; role: 'admin' | 'employee' | 'client'; client_id?: number }) =>
     fetchApi<{ user: AdminUser }>('/api/v1/admin/users', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  updateUserRole: (id: number, role: 'admin' | 'employee') =>
+  updateUserRole: (id: number, role: 'admin' | 'employee' | 'client') =>
     fetchApi<{ user: AdminUser }>(`/api/v1/admin/users/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ role }),
@@ -1537,6 +1539,11 @@ export const api = {
   deleteUser: (id: number) =>
     fetchApi<void>(`/api/v1/admin/users/${id}`, {
       method: 'DELETE',
+    }),
+
+  resendInvite: (id: number) =>
+    fetchApi<{ message: string }>(`/api/v1/admin/users/${id}/resend_invite`, {
+      method: 'POST',
     }),
 
   // Time Tracking
