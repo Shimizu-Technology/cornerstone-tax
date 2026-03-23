@@ -374,8 +374,8 @@ module Api
                       "clocked_out"
                     elsif schedule
                       guam_now = Time.current.in_time_zone(TimeClockService::BUSINESS_TIMEZONE)
-                      shift_start_seconds = schedule.start_time.seconds_since_midnight
-                      shift_end_seconds = schedule.end_time.seconds_since_midnight
+                      shift_start_seconds = schedule.start_time.utc.seconds_since_midnight
+                      shift_end_seconds = schedule.end_time.utc.seconds_since_midnight
                       current_seconds = guam_now.seconds_since_midnight
                       if current_seconds > shift_end_seconds && shift_end_seconds > shift_start_seconds
                         "no_show"
