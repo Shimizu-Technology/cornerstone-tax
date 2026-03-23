@@ -3,7 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
 import type { WorkerStatus } from '../../lib/api'
 
-export default function WhosWorking() {
+interface WhosWorkingProps {
+  alwaysShow?: boolean
+  dashboardStyle?: boolean
+}
+
+export default function WhosWorking({ alwaysShow = false, dashboardStyle = false }: WhosWorkingProps) {
   const [workers, setWorkers] = useState<WorkerStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState(false)
@@ -31,14 +36,20 @@ export default function WhosWorking() {
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [fetchWorkers])
 
+  const cardBorder = dashboardStyle ? 'border-secondary-dark' : 'border-neutral-warm'
+  const cardClass = `bg-white rounded-2xl shadow-sm border ${cardBorder} overflow-hidden hover:shadow-md transition-shadow duration-300 ${dashboardStyle ? 'h-full w-full flex flex-col' : ''}`
+
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-5 animate-pulse">
-        <div className="h-5 bg-neutral-warm rounded w-32 mb-4" />
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-10 bg-neutral-warm/60 rounded-xl" />
-          ))}
+      <div className={`${cardClass} animate-pulse`}>
+        {!dashboardStyle && <div className="h-1 bg-neutral-warm" />}
+        <div className="p-5 flex-1">
+          <div className="h-5 bg-neutral-warm rounded w-32 mb-4" />
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-10 bg-neutral-warm/60 rounded-xl" />
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -46,13 +57,16 @@ export default function WhosWorking() {
 
   if (fetchError && workers.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-5">
-        <h3 className="font-semibold text-primary-dark text-base mb-3">Today's Team</h3>
-        <div className="text-center py-4">
-          <p className="text-sm text-red-600 mb-2">Unable to load team status</p>
-          <button onClick={fetchWorkers} className="text-xs text-primary-dark hover:underline font-medium">
-            Retry
-          </button>
+      <div className={cardClass}>
+        {!dashboardStyle && <div className="h-1 bg-neutral-warm" />}
+        <div className="p-5 flex-1">
+          <h3 className="font-semibold text-primary-dark text-base mb-3">Today's Team</h3>
+          <div className="text-center py-4">
+            <p className="text-sm text-red-600 mb-2">Unable to load team status</p>
+            <button onClick={fetchWorkers} className="text-xs text-primary-dark hover:underline font-medium">
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -64,7 +78,31 @@ export default function WhosWorking() {
     : workers.filter(w => w.schedule || w.status === 'clocked_in' || w.status === 'on_break')
   const hiddenCount = workers.length - relevantWorkers.length
 
-  if (relevantWorkers.length === 0 && !showAll) return null
+  if (relevantWorkers.length === 0 && !showAll) {
+    if (!alwaysShow) return null
+    return (
+      <div className={cardClass}>
+        {!dashboardStyle && <div className="h-1 bg-neutral-warm" />}
+        <div className="p-5 flex-1 flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-primary-dark text-base">Today's Team</h3>
+            <div className="flex items-center gap-1.5 bg-secondary rounded-full px-2.5 py-1">
+              <div className="w-2 h-2 rounded-full bg-neutral-warm" />
+              <span className="text-xs text-text-muted font-medium">0 active</span>
+            </div>
+          </div>
+          <div className="text-center py-6 flex-1 flex flex-col items-center justify-center">
+            <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center mx-auto mb-2">
+              <svg className="w-5 h-5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            </div>
+            <p className="text-sm text-text-muted">No one is scheduled today</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const statusConfig: Record<string, { label: string; color: string; dot: string }> = {
     clocked_in: { label: 'Working', color: 'text-emerald-600', dot: 'bg-emerald-500' },
@@ -80,9 +118,9 @@ export default function WhosWorking() {
     new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
-      <div className="h-1 bg-neutral-warm" />
-      <div className="p-5">
+    <div className={cardClass}>
+      {!dashboardStyle && <div className="h-1 bg-neutral-warm" />}
+      <div className="p-5 flex-1">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-primary-dark text-base">Today's Team</h3>
           <div className="flex items-center gap-2">

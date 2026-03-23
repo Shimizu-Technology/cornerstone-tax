@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { Schedule, TimeEntry } from '../../lib/api'
 import QuickCreateClientModal from '../../components/admin/QuickCreateClientModal'
+import WhosWorking from '../../components/time-tracking/WhosWorking'
 import { SkeletonStats, SkeletonCard, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
 
@@ -211,7 +212,7 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <StaggerContainer className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        <StaggerItem><StatCard
+        <StaggerItem className="h-full"><StatCard
           title="Total Clients"
           value={stats.totalClients}
           icon={
@@ -221,7 +222,7 @@ export default function Dashboard() {
           }
           gradient="from-primary to-primary-dark"
         /></StaggerItem>
-        <StaggerItem><StatCard
+        <StaggerItem className="h-full"><StatCard
           title="Active Returns"
           value={stats.activeReturns}
           icon={
@@ -231,7 +232,7 @@ export default function Dashboard() {
           }
           gradient="from-emerald-500 to-emerald-600"
         /></StaggerItem>
-        <StaggerItem><StatCard
+        <StaggerItem className="h-full"><StatCard
           title="In Review"
           value={stats.pendingReview}
           icon={
@@ -242,7 +243,7 @@ export default function Dashboard() {
           }
           gradient="from-amber-500 to-amber-600"
         /></StaggerItem>
-        <StaggerItem><StatCard
+        <StaggerItem className="h-full"><StatCard
           title="Ready for Pickup"
           value={stats.readyForPickup}
           icon={
@@ -254,8 +255,16 @@ export default function Dashboard() {
         /></StaggerItem>
       </StaggerContainer>
 
-      {/* Team Activity Widget */}
-      <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden transition-shadow hover:shadow-md">
+      {/* Team Overview: Today's Team + Team Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+        {/* Today's Team - Who's clocked in, scheduled, etc. */}
+        <div className="lg:col-span-1 order-1 flex">
+          <WhosWorking alwaysShow dashboardStyle />
+        </div>
+
+        {/* Team Activity Widget - Logged hours */}
+        <div className="lg:col-span-2 order-2 flex">
+          <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden transition-shadow hover:shadow-md w-full flex flex-col">
         <div className="px-6 py-5 border-b border-secondary-dark">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -459,6 +468,8 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+          </div>
+        </div>
       </div>
 
       {/* My Schedule */}
@@ -600,14 +611,14 @@ interface StatCardProps {
 
 function StatCard({ title, value, icon, gradient }: StatCardProps) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark p-5 sm:p-6 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark p-5 sm:p-6 hover:shadow-md transition-shadow h-full">
       <div className="flex items-center gap-4">
-        <div className={`bg-gradient-to-br ${gradient} text-white p-3 rounded-xl shadow-md`}>
+        <div className={`bg-gradient-to-br ${gradient} text-white p-3 rounded-xl shadow-md flex-shrink-0`}>
           {icon}
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-2xl sm:text-3xl font-bold text-gray-900">{value}</p>
-          <p className="text-sm text-gray-500">{title}</p>
+          <p className="text-sm text-gray-500 leading-tight">{title}</p>
         </div>
       </div>
     </div>

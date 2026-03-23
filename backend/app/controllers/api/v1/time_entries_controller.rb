@@ -220,8 +220,13 @@ module Api
       def clock_out
         target_user = resolve_clock_target_user
         admin_override = (current_user.admin? && target_user.id != current_user.id) ? current_user : nil
-        corrected_end = params[:corrected_end_time]
-        entry = TimeClockService.clock_out(user: target_user, admin_override_by: admin_override, corrected_end_time: corrected_end)
+        permitted = params.permit(:corrected_end_time, :description)
+        entry = TimeClockService.clock_out(
+          user: target_user,
+          admin_override_by: admin_override,
+          corrected_end_time: permitted[:corrected_end_time],
+          description: permitted[:description]
+        )
         render json: { time_entry: serialize_time_entry(entry) }
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
@@ -369,8 +374,8 @@ module Api
                       "clocked_out"
                     elsif schedule
                       guam_now = Time.current.in_time_zone(TimeClockService::BUSINESS_TIMEZONE)
-                      shift_start_seconds = schedule.start_time.seconds_since_midnight
-                      shift_end_seconds = schedule.end_time.seconds_since_midnight
+                      shift_start_seconds = schedule.start_time.utc.seconds_since_midnight
+                      shift_end_seconds = schedule.end_time.utc.seconds_since_midnight
                       current_seconds = guam_now.seconds_since_midnight
                       if current_seconds > shift_end_seconds && shift_end_seconds > shift_start_seconds
                         "no_show"

@@ -80,11 +80,14 @@ module Api
 
         ActiveRecord::Base.transaction do
           schedules_data.each do |schedule_data|
+            start_t = parse_time_as_utc(schedule_data[:start_time])
+            end_t = parse_time_as_utc(schedule_data[:end_time])
+
             schedule = Schedule.new(
               user_id: schedule_data[:user_id],
               work_date: schedule_data[:work_date],
-              start_time: schedule_data[:start_time],
-              end_time: schedule_data[:end_time],
+              start_time: start_t || schedule_data[:start_time],
+              end_time: end_t || schedule_data[:end_time],
               notes: schedule_data[:notes],
               created_by: current_user
             )
@@ -149,13 +152,28 @@ module Api
       end
 
       def schedule_params
-        params.require(:schedule).permit(
+        permitted = params.require(:schedule).permit(
           :user_id,
           :work_date,
           :start_time,
           :end_time,
           :notes
         )
+        normalize_time_to_utc(permitted, :start_time)
+        normalize_time_to_utc(permitted, :end_time)
+        permitted
+      end
+
+      def normalize_time_to_utc(params_hash, field)
+        parsed = parse_time_as_utc(params_hash[field])
+        params_hash[field] = parsed if parsed
+      end
+
+      def parse_time_as_utc(val)
+        return nil unless val.present? && val.is_a?(String) && val.match?(/\A\d{1,2}:\d{2}\z/)
+        h, m = val.split(':').map(&:to_i)
+        return nil unless h.between?(0, 23) && m.between?(0, 59)
+        Time.utc(2000, 1, 1, h, m, 0)
       end
 
       def serialize_schedule(schedule)
@@ -169,8 +187,8 @@ module Api
             full_name: schedule.user.full_name
           },
           work_date: schedule.work_date.iso8601,
-          start_time: schedule.start_time.strftime("%H:%M"),
-          end_time: schedule.end_time.strftime("%H:%M"),
+          start_time: schedule.start_time.utc.strftime("%H:%M"),
+          end_time: schedule.end_time.utc.strftime("%H:%M"),
           formatted_start_time: schedule.formatted_start_time,
           formatted_end_time: schedule.formatted_end_time,
           formatted_time_range: schedule.formatted_time_range,

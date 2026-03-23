@@ -1634,10 +1634,13 @@ export const api = {
       }),
     }),
 
-  clockOut: (correctedEndTime?: string) =>
+  clockOut: (correctedEndTime?: string, description?: string) =>
     fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/clock_out', {
       method: 'POST',
-      ...(correctedEndTime ? { body: JSON.stringify({ corrected_end_time: correctedEndTime }) } : {}),
+      ...((correctedEndTime || description) ? { body: JSON.stringify({
+        ...(correctedEndTime ? { corrected_end_time: correctedEndTime } : {}),
+        ...(description ? { description } : {}),
+      }) } : {}),
     }),
 
   startBreak: () =>
