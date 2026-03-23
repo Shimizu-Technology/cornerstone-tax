@@ -220,9 +220,13 @@ module Api
       def clock_out
         target_user = resolve_clock_target_user
         admin_override = (current_user.admin? && target_user.id != current_user.id) ? current_user : nil
-        corrected_end = params[:corrected_end_time]
-        description = params[:description]
-        entry = TimeClockService.clock_out(user: target_user, admin_override_by: admin_override, corrected_end_time: corrected_end, description: description)
+        permitted = params.permit(:corrected_end_time, :description)
+        entry = TimeClockService.clock_out(
+          user: target_user,
+          admin_override_by: admin_override,
+          corrected_end_time: permitted[:corrected_end_time],
+          description: permitted[:description]
+        )
         render json: { time_entry: serialize_time_entry(entry) }
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity

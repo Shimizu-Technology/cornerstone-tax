@@ -165,10 +165,8 @@ module Api
       end
 
       def normalize_time_to_utc(params_hash, field)
-        val = params_hash[field]
-        return unless val.present? && val.is_a?(String) && val.match?(/\A\d{1,2}:\d{2}\z/)
-        h, m = val.split(':').map(&:to_i)
-        params_hash[field] = Time.utc(2000, 1, 1, h, m, 0)
+        parsed = parse_time_as_utc(params_hash[field])
+        params_hash[field] = parsed if parsed
       end
 
       def parse_time_as_utc(val)

@@ -41,12 +41,15 @@ export default function WhosWorking({ alwaysShow = false, dashboardStyle = false
 
   if (loading) {
     return (
-      <div className={`bg-white rounded-2xl shadow-sm border ${cardBorder} p-5 animate-pulse ${dashboardStyle ? 'h-full' : ''}`}>
-        <div className="h-5 bg-neutral-warm rounded w-32 mb-4" />
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-10 bg-neutral-warm/60 rounded-xl" />
-          ))}
+      <div className={`${cardClass} animate-pulse`}>
+        {!dashboardStyle && <div className="h-1 bg-neutral-warm" />}
+        <div className="p-5">
+          <div className="h-5 bg-neutral-warm rounded w-32 mb-4" />
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-10 bg-neutral-warm/60 rounded-xl" />
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -54,13 +57,16 @@ export default function WhosWorking({ alwaysShow = false, dashboardStyle = false
 
   if (fetchError && workers.length === 0) {
     return (
-      <div className={`bg-white rounded-2xl shadow-sm border ${cardBorder} p-5 ${dashboardStyle ? 'h-full' : ''}`}>
-        <h3 className="font-semibold text-primary-dark text-base mb-3">Today's Team</h3>
-        <div className="text-center py-4">
-          <p className="text-sm text-red-600 mb-2">Unable to load team status</p>
-          <button onClick={fetchWorkers} className="text-xs text-primary-dark hover:underline font-medium">
-            Retry
-          </button>
+      <div className={cardClass}>
+        {!dashboardStyle && <div className="h-1 bg-neutral-warm" />}
+        <div className="p-5 flex-1">
+          <h3 className="font-semibold text-primary-dark text-base mb-3">Today's Team</h3>
+          <div className="text-center py-4">
+            <p className="text-sm text-red-600 mb-2">Unable to load team status</p>
+            <button onClick={fetchWorkers} className="text-xs text-primary-dark hover:underline font-medium">
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     )
