@@ -20,20 +20,18 @@ class Schedule < ApplicationRecord
   def hours
     return 0 unless start_time && end_time
     
-    # Convert to seconds and calculate difference
-    start_seconds = start_time.seconds_since_midnight
-    end_seconds = end_time.seconds_since_midnight
+    start_seconds = start_time.utc.seconds_since_midnight
+    end_seconds = end_time.utc.seconds_since_midnight
     
     ((end_seconds - start_seconds) / 3600.0).round(2)
   end
 
-  # Format time for display (e.g., "8:30 AM")
   def formatted_start_time
-    start_time&.strftime("%-I:%M %p")
+    start_time&.utc&.strftime("%-I:%M %p")
   end
 
   def formatted_end_time
-    end_time&.strftime("%-I:%M %p")
+    end_time&.utc&.strftime("%-I:%M %p")
   end
 
   # Format as range (e.g., "8:30 AM - 5:00 PM")
@@ -46,7 +44,7 @@ class Schedule < ApplicationRecord
   def end_time_after_start_time
     return unless start_time && end_time
     
-    if end_time <= start_time
+    if end_time.utc <= start_time.utc
       errors.add(:end_time, "must be after start time")
     end
   end

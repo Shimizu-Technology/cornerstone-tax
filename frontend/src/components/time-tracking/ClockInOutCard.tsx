@@ -18,8 +18,9 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
   const [error, setError] = useState<string | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [breakElapsed, setBreakElapsed] = useState(0)
-  const [showCorrectionModal, setShowCorrectionModal] = useState(false)
+  const [showClockOutModal, setShowClockOutModal] = useState(false)
   const [correctionTime, setCorrectionTime] = useState('')
+  const [clockOutDescription, setClockOutDescription] = useState('')
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const isOnBreakRef = useRef(false)
@@ -145,40 +146,42 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
   })()
 
   const handleClockOut = () => {
-    if (isPastSchedule()) {
+    const pastSchedule = isPastSchedule()
+    if (pastSchedule) {
       const { hours: h, minutes: m } = guamNow()
       const hh = h.toString().padStart(2, '0')
       const mm = m.toString().padStart(2, '0')
       setCorrectionTime(`${hh}:${mm}`)
-      setShowCorrectionModal(true)
-      return
+    } else {
+      setCorrectionTime('')
     }
-    handleAction('clock_out')
+    setClockOutDescription('')
+    setShowClockOutModal(true)
   }
 
-  const handleCorrectedClockOut = async (useCorrection: boolean) => {
-    setShowCorrectionModal(false)
-    if (useCorrection && correctionTime) {
-      setActionLoading(true)
-      setError(null)
-      try {
+  const handleClockOutSubmit = async () => {
+    setShowClockOutModal(false)
+    setActionLoading(true)
+    setError(null)
+    try {
+      const correctedEnd = correctionTime ? (() => {
         const guamDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Guam', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
-        const result = await api.clockOut(`${guamDate}T${correctionTime}:00`)
-        if (result?.error) {
-          setError(result.error)
-          await fetchStatus()
-        } else {
-          await fetchStatus()
-          onStatusChange?.()
-        }
-      } catch {
-        setError('Action failed. Please try again.')
+        return `${guamDate}T${correctionTime}:00`
+      })() : undefined
+      const desc = clockOutDescription.trim() || undefined
+      const result = await api.clockOut(correctedEnd, desc)
+      if (result?.error) {
+        setError(result.error)
         await fetchStatus()
-      } finally {
-        setActionLoading(false)
+      } else {
+        await fetchStatus()
+        onStatusChange?.()
       }
-    } else {
-      handleAction('clock_out')
+    } catch {
+      setError('Action failed. Please try again.')
+      await fetchStatus()
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -425,55 +428,91 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
         )}
       </div>
 
-      {/* Clock-out correction modal */}
-      {showCorrectionModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowCorrectionModal(false)}>
+      {/* Clock-out modal: description + optional time correction */}
+      {showClockOutModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowClockOutModal(false)}>
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <div className="flex items-start gap-3 mb-5">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
                 </svg>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">Late Clock Out</h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  Your shift was scheduled to end at <span className="font-medium">{status?.schedule?.end_time}</span>.
-                  Did you forget to clock out?
+                <h3 className="font-semibold text-gray-900">Clock Out</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {status?.clock_in_at && `You've been working since ${fmtTime(status.clock_in_at)}`}
                 </p>
               </div>
             </div>
 
-            <div className="mb-5">
-              <label className="text-sm font-medium text-gray-700 block mb-1.5">What time did you actually stop working?</label>
-              <input
-                type="time"
-                value={correctionTime}
-                onChange={e => setCorrectionTime(e.target.value)}
-                className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary ${
-                  correctionBeforeClockIn ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                }`}
-              />
-              {correctionBeforeClockIn ? (
-                <p className="text-xs text-red-500 mt-1.5">Time must be after your clock-in ({fmtTime(status!.clock_in_at!)})</p>
-              ) : (
-                <p className="text-xs text-gray-400 mt-1.5">This will be submitted for admin approval.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">
+                  What did you work on today?
+                </label>
+                <textarea
+                  value={clockOutDescription}
+                  onChange={e => setClockOutDescription(e.target.value)}
+                  placeholder="e.g. Worked on Ms. Tajalle's 1040, filed Mr. Cruz's extension..."
+                  rows={3}
+                  className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none placeholder:text-gray-400"
+                  autoFocus
+                />
+                <p className="text-xs text-gray-400 mt-1">Optional, but helps keep track of your day</p>
+              </div>
+
+              {correctionTime && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <div className="flex items-start gap-2 mb-3">
+                    <svg className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-medium text-amber-700">Past scheduled shift end</p>
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        Your shift was scheduled to end at {status?.schedule?.end_time}. What time did you actually stop?
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    type="time"
+                    value={correctionTime}
+                    onChange={e => setCorrectionTime(e.target.value)}
+                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white ${
+                      correctionBeforeClockIn ? 'border-red-300 bg-red-50' : 'border-amber-300'
+                    }`}
+                  />
+                  {correctionBeforeClockIn && (
+                    <p className="text-xs text-red-500 mt-1.5">Time must be after your clock-in ({fmtTime(status!.clock_in_at!)})</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      onClick={() => setCorrectionTime('')}
+                      className="text-xs text-amber-700 hover:text-amber-900 font-medium hover:underline"
+                    >
+                      I worked until now instead
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 mt-5">
               <button
-                onClick={() => handleCorrectedClockOut(true)}
-                disabled={!correctionTime || correctionBeforeClockIn}
-                className="flex-1 min-h-[44px] bg-primary text-white font-semibold rounded-xl text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                onClick={handleClockOutSubmit}
+                disabled={correctionTime !== '' && (!correctionTime || correctionBeforeClockIn)}
+                className="flex-1 min-h-[44px] bg-primary text-white font-semibold rounded-xl text-sm hover:bg-primary-dark disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
               >
-                Clock Out at {fmt12(correctionTime)}
+                <StopIcon />
+                {correctionTime ? `Clock Out at ${fmt12(correctionTime)}` : 'Clock Out'}
               </button>
               <button
-                onClick={() => handleCorrectedClockOut(false)}
-                className="flex-1 min-h-[44px] border border-gray-300 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 transition-colors"
+                onClick={() => setShowClockOutModal(false)}
+                className="min-h-[44px] px-5 border border-gray-300 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 transition-colors"
               >
-                I worked until now
+                Cancel
               </button>
             </div>
           </div>

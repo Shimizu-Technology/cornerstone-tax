@@ -14,6 +14,7 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [noteInput, setNoteInput] = useState<{ id: number; note: string } | null>(null)
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Set<number>>(new Set())
 
   const fetchPending = useCallback(async () => {
     try {
@@ -191,9 +192,33 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
                           : `${entry.hours}h`
                         }
                       </div>
-                      {entry.description && (
-                        <div className="text-xs text-text-muted mt-1 truncate">{entry.description}</div>
-                      )}
+                      {entry.description && (() => {
+                        const isLong = entry.description.length > 60
+                        const isExpanded = expandedDescriptions.has(entry.id)
+                        return (
+                          <div className="mt-1">
+                            <p className={`text-xs text-text-muted ${!isExpanded && isLong ? 'line-clamp-1' : ''}`}>
+                              {entry.description}
+                            </p>
+                            {isLong && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setExpandedDescriptions(prev => {
+                                    const next = new Set(prev)
+                                    if (next.has(entry.id)) next.delete(entry.id)
+                                    else next.add(entry.id)
+                                    return next
+                                  })
+                                }}
+                                className="text-primary text-[11px] font-medium hover:underline mt-0.5"
+                              >
+                                {isExpanded ? 'Show less' : 'Show more'}
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
 
                     <div className="text-right shrink-0">

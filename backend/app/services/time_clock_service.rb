@@ -46,7 +46,7 @@ class TimeClockService
     end
 
     # ── Clock Out ──
-    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil)
+    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil, description: nil)
       entry = active_entry_for(user)
       raise ClockError, "Not currently clocked in" unless entry
 
@@ -80,6 +80,7 @@ class TimeClockService
           entry.clock_out_at = now
         end
 
+        entry.description = description if description.present?
         entry.status = "completed"
         entry.break_minutes = entry.total_break_minutes
         entry.calculate_hours_from_times
