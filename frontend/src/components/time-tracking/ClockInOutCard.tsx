@@ -185,13 +185,12 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
     }
   }
 
-  const handleAction = async (action: 'clock_in' | 'clock_out' | 'start_break' | 'end_break', adminOverride = false) => {
+  const handleAction = async (action: 'clock_in' | 'start_break' | 'end_break', adminOverride = false) => {
     setActionLoading(true)
     setError(null)
     try {
       const fn = {
         clock_in: () => api.clockIn(undefined, adminOverride),
-        clock_out: () => api.clockOut(),
         start_break: () => api.startBreak(),
         end_break: () => api.endBreak(),
       }

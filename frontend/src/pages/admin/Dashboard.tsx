@@ -266,7 +266,7 @@ export default function Dashboard() {
 
         {/* Team Activity Widget - Logged hours */}
         <div className="lg:col-span-2 order-2 flex">
-      <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden transition-shadow hover:shadow-md w-full flex flex-col">
+          <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden transition-shadow hover:shadow-md w-full flex flex-col">
         <div className="px-6 py-5 border-b border-secondary-dark">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -470,7 +470,7 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-      </div>
+          </div>
         </div>
       </div>
 

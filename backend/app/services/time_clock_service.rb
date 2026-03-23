@@ -331,11 +331,9 @@ class TimeClockService
 
     def validate_clock_in_time(now, schedule)
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
-      scheduled_start = schedule.start_time
-      scheduled_end = schedule.end_time
 
-      earliest_allowed = [scheduled_start.seconds_since_midnight - (buffer * 60), 0].max
-      latest_allowed = scheduled_end.seconds_since_midnight
+      earliest_allowed = [schedule.start_time.utc.seconds_since_midnight - (buffer * 60), 0].max
+      latest_allowed = schedule.end_time.utc.seconds_since_midnight
       current_seconds = now.in_time_zone(business_timezone).seconds_since_midnight
 
       if current_seconds < earliest_allowed
@@ -352,7 +350,7 @@ class TimeClockService
 
     def calculate_attendance_status(now, schedule)
       current_seconds = now.in_time_zone(business_timezone).seconds_since_midnight
-      scheduled_start_seconds = schedule.start_time.seconds_since_midnight
+      scheduled_start_seconds = schedule.start_time.utc.seconds_since_midnight
       buffer_seconds = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i * 60
 
       if current_seconds < scheduled_start_seconds
@@ -370,8 +368,8 @@ class TimeClockService
       return { allowed: false, reason: "no_schedule" } unless schedule
 
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
-      earliest_allowed = [schedule.start_time.seconds_since_midnight - (buffer * 60), 0].max
-      latest_allowed = schedule.end_time.seconds_since_midnight
+      earliest_allowed = [schedule.start_time.utc.seconds_since_midnight - (buffer * 60), 0].max
+      latest_allowed = schedule.end_time.utc.seconds_since_midnight
       current_seconds = local_seconds_since_midnight
 
       if latest_allowed > earliest_allowed && current_seconds > latest_allowed
