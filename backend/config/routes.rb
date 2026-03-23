@@ -31,6 +31,7 @@ Rails.application.routes.draw do
             post :generate
           end
         end
+        resources :notes, only: [:index, :destroy], module: :clients
       end
       resources :client_operation_assignments, only: [:update]
       resources :operation_templates, only: [:index, :create, :update, :destroy] do

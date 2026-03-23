@@ -1971,6 +1971,15 @@ export const api = {
   portalDeleteNote: (id: number) =>
     fetchApi<void>(`/api/v1/portal/notes/${id}`, { method: 'DELETE' }),
 
+  // Admin: client notes
+  adminGetClientNotes: (clientId: number) =>
+    fetchApi<{ notes: ClientNote[] }>(`/api/v1/clients/${clientId}/notes`),
+
+  adminDeleteClientNote: (clientId: number, noteId: number) =>
+    fetchApi<void>(`/api/v1/clients/${clientId}/notes/${noteId}`, {
+      method: 'DELETE',
+    }),
+
   portalGetSettings: () =>
     fetchApi<{ notification_preference: string }>('/api/v1/portal/settings'),
 

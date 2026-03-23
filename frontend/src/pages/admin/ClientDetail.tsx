@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import type {
   ServiceType,
   ClientServiceType,
+  ClientNote,
   OperationCycle,
   OperationTemplateTask,
   ClientOperationAssignment,
@@ -156,6 +157,10 @@ export default function ClientDetailPage() {
   // Service types for editing
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
 
+  // Client notes (CST-49)
+  const [clientNotes, setClientNotes] = useState<ClientNote[]>([])
+  const [notesLoading, setNotesLoading] = useState(true)
+
   // Load service types
   useEffect(() => {
     const loadServiceTypes = async () => {
@@ -242,6 +247,31 @@ export default function ClientDetailPage() {
       }
     } catch (err) {
       console.error('Failed to load audit logs:', err)
+    }
+  }, [id])
+
+  // Fetch client notes (CST-49)
+  const fetchNotes = useCallback(async () => {
+    if (!id) return
+    setNotesLoading(true)
+    try {
+      const result = await api.adminGetClientNotes(Number(id))
+      setClientNotes(result.data?.notes ?? [])
+    } catch {
+      // Non-fatal — just show empty state
+      setClientNotes([])
+    } finally {
+      setNotesLoading(false)
+    }
+  }, [id])
+
+  const handleDeleteNote = useCallback(async (noteId: number) => {
+    if (!id) return
+    try {
+      await api.adminDeleteClientNote(Number(id), noteId)
+      setClientNotes(prev => prev.filter(n => n.id !== noteId))
+    } catch {
+      console.error('Failed to delete note')
     }
   }, [id])
 
@@ -538,7 +568,8 @@ export default function ClientDetailPage() {
     loadClient()
     loadAuditLogs()
     loadOperations()
-  }, [loadAuditLogs, loadClient, loadOperations])
+    fetchNotes()
+  }, [loadAuditLogs, loadClient, loadOperations, fetchNotes])
 
   useEffect(() => {
     if (selectedCycleId) {
@@ -1285,6 +1316,58 @@ export default function ClientDetailPage() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Client Notes */}
+          <div className="bg-white rounded-xl border border-secondary-dark overflow-hidden">
+            <div className="px-6 py-4 border-b border-secondary-dark">
+              <h2 className="text-lg font-semibold text-gray-900">Client Notes</h2>
+              <p className="text-sm text-gray-500 mt-0.5">Notes logged by the client via their portal</p>
+            </div>
+            <div className="p-6">
+              {notesLoading ? (
+                <div className="text-sm text-gray-400">Loading notes...</div>
+              ) : clientNotes.length === 0 ? (
+                <div className="text-sm text-gray-400 italic">No notes from this client yet.</div>
+              ) : (
+                <div className="space-y-3">
+                  {(['general', 'document', 'question'] as const).map(cat => {
+                    const catNotes = clientNotes.filter(n => n.category === cat)
+                    if (catNotes.length === 0) return null
+                    return (
+                      <div key={cat}>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                          {cat === 'general' ? 'General' : cat === 'document' ? 'Documents' : 'Questions'}
+                        </div>
+                        <div className="space-y-2">
+                          {catNotes.map(note => (
+                            <div
+                              key={note.id}
+                              className="flex items-start justify-between gap-3 p-3 bg-secondary/30 rounded-lg border border-secondary-dark"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{note.content}</p>
+                                <p className="text-xs text-gray-400 mt-1">{formatDateTime(note.created_at)}</p>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteNote(note.id)}
+                                className="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors p-1 rounded"
+                                title="Delete note"
+                                type="button"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
