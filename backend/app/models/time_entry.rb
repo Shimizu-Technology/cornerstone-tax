@@ -107,8 +107,8 @@ class TimeEntry < ApplicationRecord
   def calculate_hours_from_times
     return unless start_time.present? && end_time.present?
 
-    start_seconds = start_time.seconds_since_midnight
-    end_seconds = end_time.seconds_since_midnight
+    start_seconds = start_time.utc.seconds_since_midnight
+    end_seconds = end_time.utc.seconds_since_midnight
 
     if end_seconds < start_seconds
       end_seconds += 24 * 3600

@@ -196,6 +196,38 @@ Restrict clock-in and clock-out to employees who are physically at the office, s
 - Add `clock_in_latitude` and `clock_in_longitude` (decimal) columns to `time_entries` for audit trail
 - New settings keys: `geofence_enabled`, `office_latitude`, `office_longitude`, `geofence_radius_meters`
 
+### Work Activity Log (Real-Time Task Entries During Shift)
+Employees currently describe what they did only at clock-out, which means they're relying on memory at the end of the day. A work activity log lets them capture tasks as they go — "Finished Jones W-2 review", "Started Smith 1099 prep", etc. — so nothing gets forgotten.
+
+**When to implement:** When the team wants more granular visibility into how time is spent, or when employees find the single clock-out description too limiting.
+
+**How it would work:**
+
+*Employee experience:*
+- While clocked in, a "+ Log Activity" button appears on the ClockInOutCard
+- Tapping it opens a quick-entry field (what you just finished or started)
+- Each entry is timestamped automatically
+- At clock-out, the modal pre-populates the description with all activity entries, each on its own line with the timestamp, separated by blank lines for readability
+- Employee can edit/add to the compiled description before submitting
+- Entries are also visible on the time entry detail for admins
+
+*Data model:*
+- New `work_activities` table: `id`, `time_entry_id`, `description`, `logged_at`, `created_at`
+- Belongs to `TimeEntry` (has_many :work_activities)
+- On clock-out, the compiled description is built from work_activities + any additional text
+
+*Frontend:*
+- New `WorkActivityLog` component shown when clocked in
+- Simple list of entries with timestamps, most recent first
+- Quick-add input at the top (enter to submit, minimal friction)
+- Clock-out modal concatenates activities into the description textarea
+
+*Benefits:*
+- More accurate daily records (captured in real-time, not from memory)
+- Admins get granular task-level visibility without micromanaging
+- Natural integration with the existing clock-out description flow
+- Could later tie into daily task board items (link activity to a specific task)
+
 ### WebSocket Real-Time Updates (Daily Task Board & Beyond)
 Currently the Daily Task Board uses 5-second polling for near-real-time updates. This works well for a small team but should be upgraded to proper WebSockets as the team or feature set grows.
 

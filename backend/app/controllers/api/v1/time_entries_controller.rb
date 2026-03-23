@@ -416,7 +416,7 @@ module Api
       end
 
       def time_entry_params
-        params.require(:time_entry).permit(
+        permitted = params.require(:time_entry).permit(
           :work_date,
           :start_time,
           :end_time,
@@ -428,6 +428,20 @@ module Api
           :break_minutes,
           :user_id
         )
+        normalize_manual_time(permitted, :start_time)
+        normalize_manual_time(permitted, :end_time)
+        permitted
+      end
+
+      def normalize_manual_time(params_hash, field)
+        val = params_hash[field]
+        return unless val.present? && val.is_a?(String) && val.match?(/\A\d{1,2}:\d{2}\z/)
+
+        h, m = val.split(':').map(&:to_i)
+        return unless h.between?(0, 23) && m.between?(0, 59)
+
+        tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
+        params_hash[field] = tz.local(2000, 1, 1, h, m, 0)
       end
 
       def resolve_entry_owner
