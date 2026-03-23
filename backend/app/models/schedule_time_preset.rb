@@ -17,20 +17,20 @@ class ScheduleTimePreset < ApplicationRecord
 
   # Format times for display
   def formatted_start_time
-    start_time&.strftime("%-I:%M %p")
+    start_time&.utc&.strftime("%-I:%M %p")
   end
 
   def formatted_end_time
-    end_time&.strftime("%-I:%M %p")
+    end_time&.utc&.strftime("%-I:%M %p")
   end
 
   # Format for schedule form (24h format)
   def start_time_value
-    start_time&.strftime("%H:%M")
+    start_time&.utc&.strftime("%H:%M")
   end
 
   def end_time_value
-    end_time&.strftime("%H:%M")
+    end_time&.utc&.strftime("%H:%M")
   end
 
   private
@@ -38,7 +38,7 @@ class ScheduleTimePreset < ApplicationRecord
   def end_time_after_start_time
     return unless start_time && end_time
 
-    if end_time <= start_time
+    if end_time.utc <= start_time.utc
       errors.add(:end_time, "must be after start time")
     end
   end

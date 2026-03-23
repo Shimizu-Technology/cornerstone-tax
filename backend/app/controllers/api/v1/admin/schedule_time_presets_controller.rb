@@ -72,7 +72,20 @@ module Api
         end
 
         def preset_params
-          params.require(:preset).permit(:label, :start_time, :end_time, :position, :active)
+          permitted = params.require(:preset).permit(:label, :start_time, :end_time, :position, :active)
+          normalize_preset_time(permitted, :start_time)
+          normalize_preset_time(permitted, :end_time)
+          permitted
+        end
+
+        def normalize_preset_time(params_hash, field)
+          val = params_hash[field]
+          return unless val.present? && val.is_a?(String) && val.match?(/\A\d{1,2}:\d{2}\z/)
+
+          h, m = val.split(':').map(&:to_i)
+          return unless h.between?(0, 23) && m.between?(0, 59)
+
+          params_hash[field] = Time.utc(2000, 1, 1, h, m, 0)
         end
 
         def serialize_preset(preset)
