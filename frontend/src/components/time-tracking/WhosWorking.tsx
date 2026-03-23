@@ -43,7 +43,7 @@ export default function WhosWorking({ alwaysShow = false, dashboardStyle = false
     return (
       <div className={`${cardClass} animate-pulse`}>
         {!dashboardStyle && <div className="h-1 bg-neutral-warm" />}
-        <div className="p-5">
+        <div className="p-5 flex-1">
           <div className="h-5 bg-neutral-warm rounded w-32 mb-4" />
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
