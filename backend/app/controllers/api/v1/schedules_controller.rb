@@ -83,11 +83,16 @@ module Api
             start_t = parse_time_as_utc(schedule_data[:start_time])
             end_t = parse_time_as_utc(schedule_data[:end_time])
 
+            unless start_t && end_t
+              errors << { schedule_data: schedule_data, error: "Invalid time format" }
+              next
+            end
+
             schedule = Schedule.new(
               user_id: schedule_data[:user_id],
               work_date: schedule_data[:work_date],
-              start_time: start_t || schedule_data[:start_time],
-              end_time: end_t || schedule_data[:end_time],
+              start_time: start_t,
+              end_time: end_t,
               notes: schedule_data[:notes],
               created_by: current_user
             )
