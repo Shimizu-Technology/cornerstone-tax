@@ -37,7 +37,7 @@ export default function WhosWorking({ alwaysShow = false, dashboardStyle = false
   }, [fetchWorkers])
 
   const cardBorder = dashboardStyle ? 'border-secondary-dark' : 'border-neutral-warm'
-  const cardClass = `bg-white rounded-2xl shadow-sm border ${cardBorder} overflow-hidden hover:shadow-md transition-shadow duration-300 ${dashboardStyle ? 'h-full flex flex-col' : ''}`
+  const cardClass = `bg-white rounded-2xl shadow-sm border ${cardBorder} overflow-hidden hover:shadow-md transition-shadow duration-300 ${dashboardStyle ? 'h-full w-full flex flex-col' : ''}`
 
   if (loading) {
     return (

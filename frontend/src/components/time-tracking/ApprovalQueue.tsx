@@ -21,7 +21,14 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
       const result = await api.getPendingApprovals()
       if (result.data) {
         setEntries(result.data.pending_entries)
-        setExpandedDescriptions(new Set())
+        const freshIds = new Set(result.data.pending_entries.map((e: { id: number }) => e.id))
+        setExpandedDescriptions(prev => {
+          const pruned = new Set<number>()
+          for (const id of prev) {
+            if (freshIds.has(id)) pruned.add(id)
+          }
+          return pruned.size === prev.size ? prev : pruned
+        })
         setFetchError(false)
       } else if (result.error) {
         setFetchError(true)
