@@ -178,7 +178,11 @@ Rails.application.routes.draw do
         end
 
         # User management (invite, list, update role, delete)
-        resources :users, only: [:index, :show, :create, :update, :destroy]
+        resources :users, only: [:index, :show, :create, :update, :destroy] do
+          member do
+            post :resend_invite
+          end
+        end
 
         # Time category management
         resources :time_categories, only: [:index, :show, :create, :update, :destroy]

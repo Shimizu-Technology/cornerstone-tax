@@ -6,22 +6,22 @@ module Api
       class UsersController < BaseController
         before_action :authenticate_user!
         before_action :require_admin!
-        before_action :set_user, only: [:show, :update, :destroy]
+        before_action :set_user, only: [:show, :update, :destroy, :resend_invite]
 
         # GET /api/v1/admin/users
         def index
-          @users = User.order(created_at: :desc)
+          @users = User.includes(:client).order(created_at: :desc)
 
           # Filter by role
           if params[:role].present?
             @users = @users.where(role: params[:role])
           end
 
-          # Filter by status (active = has clerk_id, pending = no clerk_id)
+          # Filter by status
           if params[:status] == "active"
-            @users = @users.where.not(clerk_id: nil)
+            @users = @users.where.not(clerk_id: nil).where.not("clerk_id LIKE 'pending_%'")
           elsif params[:status] == "pending"
-            @users = @users.where(clerk_id: nil)
+            @users = @users.where("clerk_id IS NULL OR clerk_id LIKE 'pending_%'")
           end
 
           render json: {
@@ -137,10 +137,31 @@ module Api
           head :no_content
         end
 
+        # POST /api/v1/admin/users/:id/resend_invite
+        def resend_invite
+          unless @user.clerk_id.blank? || @user.clerk_id.start_with?("pending_")
+            return render json: { error: "This user has already activated their account" }, status: :unprocessable_entity
+          end
+
+          cache_key = "resend_invite_cooldown:#{@user.id}"
+          unless Rails.cache.write(cache_key, true, expires_in: 1.minute, unless_exist: true)
+            return render json: { error: "Invitation was already sent recently. Please wait a minute before resending." }, status: :too_many_requests
+          end
+
+          email_sent = send_invitation_email(@user)
+
+          unless email_sent
+            Rails.cache.delete(cache_key)
+            return render json: { error: "Failed to send invitation email. Please check email configuration." }, status: :unprocessable_entity
+          end
+
+          render json: { message: "Invitation email resent to #{@user.email}" }
+        end
+
         private
 
         def set_user
-          @user = User.find(params[:id])
+          @user = User.includes(:client).find(params[:id])
         rescue ActiveRecord::RecordNotFound
           render json: { error: "User not found" }, status: :not_found
         end
@@ -156,8 +177,8 @@ module Api
             role: user.role,
             client_id: user.client_id,
             client_name: user.client&.full_name,
-            is_active: !user.clerk_id&.start_with?("pending_"),
-            is_pending: user.clerk_id&.start_with?("pending_"),
+            is_active: user.clerk_id.present? && !user.clerk_id.start_with?("pending_"),
+            is_pending: user.clerk_id.blank? || user.clerk_id.start_with?("pending_"),
             created_at: user.created_at.iso8601,
             updated_at: user.updated_at.iso8601
           }

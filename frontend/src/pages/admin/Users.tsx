@@ -1,27 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../../lib/api'
+import type { AdminUser } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
 import { FadeUp } from '../../components/ui/MotionComponents'
 
-// Define types locally to avoid Vite caching issues
-interface AdminUser {
-  id: number
-  email: string
-  first_name: string | null
-  last_name: string | null
-  display_name: string
-  full_name: string
-  role: 'admin' | 'employee'
-  is_active: boolean
-  is_pending: boolean
-  created_at: string
-  updated_at: string
-}
+type Tab = 'team' | 'clients'
 
 export default function Users() {
   useEffect(() => { document.title = 'Users | Cornerstone Admin' }, [])
 
-  const [users, setUsers] = useState<AdminUser[]>([])
+  const [activeTab, setActiveTab] = useState<Tab>('team')
+  const [allUsers, setAllUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteFirstName, setInviteFirstName] = useState('')
@@ -30,9 +19,11 @@ export default function Users() {
   const [inviteRole, setInviteRole] = useState<'admin' | 'employee'>('employee')
   const [inviting, setInviting] = useState(false)
   const [error, setError] = useState('')
+  const [resendingIds, setResendingIds] = useState<Set<number>>(new Set())
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set())
+  const [updatingRoleIds, setUpdatingRoleIds] = useState<Set<number>>(new Set())
   const modalRef = useRef<HTMLDivElement>(null)
 
-  // Auto-focus the first input when the modal opens
   useEffect(() => {
     if (showInviteModal && modalRef.current) {
       const firstInput = modalRef.current.querySelector<HTMLElement>('input, select, textarea')
@@ -45,7 +36,7 @@ export default function Users() {
     try {
       const response = await api.getAdminUsers()
       if (response.data) {
-        setUsers(response.data.users)
+        setAllUsers(response.data.users)
       }
     } catch (err) {
       console.error('Failed to fetch users:', err)
@@ -57,6 +48,9 @@ export default function Users() {
   useEffect(() => {
     fetchUsers()
   }, [fetchUsers])
+
+  const teamUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'employee')
+  const clientUsers = allUsers.filter(u => u.role === 'client')
 
   const resetInviteForm = () => {
     setInviteFirstName('')
@@ -92,7 +86,8 @@ export default function Users() {
     }
   }
 
-  const handleRoleChange = async (userId: number, newRole: 'admin' | 'employee') => {
+  const handleRoleChange = async (userId: number, newRole: 'admin' | 'employee' | 'client') => {
+    setUpdatingRoleIds(prev => new Set(prev).add(userId))
     try {
       const response = await api.updateUserRole(userId, newRole)
       if (response.error) {
@@ -102,14 +97,18 @@ export default function Users() {
       }
     } catch (err) {
       alert('Failed to update role')
+    } finally {
+      setUpdatingRoleIds(prev => { const next = new Set(prev); next.delete(userId); return next })
     }
   }
 
   const handleDelete = async (user: AdminUser) => {
-    if (!confirm(`Are you sure you want to remove ${user.email}? They will no longer be able to access the system.`)) {
+    const label = user.role === 'client' ? 'client portal user' : 'team member'
+    if (!confirm(`Are you sure you want to remove ${user.display_name || user.email}? They will no longer be able to access the system as a ${label}.`)) {
       return
     }
 
+    setDeletingIds(prev => new Set(prev).add(user.id))
     try {
       const response = await api.deleteUser(user.id)
       if (response.error) {
@@ -119,6 +118,24 @@ export default function Users() {
       }
     } catch (err) {
       alert('Failed to delete user')
+    } finally {
+      setDeletingIds(prev => { const next = new Set(prev); next.delete(user.id); return next })
+    }
+  }
+
+  const handleResendInvite = async (user: AdminUser) => {
+    setResendingIds(prev => new Set(prev).add(user.id))
+    try {
+      const response = await api.resendInvite(user.id)
+      if (response.error) {
+        alert(response.error)
+      } else {
+        alert(`Invitation re-sent to ${user.email}`)
+      }
+    } catch (err) {
+      alert('Failed to resend invite')
+    } finally {
+      setResendingIds(prev => { const next = new Set(prev); next.delete(user.id); return next })
     }
   }
 
@@ -129,30 +146,76 @@ export default function Users() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark tracking-tight">User Management</h1>
-          <p className="text-gray-600 mt-1">Invite and manage team members</p>
+          <p className="text-gray-600 mt-1">
+            {activeTab === 'team' ? 'Invite and manage team members' : 'Manage client portal access'}
+          </p>
         </div>
+        {activeTab === 'team' && (
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors font-medium"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Invite Team Member
+          </button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div role="tablist" className="flex gap-1 bg-secondary/50 rounded-xl p-1 w-fit">
         <button
-          onClick={() => setShowInviteModal(true)}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors font-medium"
+          role="tab"
+          id="tab-team"
+          aria-selected={activeTab === 'team'}
+          aria-controls="panel-team"
+          onClick={() => setActiveTab('team')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'team'
+              ? 'bg-white text-primary-dark shadow-sm'
+              : 'text-gray-600 hover:text-primary-dark'
+          }`}
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          Invite User
+          Team
+          <span className="ml-1.5 text-xs text-gray-400">({teamUsers.length})</span>
+        </button>
+        <button
+          role="tab"
+          id="tab-clients"
+          aria-selected={activeTab === 'clients'}
+          aria-controls="panel-clients"
+          onClick={() => setActiveTab('clients')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'clients'
+              ? 'bg-white text-primary-dark shadow-sm'
+              : 'text-gray-600 hover:text-primary-dark'
+          }`}
+        >
+          Clients
+          <span className="ml-1.5 text-xs text-gray-400">({clientUsers.length})</span>
         </button>
       </div>
 
-      {/* Users List */}
-      <div className="bg-white rounded-2xl border border-secondary-dark overflow-hidden">
+      {/* Tab Panel — Team */}
+      <div
+        role="tabpanel"
+        id="panel-team"
+        aria-labelledby="tab-team"
+        hidden={activeTab !== 'team'}
+      >
+
+      {/* Desktop Table */}
+      <div className="hidden sm:block bg-white rounded-2xl border border-secondary-dark overflow-hidden">
         {loading ? (
           <div className="p-8 text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
             <p className="mt-2 text-gray-500">Loading users...</p>
           </div>
-        ) : users.length === 0 ? (
+        ) : teamUsers.length === 0 ? (
           <div className="p-8 text-center">
             <div className="text-4xl mb-2">👥</div>
-            <p className="text-gray-500">No users yet</p>
+            <p className="text-gray-500">No team members yet</p>
             <button
               onClick={() => setShowInviteModal(true)}
               className="mt-4 text-primary hover:text-primary-dark font-medium"
@@ -165,25 +228,15 @@ export default function Users() {
             <table className="w-full">
               <thead className="bg-secondary/50 border-b border-secondary-dark">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Joined
-                  </th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Role</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Joined</th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-secondary-dark">
-                {users.map((user) => (
+                {teamUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-secondary/30 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -202,7 +255,8 @@ export default function Users() {
                       <select
                         value={user.role}
                         onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'employee')}
-                        className="px-3 py-1.5 bg-secondary border border-secondary-dark rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        disabled={updatingRoleIds.has(user.id)}
+                        className="px-3 py-1.5 bg-secondary border border-secondary-dark rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
                         aria-label={`Role for ${user.display_name || user.email}`}
                       >
                         <option value="admin">Admin</option>
@@ -211,25 +265,31 @@ export default function Users() {
                     </td>
                     <td className="px-6 py-4">
                       {user.is_pending ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
-                          Pending
-                        </span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">Pending</span>
                       ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
-                          Active
-                        </span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">Active</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {formatDateTime(user.created_at)}
-                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{formatDateTime(user.created_at)}</td>
                     <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => handleDelete(user)}
-                        className="text-red-600 hover:text-red-800 text-sm font-medium"
-                      >
-                        Remove
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        {user.is_pending && (
+                          <button
+                            onClick={() => handleResendInvite(user)}
+                            disabled={resendingIds.has(user.id)}
+                            className="text-primary hover:text-primary-dark text-sm font-medium disabled:opacity-50"
+                          >
+                            {resendingIds.has(user.id) ? 'Sending...' : 'Resend Invite'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDelete(user)}
+                          disabled={deletingIds.has(user.id)}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50"
+                        >
+                          {deletingIds.has(user.id) ? 'Removing...' : 'Remove'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -241,7 +301,23 @@ export default function Users() {
 
       {/* Mobile Card View */}
       <div className="sm:hidden space-y-4">
-        {!loading && users.map((user) => (
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-2 text-gray-500">Loading users...</p>
+          </div>
+        ) : teamUsers.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-secondary-dark p-8 text-center">
+            <div className="text-4xl mb-2">👥</div>
+            <p className="text-gray-500">No team members yet</p>
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="mt-4 text-primary hover:text-primary-dark font-medium"
+            >
+              Invite your first team member
+            </button>
+          </div>
+        ) : teamUsers.map((user) => (
           <div key={user.id} className="bg-white rounded-2xl border border-secondary-dark p-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -253,40 +329,213 @@ export default function Users() {
                 <div>
                   <p className="font-medium text-gray-900">{user.display_name || user.email.split('@')[0]}</p>
                   <p className="text-sm text-gray-500 break-all">{user.email}</p>
-                  <p className="text-xs text-gray-400">
-                    Joined {formatDateTime(user.created_at)}
-                  </p>
+                  <p className="text-xs text-gray-400">Joined {formatDateTime(user.created_at)}</p>
                 </div>
               </div>
               {user.is_pending ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                  Pending
-                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
               ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  Active
-                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>
               )}
             </div>
-            <div className="mt-4 flex items-center justify-between gap-4">
+            <div className="mt-4 flex items-center justify-between gap-3">
               <select
                 value={user.role}
                 onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'employee')}
-                className="flex-1 px-3 py-2 bg-secondary border border-secondary-dark rounded-lg text-sm"
+                disabled={updatingRoleIds.has(user.id)}
+                className="flex-1 px-3 py-2 bg-secondary border border-secondary-dark rounded-lg text-sm disabled:opacity-50"
                 aria-label={`Role for ${user.display_name || user.email}`}
               >
                 <option value="admin">Admin</option>
                 <option value="employee">Employee</option>
               </select>
-              <button
-                onClick={() => handleDelete(user)}
-                className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium"
-              >
-                Remove
-              </button>
+              <div className="flex items-center gap-2">
+                {user.is_pending && (
+                  <button
+                    onClick={() => handleResendInvite(user)}
+                    disabled={resendingIds.has(user.id)}
+                    className="px-3 py-2 text-primary hover:bg-primary/5 rounded-lg text-sm font-medium disabled:opacity-50"
+                  >
+                    {resendingIds.has(user.id) ? 'Sending...' : 'Resend Invite'}
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDelete(user)}
+                  disabled={deletingIds.has(user.id)}
+                  className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium disabled:opacity-50"
+                >
+                  {deletingIds.has(user.id) ? 'Removing...' : 'Remove'}
+                </button>
+              </div>
             </div>
           </div>
         ))}
+      </div>
+      </div>
+
+      {/* Tab Panel — Clients */}
+      <div
+        role="tabpanel"
+        id="panel-clients"
+        aria-labelledby="tab-clients"
+        hidden={activeTab !== 'clients'}
+      >
+
+      {/* Desktop Table */}
+      <div className="hidden sm:block bg-white rounded-2xl border border-secondary-dark overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-2 text-gray-500">Loading users...</p>
+          </div>
+        ) : clientUsers.length === 0 ? (
+          <div className="p-8 text-center">
+            <div className="text-4xl mb-2">🏢</div>
+            <p className="text-gray-500">No client portal users yet</p>
+            <p className="mt-2 text-sm text-gray-400">
+              Client portal invites are sent from individual client detail pages
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-secondary/50 border-b border-secondary-dark">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Linked Client</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Role</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Invited</th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-secondary-dark">
+                {clientUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-secondary/30 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+                          <span className="text-blue-600 font-medium">
+                            {(user.first_name || user.email).charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{user.display_name || user.email.split('@')[0]}</p>
+                          <p className="text-sm text-gray-500">{user.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      {user.client_name || <span className="text-gray-400 italic">No linked client</span>}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                        Client
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {user.is_pending ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">Pending</span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">Active</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{formatDateTime(user.created_at)}</td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {user.is_pending && (
+                          <button
+                            onClick={() => handleResendInvite(user)}
+                            disabled={resendingIds.has(user.id)}
+                            className="text-primary hover:text-primary-dark text-sm font-medium disabled:opacity-50"
+                          >
+                            {resendingIds.has(user.id) ? 'Sending...' : 'Resend Invite'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDelete(user)}
+                          disabled={deletingIds.has(user.id)}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50"
+                        >
+                          {deletingIds.has(user.id) ? 'Removing...' : 'Remove'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Mobile Card View */}
+      <div className="sm:hidden space-y-4">
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-2 text-gray-500">Loading users...</p>
+          </div>
+        ) : clientUsers.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-secondary-dark p-8 text-center">
+            <div className="text-4xl mb-2">🏢</div>
+            <p className="text-gray-500">No client portal users yet</p>
+            <p className="mt-2 text-sm text-gray-400">
+              Client portal invites are sent from individual client detail pages
+            </p>
+          </div>
+        ) : clientUsers.map((user) => (
+          <div key={user.id} className="bg-white rounded-2xl border border-secondary-dark p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+                  <span className="text-blue-600 font-medium">
+                    {(user.first_name || user.email).charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900">{user.display_name || user.email.split('@')[0]}</p>
+                  <p className="text-sm text-gray-500 break-all">{user.email}</p>
+                  <p className="text-xs mt-0.5">
+                    {user.client_name
+                      ? <span className="text-blue-600">Client: {user.client_name}</span>
+                      : <span className="text-gray-400 italic">No linked client</span>}
+                  </p>
+                  <p className="text-xs text-gray-400">Invited {formatDateTime(user.created_at)}</p>
+                </div>
+              </div>
+              {user.is_pending ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
+              ) : (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>
+              )}
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                Client
+              </span>
+              <div className="flex items-center gap-2">
+                {user.is_pending && (
+                  <button
+                    onClick={() => handleResendInvite(user)}
+                    disabled={resendingIds.has(user.id)}
+                    className="px-3 py-2 text-primary hover:bg-primary/5 rounded-lg text-sm font-medium disabled:opacity-50"
+                  >
+                    {resendingIds.has(user.id) ? 'Sending...' : 'Resend Invite'}
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDelete(user)}
+                  disabled={deletingIds.has(user.id)}
+                  className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium disabled:opacity-50"
+                >
+                  {deletingIds.has(user.id) ? 'Removing...' : 'Remove'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
       </div>
 
       {/* Invite Modal */}
@@ -326,7 +575,7 @@ export default function Users() {
             ref={modalRef}
           >
             <div className="flex items-center justify-between mb-6">
-              <h2 id="invite-modal-title" className="text-xl font-bold text-primary-dark">Invite User</h2>
+              <h2 id="invite-modal-title" className="text-xl font-bold text-primary-dark">Invite Team Member</h2>
               <button
                 onClick={() => {
                   setShowInviteModal(false)
