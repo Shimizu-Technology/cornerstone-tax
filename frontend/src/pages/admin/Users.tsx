@@ -21,6 +21,7 @@ export default function Users() {
   const [error, setError] = useState('')
   const [resendingIds, setResendingIds] = useState<Set<number>>(new Set())
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set())
+  const [updatingRoleIds, setUpdatingRoleIds] = useState<Set<number>>(new Set())
   const modalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -84,8 +85,6 @@ export default function Users() {
       setInviting(false)
     }
   }
-
-  const [updatingRoleIds, setUpdatingRoleIds] = useState<Set<number>>(new Set())
 
   const handleRoleChange = async (userId: number, newRole: 'admin' | 'employee' | 'client') => {
     setUpdatingRoleIds(prev => new Set(prev).add(userId))
