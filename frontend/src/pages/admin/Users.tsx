@@ -85,7 +85,10 @@ export default function Users() {
     }
   }
 
+  const [updatingRoleIds, setUpdatingRoleIds] = useState<Set<number>>(new Set())
+
   const handleRoleChange = async (userId: number, newRole: 'admin' | 'employee' | 'client') => {
+    setUpdatingRoleIds(prev => new Set(prev).add(userId))
     try {
       const response = await api.updateUserRole(userId, newRole)
       if (response.error) {
@@ -95,6 +98,8 @@ export default function Users() {
       }
     } catch (err) {
       alert('Failed to update role')
+    } finally {
+      setUpdatingRoleIds(prev => { const next = new Set(prev); next.delete(userId); return next })
     }
   }
 
@@ -251,7 +256,8 @@ export default function Users() {
                       <select
                         value={user.role}
                         onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'employee')}
-                        className="px-3 py-1.5 bg-secondary border border-secondary-dark rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        disabled={updatingRoleIds.has(user.id)}
+                        className="px-3 py-1.5 bg-secondary border border-secondary-dark rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
                         aria-label={`Role for ${user.display_name || user.email}`}
                       >
                         <option value="admin">Admin</option>
@@ -337,7 +343,8 @@ export default function Users() {
               <select
                 value={user.role}
                 onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'employee')}
-                className="flex-1 px-3 py-2 bg-secondary border border-secondary-dark rounded-lg text-sm"
+                disabled={updatingRoleIds.has(user.id)}
+                className="flex-1 px-3 py-2 bg-secondary border border-secondary-dark rounded-lg text-sm disabled:opacity-50"
                 aria-label={`Role for ${user.display_name || user.email}`}
               >
                 <option value="admin">Admin</option>
