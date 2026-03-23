@@ -21,6 +21,7 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
       const result = await api.getPendingApprovals()
       if (result.data) {
         setEntries(result.data.pending_entries)
+        setExpandedDescriptions(new Set())
         setFetchError(false)
       } else if (result.error) {
         setFetchError(true)
@@ -192,33 +193,31 @@ export default function ApprovalQueue({ onUpdate }: ApprovalQueueProps) {
                           : `${entry.hours}h`
                         }
                       </div>
-                      {entry.description && (() => {
-                        const isLong = entry.description.length > 60
-                        const isExpanded = expandedDescriptions.has(entry.id)
-                        return (
-                          <div className="mt-1">
-                            <p className={`text-xs text-text-muted ${!isExpanded && isLong ? 'line-clamp-1' : ''}`}>
-                              {entry.description}
-                            </p>
-                            {isLong && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setExpandedDescriptions(prev => {
-                                    const next = new Set(prev)
-                                    if (next.has(entry.id)) next.delete(entry.id)
-                                    else next.add(entry.id)
-                                    return next
-                                  })
-                                }}
-                                className="text-primary text-[11px] font-medium hover:underline mt-0.5"
-                              >
-                                {isExpanded ? 'Show less' : 'Show more'}
-                              </button>
-                            )}
-                          </div>
-                        )
-                      })()}
+                      {entry.description && (
+                        <div className="mt-1">
+                          <p className={`text-xs text-text-muted ${
+                            !expandedDescriptions.has(entry.id) && entry.description.length > 60 ? 'line-clamp-1' : ''
+                          }`}>
+                            {entry.description}
+                          </p>
+                          {entry.description.length > 60 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setExpandedDescriptions(prev => {
+                                  const next = new Set(prev)
+                                  if (next.has(entry.id)) next.delete(entry.id)
+                                  else next.add(entry.id)
+                                  return next
+                                })
+                              }}
+                              className="text-primary text-[11px] font-medium hover:underline mt-0.5"
+                            >
+                              {expandedDescriptions.has(entry.id) ? 'Show less' : 'Show more'}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-right shrink-0">

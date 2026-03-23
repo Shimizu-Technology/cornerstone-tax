@@ -259,9 +259,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         {/* Today's Team - Who's clocked in, scheduled, etc. */}
         <div className="lg:col-span-1 order-1 flex">
-          <div className="w-full">
-            <WhosWorking alwaysShow dashboardStyle />
-          </div>
+          <WhosWorking alwaysShow dashboardStyle />
         </div>
 
         {/* Team Activity Widget - Logged hours */}
