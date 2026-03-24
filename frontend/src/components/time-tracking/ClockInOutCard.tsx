@@ -271,18 +271,18 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
             <div className="grid grid-cols-2 gap-2.5 mt-3">
               <div className="text-center bg-secondary/40 rounded-xl py-2 px-2">
                 <div className="text-sm font-semibold text-primary-dark tabular-nums font-mono">
-                  {isOnBreak ? fmt(Math.max(netWorkSeconds, 0)) : fmt(elapsedSeconds)}
+                  {fmt(elapsedSeconds)}
                 </div>
                 <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-0.5">
-                  {isOnBreak ? 'Time worked' : 'Total time'}
+                  Total time
                 </div>
               </div>
               <div className="text-center bg-secondary/40 rounded-xl py-2 px-2">
                 <div className="text-sm font-semibold tabular-nums font-mono text-text-muted">
-                  {isOnBreak ? fmt(elapsedSeconds) : `${status?.break_minutes || 0}m`}
+                  {isOnBreak ? fmt(Math.max(netWorkSeconds, 0)) : `${status?.break_minutes || 0}m`}
                 </div>
                 <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-0.5">
-                  {isOnBreak ? 'Total time' : 'Breaks'}
+                  {isOnBreak ? 'Time worked' : 'Breaks'}
                 </div>
               </div>
             </div>
@@ -416,19 +416,19 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
               <div className="w-px h-12 bg-neutral-warm/60" />
               <div className="text-center">
                 <div className="font-mono text-xl lg:text-2xl font-semibold text-primary-dark tabular-nums">
-                  {isOnBreak ? fmt(Math.max(netWorkSeconds, 0)) : fmt(elapsedSeconds)}
+                  {fmt(elapsedSeconds)}
                 </div>
                 <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-1">
-                  {isOnBreak ? 'Time worked' : 'Total time'}
+                  Total time
                 </div>
               </div>
               <div className="w-px h-12 bg-neutral-warm/60" />
               <div className="text-center">
                 <div className="font-mono text-xl lg:text-2xl font-semibold tabular-nums text-text-muted">
-                  {isOnBreak ? fmt(elapsedSeconds) : `${status?.break_minutes || 0}m`}
+                  {isOnBreak ? fmt(Math.max(netWorkSeconds, 0)) : `${status?.break_minutes || 0}m`}
                 </div>
                 <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-1">
-                  {isOnBreak ? 'Total time' : 'Breaks'}
+                  {isOnBreak ? 'Time worked' : 'Breaks'}
                 </div>
               </div>
             </div>
