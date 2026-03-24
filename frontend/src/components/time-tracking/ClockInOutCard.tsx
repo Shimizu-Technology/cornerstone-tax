@@ -260,22 +260,30 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
         {/* Timer (mobile) */}
         {isClockedIn && (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-5">
-            <div className="text-center py-3 bg-secondary/60 rounded-xl">
+            <div className={`text-center py-3 rounded-xl ${isOnBreak ? 'bg-amber-50 border border-amber-200/60' : 'bg-secondary/60'}`}>
               <div className={`font-mono text-3xl font-bold tabular-nums tracking-tight ${isOnBreak ? 'text-amber-600' : 'text-primary-dark'}`}>
-                {fmt(elapsedSeconds)}
+                {isOnBreak ? fmt(breakElapsed) : fmt(Math.max(netWorkSeconds, 0))}
               </div>
-              <div className="text-[10px] text-text-muted mt-1 font-medium uppercase tracking-wider">Total elapsed</div>
+              <div className={`text-[10px] mt-1 font-medium uppercase tracking-wider ${isOnBreak ? 'text-amber-500' : 'text-text-muted'}`}>
+                {isOnBreak ? 'Break time' : 'Time worked'}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2.5 mt-3">
               <div className="text-center bg-secondary/40 rounded-xl py-2 px-2">
-                <div className="text-sm font-semibold text-primary-dark tabular-nums font-mono">{fmt(Math.max(netWorkSeconds, 0))}</div>
-                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-0.5">Net work</div>
+                <div className="text-sm font-semibold text-primary-dark tabular-nums font-mono">
+                  {fmt(elapsedSeconds)}
+                </div>
+                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-0.5">
+                  Total time
+                </div>
               </div>
               <div className="text-center bg-secondary/40 rounded-xl py-2 px-2">
-                <div className={`text-sm font-semibold tabular-nums font-mono ${isOnBreak ? 'text-amber-600' : 'text-text-muted'}`}>
-                  {isOnBreak ? fmt(breakElapsed) : `${status?.break_minutes || 0}m`}
+                <div className="text-sm font-semibold tabular-nums font-mono text-text-muted">
+                  {isOnBreak ? fmt(Math.max(netWorkSeconds, 0)) : `${status?.break_minutes || 0}m`}
                 </div>
-                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-0.5">{isOnBreak ? 'Break' : 'Breaks'}</div>
+                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-0.5">
+                  {isOnBreak ? 'Time worked' : 'Breaks'}
+                </div>
               </div>
             </div>
           </motion.div>
@@ -399,21 +407,29 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
             <div className="flex items-center gap-6 lg:gap-8">
               <div className="text-center">
                 <div className={`font-mono text-3xl lg:text-4xl font-bold tabular-nums tracking-tight ${isOnBreak ? 'text-amber-600' : 'text-primary-dark'}`}>
+                  {isOnBreak ? fmt(breakElapsed) : fmt(Math.max(netWorkSeconds, 0))}
+                </div>
+                <div className={`text-[10px] font-medium uppercase tracking-wider mt-1 ${isOnBreak ? 'text-amber-500' : 'text-text-muted'}`}>
+                  {isOnBreak ? 'Break time' : 'Time worked'}
+                </div>
+              </div>
+              <div className="w-px h-12 bg-neutral-warm/60" />
+              <div className="text-center">
+                <div className="font-mono text-xl lg:text-2xl font-semibold text-primary-dark tabular-nums">
                   {fmt(elapsedSeconds)}
                 </div>
-                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-1">Elapsed</div>
-              </div>
-              <div className="w-px h-12 bg-neutral-warm/60" />
-              <div className="text-center">
-                <div className="font-mono text-xl lg:text-2xl font-semibold text-primary-dark tabular-nums">{fmt(Math.max(netWorkSeconds, 0))}</div>
-                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-1">Net work</div>
-              </div>
-              <div className="w-px h-12 bg-neutral-warm/60" />
-              <div className="text-center">
-                <div className={`font-mono text-xl lg:text-2xl font-semibold tabular-nums ${isOnBreak ? 'text-amber-600' : 'text-text-muted'}`}>
-                  {isOnBreak ? fmt(breakElapsed) : `${status?.break_minutes || 0}m`}
+                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-1">
+                  Total time
                 </div>
-                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-1">{isOnBreak ? 'Break' : 'Breaks'}</div>
+              </div>
+              <div className="w-px h-12 bg-neutral-warm/60" />
+              <div className="text-center">
+                <div className="font-mono text-xl lg:text-2xl font-semibold tabular-nums text-text-muted">
+                  {isOnBreak ? fmt(Math.max(netWorkSeconds, 0)) : `${status?.break_minutes || 0}m`}
+                </div>
+                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider mt-1">
+                  {isOnBreak ? 'Time worked' : 'Breaks'}
+                </div>
               </div>
             </div>
           </motion.div>
