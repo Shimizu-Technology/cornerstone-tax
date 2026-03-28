@@ -809,6 +809,22 @@ export interface ServiceTypesResponse {
   service_types: ServiceType[];
 }
 
+export interface BulkImportResultItem {
+  name?: string;
+  email: string;
+  client_type?: string;
+  reason?: string;
+}
+
+export interface BulkImportResponse {
+  message: string;
+  results: {
+    created: BulkImportResultItem[];
+    skipped: BulkImportResultItem[];
+    errors: BulkImportResultItem[];
+  };
+}
+
 // Operations Checklist Types
 export interface OperationTemplateTask {
   id: number;
@@ -1121,6 +1137,32 @@ export const api = {
     fetchApi<{ client: ClientDetailResponse['client'] }>(`/api/v1/clients/${id}/unarchive`, {
       method: 'POST',
     }),
+
+  bulkImportClients: async (file: File): Promise<ApiResponse<BulkImportResponse>> => {
+    try {
+      const headers: Record<string, string> = {};
+      if (getAuthToken) {
+        const token = await getAuthToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(`${API_BASE_URL}/api/v1/clients/bulk_import`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        return { error: data.error || 'Import failed', errors: data.errors || [] };
+      }
+      return { data };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Network error', errors: [] };
+    }
+  },
 
   // Client Contacts
   getClientContacts: (clientId: number) =>
