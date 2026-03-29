@@ -63,15 +63,18 @@ module Api
         end
 
         def category_params
-          params.require(:time_category).permit(:name, :description, :is_active)
+          params.require(:time_category).permit(:name, :key, :description, :is_active, :hourly_rate_cents)
         end
 
         def serialize_category(category)
           {
             id: category.id,
+            key: category.key,
             name: category.name,
             description: category.description,
             is_active: category.is_active,
+            hourly_rate_cents: category.hourly_rate_cents,
+            hourly_rate: category.hourly_rate,
             time_entries_count: category.time_entries.count,
             created_at: category.created_at.iso8601,
             updated_at: category.updated_at.iso8601

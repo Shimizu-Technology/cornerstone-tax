@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_22_101903) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_30_032000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -46,9 +46,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_22_101903) do
   create_table "client_operation_assignments", force: :cascade do |t|
     t.string "assignment_status", default: "active", null: false
     t.boolean "auto_generate", default: true, null: false
-    t.date "cadence_anchor"
-    t.integer "cadence_interval"
-    t.string "cadence_type", default: "monthly", null: false
     t.bigint "client_id", null: false
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
@@ -396,9 +393,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_22_101903) do
   create_table "time_categories", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.text "description"
+    t.integer "hourly_rate_cents"
     t.boolean "is_active", default: true
+    t.string "key"
     t.string "name", null: false
     t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_time_categories_on_key", unique: true
   end
 
   create_table "time_entries", force: :cascade do |t|

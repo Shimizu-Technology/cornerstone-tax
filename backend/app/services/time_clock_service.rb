@@ -8,7 +8,7 @@ class TimeClockService
 
   class << self
     # ── Clock In ──
-    def clock_in(user:, admin_override_by: nil)
+    def clock_in(user:, admin_override_by: nil, time_category_id: nil)
       now = Time.current
       guam_now = now.in_time_zone(business_timezone)
       today = guam_now.to_date
@@ -25,6 +25,12 @@ class TimeClockService
         validate_clock_in_time(now, schedule)
       end
 
+      selected_time_category = nil
+      if time_category_id.present?
+        selected_time_category = TimeCategory.active.find_by(id: time_category_id)
+        raise ClockError, "Selected work category is invalid or inactive" unless selected_time_category
+      end
+
       entry = TimeEntry.new(
         user: user,
         work_date: today,
@@ -34,6 +40,7 @@ class TimeClockService
         status: "clocked_in",
         hours: 0,
         schedule: schedule,
+        time_category: selected_time_category,
         admin_override: admin_override_by.present?,
         approval_status: nil,
         attendance_status: schedule ? calculate_attendance_status(now, schedule) : nil

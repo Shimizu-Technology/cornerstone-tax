@@ -21,8 +21,11 @@ module Api
       def serialize_category(category)
         {
           id: category.id,
+          key: category.key,
           name: category.name,
-          description: category.description
+          description: category.description,
+          hourly_rate_cents: category.hourly_rate_cents,
+          hourly_rate: category.hourly_rate
         }
       end
     end

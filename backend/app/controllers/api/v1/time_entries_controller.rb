@@ -210,7 +210,11 @@ module Api
           target_user = current_user
         end
 
-        entry = TimeClockService.clock_in(user: target_user, admin_override_by: admin_override)
+        entry = TimeClockService.clock_in(
+          user: target_user,
+          admin_override_by: admin_override,
+          time_category_id: params[:time_category_id]
+        )
         render json: { time_entry: serialize_time_entry(entry) }, status: :created
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity

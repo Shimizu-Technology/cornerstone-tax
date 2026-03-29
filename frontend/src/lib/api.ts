@@ -468,8 +468,11 @@ export interface AuditLogsResponse {
 // Time Tracking Types
 export interface TimeCategory {
   id: number;
+  key?: string | null;
   name: string;
   description: string | null;
+  hourly_rate_cents?: number | null;
+  hourly_rate?: number | null;
 }
 
 export interface AdminTimeCategory extends TimeCategory {
@@ -1625,12 +1628,13 @@ export const api = {
     }),
 
   // Time Clock
-  clockIn: (userId?: number, adminOverride?: boolean) =>
+  clockIn: (userId?: number, adminOverride?: boolean, timeCategoryId?: number) =>
     fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/clock_in', {
       method: 'POST',
       body: JSON.stringify({
         ...(userId ? { user_id: userId } : {}),
         ...(adminOverride ? { admin_override: true } : {}),
+        ...(timeCategoryId ? { time_category_id: timeCategoryId } : {}),
       }),
     }),
 

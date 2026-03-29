@@ -35,15 +35,24 @@ end
 puts "Creating time categories..."
 
 time_categories = [
-  { name: "Tax Preparation", description: "Preparing individual or business tax returns" },
-  { name: "Client Consultation", description: "Meetings, calls, and emails with clients" },
-  { name: "Document Review", description: "Reviewing client-submitted documents" },
-  { name: "Administrative", description: "General office and administrative tasks" },
-  { name: "Training", description: "Professional development and training" }
+  { key: "tax_prep", name: "Tax Preparation", description: "Preparing individual or business tax returns" },
+  { key: "client_consult", name: "Client Consultation", description: "Meetings, calls, and emails with clients" },
+  { key: "doc_review", name: "Document Review", description: "Reviewing client-submitted documents" },
+  { key: "admin", name: "Administrative", description: "General office and administrative tasks" },
+  { key: "training", name: "Training", description: "Professional development and training" },
+
+  # AIRE categories (day-to-day flight operations)
+  { key: "aire_flight", name: "AIRE Flight Time", description: "AIRE pilot flight instruction time", hourly_rate_cents: 3000 },
+  { key: "aire_ground", name: "AIRE Ground Teaching", description: "AIRE ground instruction time", hourly_rate_cents: 3000 },
+  { key: "aire_admin", name: "AIRE Admin Office", description: "AIRE administrative office work", hourly_rate_cents: 1000 }
 ]
 
 time_categories.each do |attrs|
-  category = TimeCategory.find_or_initialize_by(name: attrs[:name])
+  category = if attrs[:key].present?
+               TimeCategory.find_or_initialize_by(key: attrs[:key])
+             else
+               TimeCategory.find_or_initialize_by(name: attrs[:name])
+             end
   category.assign_attributes(attrs)
   category.save!
   puts "  ✓ #{category.name}"

@@ -19,6 +19,13 @@ import Services from "./pages/public/Services"
 import Contact from "./pages/public/Contact"
 import Form2848 from "./pages/public/Form2848"
 
+// AIRE public/ops scaffold pages
+import AireHome from "./pages/aire/AireHome"
+import AirePrograms from "./pages/aire/AirePrograms"
+import AireTeam from "./pages/aire/AireTeam"
+import AireContact from "./pages/aire/AireContact"
+import AireKiosk from "./pages/aire/AireKiosk"
+
 // Intake (not lazy — public-facing)
 import IntakeForm from "./pages/intake/IntakeForm"
 
@@ -67,7 +74,16 @@ function App() {
           <Route path="/services" element={<Services />} />
           <Route path="/form-2848" element={<Form2848 />} />
           <Route path="/contact" element={<Contact />} />
+
+          {/* AIRE (Cornerstone Tax based) */}
+          <Route path="/aire" element={<AireHome />} />
+          <Route path="/aire/programs" element={<AirePrograms />} />
+          <Route path="/aire/team" element={<AireTeam />} />
+          <Route path="/aire/contact" element={<AireContact />} />
         </Route>
+
+        {/* AIRE kiosk is intentionally outside PublicLayout for full-screen iPad mode */}
+        <Route path="/aire/kiosk" element={<AireKiosk />} />
 
         {/* Client Intake Form - CST-19: Support /intake/personal and /intake/business */}
         <Route path="/intake" element={<IntakeForm />} />
