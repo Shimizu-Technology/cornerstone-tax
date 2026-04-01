@@ -15,12 +15,7 @@ interface UserOption {
 
 // Fallback presets in case API fails
 const DEFAULT_PRESETS = [
-  { label: '8-1', start_time: '08:00', end_time: '13:00' },
-  { label: '8-5', start_time: '08:00', end_time: '17:00' },
-  { label: '8:30-5', start_time: '08:30', end_time: '17:00' },
-  { label: '9-5', start_time: '09:00', end_time: '17:00' },
-  { label: '12:30-5', start_time: '12:30', end_time: '17:00' },
-  { label: '1-5', start_time: '13:00', end_time: '17:00' },
+  { label: '10-3', start_time: '10:00', end_time: '15:00' },
 ]
 
 type ViewMode = 'grid' | 'list'
@@ -69,8 +64,8 @@ export default function Schedule() {
   const [formData, setFormData] = useState({
     user_id: 0,
     work_date: '',
-    start_time: '08:30',
-    end_time: '17:00',
+    start_time: '10:00',
+    end_time: '15:00',
     notes: '',
   })
   const [saving, setSaving] = useState(false)
@@ -161,8 +156,8 @@ export default function Schedule() {
     setFormData({
       user_id: userId,
       work_date: date,
-      start_time: '08:30',
-      end_time: '17:00',
+      start_time: '10:00',
+      end_time: '15:00',
       notes: '',
     })
     setShowModal(true)
