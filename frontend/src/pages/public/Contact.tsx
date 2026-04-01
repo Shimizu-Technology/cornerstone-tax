@@ -453,9 +453,8 @@ export default function Contact() {
                     icon={<svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
                   >
                     <p>
-                      Monday – Friday: 8:00 AM – 5:00 PM<br />
-                      Saturday: 9:00 AM – 1:00 PM<br />
-                      Sunday: Closed
+                      Monday – Friday: 10:00 AM – 3:00 PM<br />
+                      Saturday – Sunday: Closed
                     </p>
                     <p className="text-sm text-gray-400 mt-2">Holiday hours may vary. Please contact us to confirm availability.</p>
                   </ContactItem>
