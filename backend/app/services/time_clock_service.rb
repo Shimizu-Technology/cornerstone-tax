@@ -33,7 +33,7 @@ class TimeClockService
         hours: 0,
         schedule: schedule,
         admin_override: admin_override_by.present?,
-        approval_status: unscheduled ? "pending" : nil,
+        approval_status: nil,
         approval_note: unscheduled ? "Clocked in without a schedule" : nil,
         attendance_status: schedule ? calculate_attendance_status(now, schedule) : nil
       )
@@ -77,6 +77,9 @@ class TimeClockService
         else
           entry.end_time = guam_now
           entry.clock_out_at = now
+          if entry.approval_note&.start_with?("Clocked in without a schedule")
+            entry.approval_status = "pending"
+          end
         end
 
         entry.description = description if description.present?
