@@ -17,13 +17,11 @@ class TimeClockService
 
       schedule = Schedule.for_user(user.id).for_date(today).order(created_at: :desc).first
 
-      unless schedule || admin_override_by
-        raise ClockError, "No shift scheduled for today. Contact your manager if you need to work today."
-      end
-
       if schedule && !admin_override_by
         validate_clock_in_time(now, schedule)
       end
+
+      unscheduled = schedule.nil? && admin_override_by.nil?
 
       entry = TimeEntry.new(
         user: user,
@@ -36,6 +34,7 @@ class TimeClockService
         schedule: schedule,
         admin_override: admin_override_by.present?,
         approval_status: nil,
+        approval_note: unscheduled ? "Clocked in without a schedule" : nil,
         attendance_status: schedule ? calculate_attendance_status(now, schedule) : nil
       )
 
@@ -74,10 +73,13 @@ class TimeClockService
           entry.end_time = parsed
           entry.clock_out_at = now
           entry.approval_status = "pending"
-          entry.approval_note = "Employee corrected clock-out time to #{parsed.strftime('%I:%M %p')}"
+          entry.approval_note = build_approval_note(entry.approval_note, "Employee corrected clock-out time to #{parsed.strftime('%I:%M %p')}")
         else
           entry.end_time = guam_now
           entry.clock_out_at = now
+          if entry.approval_note&.start_with?("Clocked in without a schedule")
+            entry.approval_status = "pending"
+          end
         end
 
         entry.description = description if description.present?
@@ -168,11 +170,12 @@ class TimeClockService
       entry.with_lock do
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
+        combined_note = build_approval_note(entry.approval_note, note)
         attrs = {
           approval_status: "approved",
           approved_by: approved_by,
           approved_at: Time.current,
-          approval_note: note
+          approval_note: combined_note
         }
 
         if entry.status == "completed" && entry.overtime_status.in?([nil, "none"])
@@ -193,11 +196,12 @@ class TimeClockService
       entry.with_lock do
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
+        combined_note = build_approval_note(entry.approval_note, note)
         entry.update!(
           approval_status: "denied",
           approved_by: denied_by,
           approved_at: Time.current,
-          approval_note: note
+          approval_note: combined_note
         )
       end
       entry
@@ -267,7 +271,7 @@ class TimeClockService
               break_minutes: entry.total_break_minutes,
               admin_override: true,
               approval_status: "pending",
-              approval_note: "Auto-closed: clocked in for over #{threshold_hours} hours without clocking out"
+              approval_note: build_approval_note(entry.approval_note, "Auto-closed: clocked in for over #{threshold_hours} hours without clocking out")
             )
 
             AuditLog.create!(
@@ -329,6 +333,11 @@ class TimeClockService
       BUSINESS_TIMEZONE
     end
 
+    def build_approval_note(existing_note, new_note)
+      parts = [existing_note, new_note].select(&:present?)
+      parts.any? ? parts.join(" | ") : nil
+    end
+
     def validate_clock_in_time(now, schedule)
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
 
@@ -365,7 +374,7 @@ class TimeClockService
     def can_clock_in_info(user, schedule, existing_entry: nil)
       active = existing_entry.nil? ? active_entry_for(user) : existing_entry
       return { allowed: false, reason: "already_clocked_in" } if active
-      return { allowed: false, reason: "no_schedule" } unless schedule
+      return { allowed: true, reason: "no_schedule" } unless schedule
 
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
       earliest_allowed = [schedule.start_time.utc.seconds_since_midnight - (buffer * 60), 0].max

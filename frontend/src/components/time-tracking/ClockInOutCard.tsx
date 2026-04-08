@@ -225,8 +225,9 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
   const isOnBreak = status?.status === 'on_break'
   const isAdmin = status?.is_admin ?? false
   const blockedReason = status?.clock_in_blocked_reason
-  const isAdminOverridable = isAdmin && (blockedReason === 'too_early' || blockedReason === 'no_schedule' || blockedReason === 'shift_ended')
+  const isAdminOverridable = isAdmin && (blockedReason === 'too_early' || blockedReason === 'shift_ended')
   const canClockIn = status?.can_clock_in || isAdminOverridable
+  const isUnscheduled = !isClockedIn && !status?.schedule && blockedReason === 'no_schedule'
   const netWorkSeconds = isClockedIn ? elapsedSeconds - (status?.break_minutes || 0) * 60 - (isOnBreak ? breakElapsed : 0) : 0
 
   const stripeColor = isOnBreak ? 'bg-amber-400' : isClockedIn ? 'bg-emerald-500' : 'bg-neutral-warm'
@@ -302,7 +303,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
             <div className="text-xs text-text-muted mt-0.5">{status.schedule.hours} hours</div>
           </div>
         )}
-        {!isClockedIn && !status?.schedule && <NoScheduleMsg isAdmin={isAdmin} />}
+        {isUnscheduled && <UnscheduledMsg />}
         {!isClockedIn && blockedReason === 'too_early' && <TooEarlyMsg isAdmin={isAdmin} minutesUntil={status?.minutes_until} />}
         {!isClockedIn && blockedReason === 'shift_ended' && <ShiftEndedMsg isAdmin={isAdmin} />}
 
@@ -351,23 +352,22 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
                 </span>
               )}
               {!status?.schedule && !isClockedIn && (
-                <span className="text-xs text-red-500">No shift scheduled today</span>
+                <span className="text-xs text-amber-600">No shift scheduled — time will need approval</span>
               )}
             </div>
           </div>
 
-          {!isClockedIn && blockedReason && blockedReason !== 'already_clocked_in' && (
+          {!isClockedIn && blockedReason && blockedReason !== 'already_clocked_in' && blockedReason !== 'no_schedule' && (
             <div className="flex-1 text-center">
               <span className="text-xs text-amber-600 font-medium">
                 {blockedReason === 'too_early' && (status?.minutes_until != null ? `Clock in available in ~${status.minutes_until}m` : 'Shift hasn\'t started yet')}
                 {blockedReason === 'shift_ended' && 'Shift has ended'}
-                {blockedReason === 'no_schedule' && 'No shift scheduled today'}
                 {isAdmin && ' — admin override available'}
               </span>
             </div>
           )}
 
-          {!isClockedIn && !blockedReason && <div className="flex-1" />}
+          {!isClockedIn && (!blockedReason || blockedReason === 'no_schedule') && <div className="flex-1" />}
 
           <div className="flex items-center gap-2 shrink-0">
             {!isClockedIn ? (
@@ -596,17 +596,17 @@ function ErrorMsg({ error }: { error: string | null }) {
   )
 }
 
-function NoScheduleMsg({ isAdmin }: { isAdmin: boolean }) {
+function UnscheduledMsg() {
   return (
-    <div className="mb-4 p-3.5 bg-red-50 rounded-xl border border-red-100">
+    <div className="mb-4 p-3.5 bg-amber-50 rounded-xl border border-amber-200">
       <div className="flex items-start gap-2">
-        <svg className="w-4 h-4 text-red-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+        <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div>
-          <div className="text-sm font-medium text-red-700">No shift scheduled</div>
-          <div className="text-xs text-red-500 mt-0.5">
-            {isAdmin ? 'No shift scheduled, but you can use admin override.' : 'Contact your manager if you need to work today.'}
+          <div className="text-sm font-medium text-amber-700">No shift scheduled today</div>
+          <div className="text-xs text-amber-600 mt-0.5">
+            You can still clock in — your time will be sent for manager approval.
           </div>
         </div>
       </div>
