@@ -31,6 +31,7 @@ Rails.application.routes.draw do
             post :generate
           end
         end
+        resources :notes, only: [:index, :destroy], module: :clients
       end
       resources :client_operation_assignments, only: [:update]
       resources :operation_templates, only: [:index, :create, :update, :destroy] do
@@ -132,6 +133,7 @@ Rails.application.routes.draw do
       namespace :portal do
         get :dashboard, to: "dashboard#show"
         resource :settings, only: [:show, :update]
+        resources :notes, only: [:index, :create, :destroy]
         resources :tax_returns, only: [:index, :show] do
           resources :documents, only: [:index, :create] do
             collection do

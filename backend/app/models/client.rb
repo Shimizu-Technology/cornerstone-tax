@@ -7,6 +7,7 @@ class Client < ApplicationRecord
   has_many :transmittals, dependent: :destroy
   has_many :notifications, dependent: :destroy
   has_one :user, dependent: :nullify
+  has_many :client_notes, dependent: :destroy
   has_many :client_service_types, dependent: :destroy
   has_many :service_types, through: :client_service_types
   has_many :client_contacts, dependent: :destroy
