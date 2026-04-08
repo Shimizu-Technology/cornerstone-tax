@@ -10,6 +10,10 @@ module Api
       def index
         @audit_logs = AuditLog.includes(:user).recent
 
+        unless current_user.admin?
+          @audit_logs = @audit_logs.where(user_id: current_user.id)
+        end
+
         # Filter by auditable type
         if params[:auditable_type].present?
           @audit_logs = @audit_logs.for_type(params[:auditable_type])
@@ -20,8 +24,8 @@ module Api
           @audit_logs = @audit_logs.for_action(params[:action_type])
         end
 
-        # Filter by user
-        if params[:user_id].present?
+        # Filter by user (admin only — employees are already scoped)
+        if params[:user_id].present? && current_user.admin?
           @audit_logs = @audit_logs.where(user_id: params[:user_id])
         end
 
