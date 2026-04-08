@@ -757,6 +757,14 @@ export interface PortalActionItem {
   tax_year: number;
 }
 
+export interface ClientNote {
+  id: number;
+  content: string;
+  category: 'general' | 'document' | 'question';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PortalDashboardResponse {
   client: {
     id: number;
@@ -1950,6 +1958,18 @@ export const api = {
 
   portalGetDocumentDownloadUrl: (taxReturnId: number, documentId: number) =>
     fetchApi<{ download_url: string; expires_in: number }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents/${documentId}/download`),
+
+  portalGetNotes: () =>
+    fetchApi<{ notes: ClientNote[] }>('/api/v1/portal/notes'),
+
+  portalCreateNote: (data: { content: string; category?: string }) =>
+    fetchApi<{ note: ClientNote }>('/api/v1/portal/notes', {
+      method: 'POST',
+      body: JSON.stringify({ note: data }),
+    }),
+
+  portalDeleteNote: (id: number) =>
+    fetchApi<void>(`/api/v1/portal/notes/${id}`, { method: 'DELETE' }),
 
   portalGetSettings: () =>
     fetchApi<{ notification_preference: string }>('/api/v1/portal/settings'),

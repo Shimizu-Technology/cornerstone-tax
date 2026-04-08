@@ -7,6 +7,7 @@ const navigation = [
   { name: 'Dashboard', href: '/portal' },
   { name: 'My Returns', href: '/portal/returns' },
   { name: 'Documents', href: '/portal/documents' },
+  { name: 'My Notes', href: '/portal/notes' },
   { name: 'Settings', href: '/portal/settings' },
 ]
 
@@ -213,6 +214,7 @@ export default function PortalLayout() {
                   { to: '/portal', label: 'Dashboard' },
                   { to: '/portal/returns', label: 'My Returns' },
                   { to: '/portal/documents', label: 'Documents' },
+                  { to: '/portal/notes', label: 'My Notes' },
                   { to: '/portal/settings', label: 'Settings' },
                 ].map((link) => (
                   <li key={link.to}>
