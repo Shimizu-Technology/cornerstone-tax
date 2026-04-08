@@ -73,7 +73,7 @@ class TimeClockService
           entry.end_time = parsed
           entry.clock_out_at = now
           entry.approval_status = "pending"
-          entry.approval_note = "Employee corrected clock-out time to #{parsed.strftime('%I:%M %p')}"
+          entry.approval_note = build_approval_note(entry.approval_note, "Employee corrected clock-out time to #{parsed.strftime('%I:%M %p')}")
         else
           entry.end_time = guam_now
           entry.clock_out_at = now
@@ -271,7 +271,7 @@ class TimeClockService
               break_minutes: entry.total_break_minutes,
               admin_override: true,
               approval_status: "pending",
-              approval_note: "Auto-closed: clocked in for over #{threshold_hours} hours without clocking out"
+              approval_note: build_approval_note(entry.approval_note, "Auto-closed: clocked in for over #{threshold_hours} hours without clocking out")
             )
 
             AuditLog.create!(
