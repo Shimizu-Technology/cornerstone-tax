@@ -87,15 +87,18 @@ module Api
               return render json: { error: "A user with this email already exists and has an active account" }, status: :unprocessable_entity
             end
 
-            existing_user.update!(
+            if existing_user.update(
               first_name: first_name,
               last_name: last_name.presence,
               role: role,
               client_id: role == "client" ? client_id : nil,
               clerk_id: "pending_#{SecureRandom.hex(8)}"
             )
-            email_sent = send_invitation_email(existing_user)
-            return render json: { user: serialize_user(existing_user), invitation_email_sent: email_sent }, status: :created
+              email_sent = send_invitation_email(existing_user)
+              return render json: { user: serialize_user(existing_user), invitation_email_sent: email_sent }, status: :created
+            else
+              return render json: { error: existing_user.errors.full_messages.join(", ") }, status: :unprocessable_entity
+            end
           end
 
           # Create the user (without clerk_id - they'll get linked when they sign up)
