@@ -56,11 +56,6 @@ module Api
             return render json: { error: "Invalid email format" }, status: :unprocessable_entity
           end
 
-          # Check if email already exists
-          if User.exists?(["LOWER(email) = ?", email])
-            return render json: { error: "A user with this email already exists" }, status: :unprocessable_entity
-          end
-
           # Validate role
           unless %w[admin employee client].include?(role)
             return render json: { error: "Role must be admin, employee, or client" }, status: :unprocessable_entity
@@ -75,9 +70,28 @@ module Api
             unless Client.exists?(client_id)
               return render json: { error: "Client not found" }, status: :unprocessable_entity
             end
-            if User.exists?(client_id: client_id)
+            existing_client_user = User.find_by(client_id: client_id)
+            if existing_client_user
               return render json: { error: "This client already has a portal account" }, status: :unprocessable_entity
             end
+          end
+
+          # Check if email already exists — re-invite if they never activated
+          existing_user = User.find_by("LOWER(email) = ?", email)
+          if existing_user
+            if existing_user.clerk_id.present? && !existing_user.clerk_id.start_with?("pending_")
+              return render json: { error: "A user with this email already exists and has an active account" }, status: :unprocessable_entity
+            end
+
+            existing_user.update!(
+              first_name: first_name,
+              last_name: last_name.presence,
+              role: role,
+              client_id: role == "client" ? client_id : nil,
+              clerk_id: "pending_#{SecureRandom.hex(8)}"
+            )
+            email_sent = send_invitation_email(existing_user)
+            return render json: { user: serialize_user(existing_user), invitation_email_sent: email_sent }, status: :created
           end
 
           # Create the user (without clerk_id - they'll get linked when they sign up)
