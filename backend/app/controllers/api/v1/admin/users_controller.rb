@@ -71,7 +71,7 @@ module Api
               return render json: { error: "Client not found" }, status: :unprocessable_entity
             end
             existing_client_user = User.find_by(client_id: client_id)
-            if existing_client_user
+            if existing_client_user && existing_client_user.clerk_id.present? && !existing_client_user.clerk_id.start_with?("pending_")
               return render json: { error: "This client already has a portal account" }, status: :unprocessable_entity
             end
           end
