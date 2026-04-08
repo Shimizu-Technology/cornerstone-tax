@@ -17,13 +17,11 @@ class TimeClockService
 
       schedule = Schedule.for_user(user.id).for_date(today).order(created_at: :desc).first
 
-      unless schedule || admin_override_by
-        raise ClockError, "No shift scheduled for today. Contact your manager if you need to work today."
-      end
-
       if schedule && !admin_override_by
         validate_clock_in_time(now, schedule)
       end
+
+      unscheduled = schedule.nil? && admin_override_by.nil?
 
       entry = TimeEntry.new(
         user: user,
@@ -35,7 +33,8 @@ class TimeClockService
         hours: 0,
         schedule: schedule,
         admin_override: admin_override_by.present?,
-        approval_status: nil,
+        approval_status: unscheduled ? "pending" : nil,
+        approval_note: unscheduled ? "Clocked in without a schedule" : nil,
         attendance_status: schedule ? calculate_attendance_status(now, schedule) : nil
       )
 
@@ -365,7 +364,7 @@ class TimeClockService
     def can_clock_in_info(user, schedule, existing_entry: nil)
       active = existing_entry.nil? ? active_entry_for(user) : existing_entry
       return { allowed: false, reason: "already_clocked_in" } if active
-      return { allowed: false, reason: "no_schedule" } unless schedule
+      return { allowed: true, reason: "no_schedule" } unless schedule
 
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
       earliest_allowed = [schedule.start_time.utc.seconds_since_midnight - (buffer * 60), 0].max
