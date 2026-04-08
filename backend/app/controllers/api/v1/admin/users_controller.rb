@@ -63,6 +63,7 @@ module Api
 
           # Client role requires a client_id
           client_id = params[:client_id]
+          pending_client_user_to_clear = nil
           if role == "client"
             if client_id.blank?
               return render json: { error: "Client ID is required for client role" }, status: :unprocessable_entity
@@ -75,7 +76,7 @@ module Api
               if existing_client_user.clerk_id.present? && !existing_client_user.clerk_id.start_with?("pending_")
                 return render json: { error: "This client already has a portal account" }, status: :unprocessable_entity
               else
-                existing_client_user.update_columns(client_id: nil)
+                pending_client_user_to_clear = existing_client_user
               end
             end
           end
@@ -87,37 +88,40 @@ module Api
               return render json: { error: "A user with this email already exists and has an active account" }, status: :unprocessable_entity
             end
 
-            if existing_user.update(
+            ActiveRecord::Base.transaction do
+              if pending_client_user_to_clear && pending_client_user_to_clear.id != existing_user.id
+                pending_client_user_to_clear.update_columns(client_id: nil)
+              end
+              existing_user.update!(
+                first_name: first_name,
+                last_name: last_name.presence,
+                role: role,
+                client_id: role == "client" ? client_id : nil,
+                clerk_id: "pending_#{SecureRandom.hex(8)}"
+              )
+            end
+            email_sent = send_invitation_email(existing_user)
+            return render json: { user: serialize_user(existing_user), invitation_email_sent: email_sent }, status: :created
+          end
+
+          # Create a new user
+          ActiveRecord::Base.transaction do
+            if pending_client_user_to_clear
+              pending_client_user_to_clear.update_columns(client_id: nil)
+            end
+            @user = User.create!(
+              email: email,
               first_name: first_name,
               last_name: last_name.presence,
               role: role,
               client_id: role == "client" ? client_id : nil,
               clerk_id: "pending_#{SecureRandom.hex(8)}"
             )
-              email_sent = send_invitation_email(existing_user)
-              return render json: { user: serialize_user(existing_user), invitation_email_sent: email_sent }, status: :created
-            else
-              return render json: { error: existing_user.errors.full_messages.join(", ") }, status: :unprocessable_entity
-            end
           end
-
-          # Create the user (without clerk_id - they'll get linked when they sign up)
-          @user = User.new(
-            email: email,
-            first_name: first_name,
-            last_name: last_name.presence,
-            role: role,
-            client_id: role == "client" ? client_id : nil,
-            clerk_id: "pending_#{SecureRandom.hex(8)}"
-          )
-
-          if @user.save
-            email_sent = send_invitation_email(@user)
-            
-            render json: { user: serialize_user(@user), invitation_email_sent: email_sent }, status: :created
-          else
-            render json: { error: @user.errors.full_messages.join(", ") }, status: :unprocessable_entity
-          end
+          email_sent = send_invitation_email(@user)
+          render json: { user: serialize_user(@user), invitation_email_sent: email_sent }, status: :created
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { error: e.record.errors.full_messages.join(", ") }, status: :unprocessable_entity
         end
 
         # PATCH /api/v1/admin/users/:id
