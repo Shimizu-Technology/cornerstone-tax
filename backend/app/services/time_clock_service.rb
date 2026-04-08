@@ -170,11 +170,12 @@ class TimeClockService
       entry.with_lock do
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
+        combined_note = build_approval_note(entry.approval_note, note)
         attrs = {
           approval_status: "approved",
           approved_by: approved_by,
           approved_at: Time.current,
-          approval_note: note
+          approval_note: combined_note
         }
 
         if entry.status == "completed" && entry.overtime_status.in?([nil, "none"])
@@ -195,11 +196,12 @@ class TimeClockService
       entry.with_lock do
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
+        combined_note = build_approval_note(entry.approval_note, note)
         entry.update!(
           approval_status: "denied",
           approved_by: denied_by,
           approved_at: Time.current,
-          approval_note: note
+          approval_note: combined_note
         )
       end
       entry
@@ -329,6 +331,11 @@ class TimeClockService
 
     def business_timezone
       BUSINESS_TIMEZONE
+    end
+
+    def build_approval_note(existing_note, new_note)
+      parts = [existing_note, new_note].select(&:present?)
+      parts.any? ? parts.join(" | ") : nil
     end
 
     def validate_clock_in_time(now, schedule)
