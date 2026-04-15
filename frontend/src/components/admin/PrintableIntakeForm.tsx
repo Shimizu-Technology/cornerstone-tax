@@ -42,8 +42,8 @@ interface ClientData {
   denied_eic_actc_year: number | null
   has_crypto_transactions: boolean
   wants_direct_deposit: boolean
-  other_income: string | null
-  comments: string | null
+  other_income?: string | null
+  comments?: string | null
   client_type: 'individual' | 'business'
   business_name: string | null
   dependents: Dependent[]

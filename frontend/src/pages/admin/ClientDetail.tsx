@@ -79,8 +79,8 @@ interface ClientDetail {
   denied_eic_actc_year: number | null
   has_crypto_transactions: boolean
   wants_direct_deposit: boolean
-  other_income: string | null
-  comments: string | null
+  other_income?: string | null
+  comments?: string | null
   client_type: 'individual' | 'business'
   business_name: string | null
   is_service_only: boolean
@@ -1897,7 +1897,7 @@ export default function ClientDetailPage() {
                     value={editForm.other_income}
                     onChange={e => setEditForm({ ...editForm, other_income: e.target.value })}
                     rows={3}
-                    placeholder="Rental income, self-employment, Social Security, gambling winnings, etc."
+                    placeholder="Rental income, self-employment, gambling winnings, alimony, foreign income, etc."
                     className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>

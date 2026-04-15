@@ -1096,7 +1096,7 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
           name="other_income"
           value={formData.other_income}
           onChange={(v) => updateField('other_income', v)}
-          placeholder="Rental income, self-employment, Social Security, gambling winnings, alimony, or any other income not listed above"
+          placeholder="Rental income, self-employment, gambling winnings, alimony, foreign income, or any other income not listed above"
           rows={3}
           isKioskMode={isKioskMode}
         />
