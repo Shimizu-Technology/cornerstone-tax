@@ -37,6 +37,8 @@ module Api
           :spouse_name, :spouse_dob,
           # Special questions
           :denied_eic_actc, :denied_eic_actc_year, :has_crypto_transactions,
+          # Other income & comments
+          :other_income, :comments,
           # Bank info
           :wants_direct_deposit, :bank_routing_number, :bank_account_number, :bank_account_type,
           # Authorization

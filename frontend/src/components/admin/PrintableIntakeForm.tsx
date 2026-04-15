@@ -42,6 +42,8 @@ interface ClientData {
   denied_eic_actc_year: number | null
   has_crypto_transactions: boolean
   wants_direct_deposit: boolean
+  other_income?: string | null
+  comments?: string | null
   client_type: 'individual' | 'business'
   business_name: string | null
   dependents: Dependent[]
@@ -248,6 +250,13 @@ export default function PrintableIntakeForm({ client }: Props) {
             </>
           )}
 
+          {client.other_income && (
+            <div className="print-income-group" style={{ marginTop: '6pt' }}>
+              <p className="print-field-label">Other Income:</p>
+              <p className="print-field-value">{client.other_income}</p>
+            </div>
+          )}
+
           <div className="print-divider" />
 
           {/* Section 4: Refund Preference */}
@@ -265,6 +274,15 @@ export default function PrintableIntakeForm({ client }: Props) {
           )}
 
           <div className="print-divider" />
+
+          {/* Comments */}
+          {client.comments && (
+            <>
+              <h2 className="print-section-title">Client Comments</h2>
+              <p className="print-field-value">{client.comments}</p>
+              <div className="print-divider" />
+            </>
+          )}
 
           {/* Section 5: Authorization */}
           <h2 className="print-section-title">Section 4: Taxpayer Authorization</h2>

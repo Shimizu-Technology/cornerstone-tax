@@ -43,6 +43,7 @@ export interface IntakeFormData {
   w2_employers: string[];
   form_1099_types: string[];
   form_1099_payer_names: Record<string, PayerEntry[]>;
+  other_income: string;
 
   // Section 4: Special Questions
   denied_eic_actc: boolean;
@@ -61,6 +62,9 @@ export interface IntakeFormData {
   bank_routing_number: string;
   bank_account_number: string;
   bank_account_type: 'checking' | 'savings' | '';
+
+  // Comments
+  comments: string;
 
   // Section 8: Authorization
   authorization_confirmed: boolean;
@@ -84,6 +88,7 @@ export const defaultIntakeFormData: IntakeFormData = {
   w2_employers: [''],
   form_1099_types: [],
   form_1099_payer_names: {},
+  other_income: '',
   denied_eic_actc: false,
   denied_eic_actc_year: '',
   has_crypto_transactions: false,
@@ -94,6 +99,7 @@ export const defaultIntakeFormData: IntakeFormData = {
   bank_routing_number: '',
   bank_account_number: '',
   bank_account_type: '',
+  comments: '',
   authorization_confirmed: false,
   signature: '',
   signature_date: new Date().toISOString().split('T')[0],

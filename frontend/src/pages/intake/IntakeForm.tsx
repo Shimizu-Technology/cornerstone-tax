@@ -1089,6 +1089,21 @@ function StepIncomeSources({ formData, updateField, isKioskMode }: StepProps) {
           </div>
         )}
       </div>
+
+      <div>
+        <FormTextarea
+          label="Other Income"
+          name="other_income"
+          value={formData.other_income}
+          onChange={(v) => updateField('other_income', v)}
+          placeholder="Rental income, self-employment, gambling winnings, alimony, foreign income, or any other income not listed above"
+          rows={3}
+          isKioskMode={isKioskMode}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          If you have any income not covered by W-2s or 1099s above, please describe it here.
+        </p>
+      </div>
     </div>
   );
 }
@@ -1467,6 +1482,16 @@ function StepRefundPreference({ formData, updateField, isKioskMode }: StepProps)
 function StepAuthorization({ formData, updateField, errors = {}, isKioskMode }: StepProps) {
   return (
     <div className="space-y-6">
+      <FormTextarea
+        label="Additional Comments or Notes"
+        name="comments"
+        value={formData.comments}
+        onChange={(v) => updateField('comments', v)}
+        placeholder="Anything else you'd like us to know? Special circumstances, questions, or additional information for your tax preparer."
+        rows={4}
+        isKioskMode={isKioskMode}
+      />
+
       <div className="p-4 bg-gray-50 rounded-xl">
         <h3 className="font-medium text-gray-900 mb-2">Authorization Agreement</h3>
         <p className="text-sm text-gray-600">

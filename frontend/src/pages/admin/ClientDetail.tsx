@@ -79,6 +79,8 @@ interface ClientDetail {
   denied_eic_actc_year: number | null
   has_crypto_transactions: boolean
   wants_direct_deposit: boolean
+  other_income?: string | null
+  comments?: string | null
   client_type: 'individual' | 'business'
   business_name: string | null
   is_service_only: boolean
@@ -108,6 +110,8 @@ interface EditFormData {
   changes_from_prior_year: string
   has_crypto_transactions: boolean
   wants_direct_deposit: boolean
+  other_income: string
+  comments: string
   denied_eic_actc: boolean
   denied_eic_actc_year: string
   client_type: 'individual' | 'business'
@@ -646,6 +650,8 @@ export default function ClientDetailPage() {
       changes_from_prior_year: client.changes_from_prior_year || '',
       has_crypto_transactions: client.has_crypto_transactions,
       wants_direct_deposit: client.wants_direct_deposit,
+      other_income: client.other_income || '',
+      comments: client.comments || '',
       denied_eic_actc: client.denied_eic_actc,
       denied_eic_actc_year: client.denied_eic_actc_year?.toString() || '',
       client_type: client.client_type || 'individual',
@@ -1451,6 +1457,22 @@ export default function ClientDetailPage() {
             </div>
           )}
 
+          {/* Other Income */}
+          {client.other_income && (
+            <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Other Income</h2>
+              <p className="text-gray-700 whitespace-pre-line">{client.other_income}</p>
+            </div>
+          )}
+
+          {/* Comments */}
+          {client.comments && (
+            <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Client Comments</h2>
+              <p className="text-gray-700 whitespace-pre-line">{client.comments}</p>
+            </div>
+          )}
+
           {/* Timestamps */}
           <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-500">
             <p>Created: {formatDateTime(client.created_at)}</p>
@@ -1864,6 +1886,30 @@ export default function ClientDetailPage() {
                     onChange={e => setEditForm({ ...editForm, changes_from_prior_year: e.target.value })}
                     rows={3}
                     placeholder="Note any significant changes from the prior year..."
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <label htmlFor="client-other-income" className="block text-sm font-medium text-gray-700 mb-1">Other Income</label>
+                  <textarea
+                    id="client-other-income"
+                    value={editForm.other_income}
+                    onChange={e => setEditForm({ ...editForm, other_income: e.target.value })}
+                    rows={3}
+                    placeholder="Rental income, self-employment, gambling winnings, alimony, foreign income, etc."
+                    className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <label htmlFor="client-comments" className="block text-sm font-medium text-gray-700 mb-1">Comments</label>
+                  <textarea
+                    id="client-comments"
+                    value={editForm.comments}
+                    onChange={e => setEditForm({ ...editForm, comments: e.target.value })}
+                    rows={3}
+                    placeholder="Additional notes or special circumstances..."
                     className="w-full px-3 py-2 border border-secondary-dark rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>
