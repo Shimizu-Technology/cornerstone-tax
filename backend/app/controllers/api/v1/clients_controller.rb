@@ -145,6 +145,7 @@ module Api
           filing_status is_new_client has_prior_year_return changes_from_prior_year
           spouse_name spouse_dob denied_eic_actc denied_eic_actc_year
           has_crypto_transactions wants_direct_deposit client_type business_name has_tax_returns
+          other_income comments
         ]
 
         # Get only the safe attributes that are being updated
@@ -246,7 +247,7 @@ module Api
           :spouse_name, :spouse_dob, :denied_eic_actc, :denied_eic_actc_year,
           :has_crypto_transactions, :wants_direct_deposit, :bank_routing_number,
           :bank_account_number, :bank_account_type, :client_type, :business_name,
-          :has_tax_returns, :notification_preference
+          :has_tax_returns, :notification_preference, :other_income, :comments
         )
         # Map legacy is_service_only param to has_tax_returns (inverted logic)
         # Read from raw params since we don't permit the renamed field
@@ -327,6 +328,8 @@ module Api
           denied_eic_actc_year: client.denied_eic_actc_year,
           has_crypto_transactions: client.has_crypto_transactions,
           wants_direct_deposit: client.wants_direct_deposit,
+          other_income: client.other_income,
+          comments: client.comments,
           client_type: client.client_type,
           business_name: client.business_name,
           has_tax_returns: client.has_tax_returns,

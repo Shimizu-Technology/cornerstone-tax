@@ -54,7 +54,9 @@ class CreateIntakeService
       wants_direct_deposit: @params.fetch(:wants_direct_deposit, false),
       bank_routing_number_encrypted: @params[:bank_routing_number],
       bank_account_number_encrypted: @params[:bank_account_number],
-      bank_account_type: @params[:bank_account_type]
+      bank_account_type: @params[:bank_account_type],
+      other_income: @params[:other_income],
+      comments: @params[:comments]
     )
   end
 
