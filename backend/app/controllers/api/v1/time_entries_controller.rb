@@ -6,6 +6,7 @@ module Api
       before_action :authenticate_user!
       before_action :require_staff!
       before_action :set_time_entry, only: [:show, :update, :destroy, :approve, :deny, :approve_overtime, :deny_overtime]
+      before_action :require_time_entry_owner_or_admin!, only: [:update, :destroy]
       before_action :require_admin!, only: [:approve, :deny, :approve_overtime, :deny_overtime]
 
       # GET /api/v1/time_entries
@@ -415,6 +416,13 @@ module Api
         @time_entry = TimeEntry.find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Time entry not found" }, status: :not_found
+      end
+
+      def require_time_entry_owner_or_admin!
+        return if current_user.admin? || @time_entry.user_id == current_user.id
+
+        action = action_name == "destroy" ? "delete" : "edit"
+        render json: { error: "You can only #{action} your own time entries" }, status: :forbidden
       end
 
       def time_entry_params
