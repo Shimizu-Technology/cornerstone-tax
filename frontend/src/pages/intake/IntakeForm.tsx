@@ -13,6 +13,7 @@ import {
   DOCUMENT_TYPES,
   MAX_FILE_SIZE,
   getDocumentContentType,
+  inferDocumentType,
   isAllowedDocumentFile,
 } from '../../lib/documentConstants';
 import { formatFileSize } from '../../lib/formatUtils';
@@ -1571,19 +1572,6 @@ interface StepDocumentsProps {
   isKioskMode?: boolean;
 }
 
-const documentTypeForFile = (fileName: string): IntakeDocumentType => {
-  const normalized = fileName.toLowerCase();
-  if (normalized.includes('w-2') || normalized.includes('w2')) return 'w2';
-  if (normalized.includes('1099')) return '1099';
-  if (normalized.includes('id') || normalized.includes('license')) return 'id';
-  if (normalized.includes('draft')) return 'draft_return';
-  if (normalized.includes('final')) return 'final_return';
-  if (normalized.includes('notice') || normalized.includes('letter')) return 'tax_notice';
-  if (normalized.includes('organizer')) return 'organizer';
-  if (normalized.includes('prior') || normalized.includes('last-year')) return 'prior_return';
-  return 'other';
-};
-
 function StepDocuments({ documents, setDocuments, error, setError, isKioskMode }: StepDocumentsProps) {
   const addFiles = (fileList: FileList | null) => {
     if (!fileList) return;
@@ -1607,7 +1595,7 @@ function StepDocuments({ documents, setDocuments, error, setError, isKioskMode }
       ...files.map(file => ({
         id: crypto.randomUUID(),
         file,
-        documentType: documentTypeForFile(file.name),
+        documentType: inferDocumentType(file.name),
       })),
     ]);
   };

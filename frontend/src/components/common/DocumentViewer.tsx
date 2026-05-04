@@ -16,6 +16,7 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [officePreviewAllowed, setOfficePreviewAllowed] = useState(false)
   const fetchIdRef = useRef(0)
 
   const handleDownload = useCallback(async () => {
@@ -68,8 +69,13 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
       fetchIdRef.current++
       setUrl(null)
       setError(null)
+      setOfficePreviewAllowed(false)
     }
   }, [isOpen, fetchUrl])
+
+  useEffect(() => {
+    setOfficePreviewAllowed(false)
+  }, [filename, contentType])
 
   // Re-fetch presigned URL before it expires (50 min of 60 min TTL)
   useEffect(() => {
@@ -113,6 +119,7 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
   const officePreviewUrl = url && isOffice
     ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`
     : null
+  const showOfficePreview = Boolean(officePreviewUrl && officePreviewAllowed)
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -230,10 +237,32 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
                 />
               )}
 
-              {officePreviewUrl && (
+              {isOffice && officePreviewUrl && !officePreviewAllowed && (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center p-8 max-w-md">
+                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0120 8.414V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <p className="text-gray-800 font-medium mb-2">Office preview available</p>
+                    <p className="text-gray-500 text-sm mb-5">
+                      Previewing Word, Excel, or PowerPoint files uses Microsoft's online viewer and temporarily shares this secure file link with Microsoft.
+                    </p>
+                    <button
+                      onClick={() => setOfficePreviewAllowed(true)}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors font-medium text-sm"
+                    >
+                      Preview with Microsoft Office
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {showOfficePreview && (
                 <div className="h-full bg-white">
                   <iframe
-                    src={officePreviewUrl}
+                    src={officePreviewUrl || undefined}
                     className="w-full h-full border-0"
                     title={filename}
                   />

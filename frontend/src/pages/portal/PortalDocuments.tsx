@@ -7,6 +7,7 @@ import {
   DOCUMENT_TYPES,
   MAX_FILE_SIZE,
   getDocumentContentType,
+  inferDocumentType,
   isAllowedDocumentFile,
 } from '../../lib/documentConstants'
 import DocumentViewer from '../../components/common/DocumentViewer'
@@ -15,17 +16,6 @@ type QueuedPortalDocument = {
   id: string
   file: File
   documentType: string
-}
-
-const documentTypeForFile = (fileName: string) => {
-  const normalized = fileName.toLowerCase()
-  if (normalized.includes('w-2') || normalized.includes('w2')) return 'w2'
-  if (normalized.includes('1099')) return '1099'
-  if (normalized.includes('id') || normalized.includes('license') || normalized.includes('passport')) return 'id'
-  if (normalized.includes('prior') || normalized.includes('last-year')) return 'prior_return'
-  if (normalized.includes('notice') || normalized.includes('letter')) return 'tax_notice'
-  if (normalized.includes('organizer')) return 'organizer'
-  return 'other'
 }
 
 const uploadSourceClasses = (source?: 'client' | 'staff') => (
@@ -132,7 +122,7 @@ export default function PortalDocuments() {
       ...files.map(file => ({
         id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
         file,
-        documentType: documentTypeForFile(file.name),
+        documentType: inferDocumentType(file.name),
       })),
     ])
   }, [])

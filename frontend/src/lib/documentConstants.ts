@@ -48,6 +48,8 @@ export const DOCUMENT_TYPES = [
   { value: 'other', label: 'Other' },
 ] as const
 
+export type DocumentType = typeof DOCUMENT_TYPES[number]['value']
+
 const CONTENT_TYPE_BY_EXTENSION: Record<string, typeof ALLOWED_CONTENT_TYPES[number]> = {
   '.pdf': 'application/pdf',
   '.jpg': 'image/jpeg',
@@ -80,4 +82,18 @@ export const isAllowedDocumentFile = (file: File) => {
   const contentType = getDocumentContentType(file)
   return ALLOWED_CONTENT_TYPES.includes(contentType as typeof ALLOWED_CONTENT_TYPES[number])
     && ALLOWED_FILE_EXTENSIONS.includes(getDocumentExtension(file.name) as typeof ALLOWED_FILE_EXTENSIONS[number])
+}
+
+export const inferDocumentType = (fileName: string): DocumentType => {
+  const normalized = fileName.toLowerCase()
+  if (normalized.includes('w-2') || normalized.includes('w2')) return 'w2'
+  if (normalized.includes('1099')) return '1099'
+  if (normalized.includes('id') || normalized.includes('license') || normalized.includes('passport')) return 'id'
+  if (normalized.includes('draft')) return 'draft_return'
+  if (normalized.includes('final')) return 'final_return'
+  if (normalized.includes('notice') || normalized.includes('letter')) return 'tax_notice'
+  if (normalized.includes('organizer')) return 'organizer'
+  if (normalized.includes('supporting') || normalized.includes('statement')) return 'supporting_statement'
+  if (normalized.includes('prior') || normalized.includes('last-year')) return 'prior_return'
+  return 'other'
 }
