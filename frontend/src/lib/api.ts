@@ -709,7 +709,12 @@ export interface Document {
   uploaded_by: {
     id: number;
     email: string;
+    name?: string;
+    role?: string;
   } | null;
+  uploaded_by_source?: 'client' | 'staff';
+  uploaded_by_label?: string;
+  uploaded_by_name?: string;
   created_at: string;
   tax_return_id: number;
 }
@@ -735,6 +740,9 @@ export interface PortalDocument {
   content_type: string | null;
   file_size: number | null;
   uploaded_by?: string | null;
+  uploaded_by_source?: 'client' | 'staff';
+  uploaded_by_label?: string;
+  uploaded_by_name?: string;
   created_at: string;
 }
 

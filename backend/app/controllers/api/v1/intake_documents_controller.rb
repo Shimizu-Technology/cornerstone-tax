@@ -109,7 +109,7 @@ module Api
           params[:upload_token],
           purpose: :intake_document_upload
         )
-        render json: { error: "Invalid or expired upload token" }, status: :not_found unless @tax_return
+        render json: { error: "Invalid or expired upload token" }, status: :not_found and return unless @tax_return
       end
 
       def document_params
@@ -123,6 +123,9 @@ module Api
           document_type: doc.document_type,
           content_type: doc.content_type,
           file_size: doc.file_size,
+          uploaded_by_source: doc.upload_source,
+          uploaded_by_label: doc.upload_source_label,
+          uploaded_by_name: doc.uploaded_by_display_name,
           created_at: doc.created_at,
           tax_return_id: doc.tax_return_id
         }

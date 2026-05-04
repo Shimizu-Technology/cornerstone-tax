@@ -37,6 +37,12 @@ const documentTypeForFile = (fileName: string) => {
   return 'other'
 }
 
+const uploadSourceClasses = (source?: 'client' | 'staff') => (
+  source === 'staff'
+    ? 'bg-blue-50 text-blue-700 border-blue-200'
+    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+)
+
 export default function DocumentUpload({ taxReturnId, documents, onDocumentsChange }: DocumentUploadProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -303,9 +309,16 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
                   </svg>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{doc.filename}</p>
-                    <p className="text-xs text-gray-500">
-                      {doc.document_type?.replaceAll('_', ' ').toUpperCase() || 'Other'} • {formatFileSize(doc.file_size)} • {formatDateTime(doc.created_at)}
-                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                      <span>{doc.document_type?.replaceAll('_', ' ').toUpperCase() || 'Other'}</span>
+                      <span>•</span>
+                      <span>{formatFileSize(doc.file_size)}</span>
+                      <span>•</span>
+                      <span>{formatDateTime(doc.created_at)}</span>
+                      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${uploadSourceClasses(doc.uploaded_by_source)}`}>
+                        {doc.uploaded_by_label || 'Uploaded by client'}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

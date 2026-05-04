@@ -28,6 +28,12 @@ const documentTypeForFile = (fileName: string) => {
   return 'other'
 }
 
+const uploadSourceClasses = (source?: 'client' | 'staff') => (
+  source === 'staff'
+    ? 'bg-blue-50 text-blue-700 border-blue-200'
+    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+)
+
 export default function PortalDocuments() {
   useEffect(() => { document.title = 'Documents | Cornerstone Client Portal' }, [])
 
@@ -411,9 +417,16 @@ export default function PortalDocuments() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{doc.filename}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {doc.document_type?.replaceAll('_', ' ') || 'Other'} · {formatFileSize(doc.file_size)} · {new Date(doc.created_at).toLocaleDateString()}
-                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                      <span>{doc.document_type?.replaceAll('_', ' ') || 'Other'}</span>
+                      <span>·</span>
+                      <span>{formatFileSize(doc.file_size)}</span>
+                      <span>·</span>
+                      <span>{new Date(doc.created_at).toLocaleDateString()}</span>
+                      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${uploadSourceClasses(doc.uploaded_by_source)}`}>
+                        {doc.uploaded_by_source === 'staff' ? 'From Cornerstone' : 'Uploaded by you'}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

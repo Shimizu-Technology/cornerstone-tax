@@ -154,6 +154,9 @@ module Api
             content_type: doc.content_type,
             file_size: doc.file_size,
             uploaded_by: doc.uploaded_by&.full_name,
+            uploaded_by_source: doc.upload_source,
+            uploaded_by_label: doc.upload_source_label,
+            uploaded_by_name: doc.uploaded_by_display_name,
             created_at: doc.created_at
           }
         end

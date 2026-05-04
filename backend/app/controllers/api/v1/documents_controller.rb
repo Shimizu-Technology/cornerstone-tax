@@ -193,8 +193,13 @@ module Api
           file_size: doc.file_size,
           uploaded_by: doc.uploaded_by ? {
             id: doc.uploaded_by.id,
-            email: doc.uploaded_by.email
+            email: doc.uploaded_by.email,
+            name: doc.uploaded_by.full_name,
+            role: doc.uploaded_by.role
           } : nil,
+          uploaded_by_source: doc.upload_source,
+          uploaded_by_label: doc.upload_source_label,
+          uploaded_by_name: doc.uploaded_by_display_name,
           created_at: doc.created_at,
           tax_return_id: doc.tax_return_id
         }
