@@ -144,6 +144,7 @@ export default function PortalDocuments() {
     setUploadSuccess(null)
 
     let uploadedCount = 0
+    const uploadedIds: string[] = []
     try {
       for (const queuedDoc of queuedDocuments) {
         const file = queuedDoc.file
@@ -175,12 +176,17 @@ export default function PortalDocuments() {
 
         if (registerResult.error) throw new Error(registerResult.error)
         uploadedCount += 1
+        uploadedIds.push(queuedDoc.id)
       }
 
       setQueuedDocuments([])
       setUploadSuccess(`${uploadedCount} document${uploadedCount === 1 ? '' : 's'} uploaded successfully.`)
       loadDocuments({ clearMessages: false })
     } catch (err) {
+      if (uploadedIds.length > 0) {
+        setQueuedDocuments(prev => prev.filter(doc => !uploadedIds.includes(doc.id)))
+        loadDocuments({ clearMessages: false })
+      }
       setUploadError(err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.')
     } finally {
       setUploading(false)

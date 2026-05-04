@@ -106,6 +106,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
     setSuccess(null)
 
     let uploadedCount = 0
+    const uploadedIds: string[] = []
     try {
       for (const [index, queuedDoc] of queuedDocuments.entries()) {
         const file = queuedDoc.file
@@ -131,12 +132,17 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
         })
         if (registerResult.error) throw new Error(registerResult.error)
         uploadedCount += 1
+        uploadedIds.push(queuedDoc.id)
       }
 
       setQueuedDocuments([])
       setSuccess(`${uploadedCount} document${uploadedCount === 1 ? '' : 's'} uploaded for this client.`)
       onDocumentsChange()
     } catch (err) {
+      if (uploadedIds.length > 0) {
+        setQueuedDocuments(prev => prev.filter(doc => !uploadedIds.includes(doc.id)))
+        onDocumentsChange()
+      }
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setUploadProgress(null)
