@@ -4,8 +4,8 @@ FactoryBot.define do
   factory :time_entry do
     association :user
     work_date { Date.current }
-    start_time { Time.zone.parse("09:00") }
-    end_time { Time.zone.parse("17:00") }
+    start_time { ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE].parse("09:00") }
+    end_time { ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE].parse("17:00") }
     hours { 8.0 }
     description { "Test work" }
 

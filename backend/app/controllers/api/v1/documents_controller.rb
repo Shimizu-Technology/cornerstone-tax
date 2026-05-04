@@ -54,7 +54,7 @@ module Api
 
         unless ALLOWED_CONTENT_TYPES.include?(content_type)
           return render json: {
-            error: "File type not allowed. Accepted types: PDF, JPEG, PNG"
+            error: "File type not allowed. Accepted types include PDF, images, Word, Excel, PowerPoint, CSV, and text files"
           }, status: :unprocessable_entity
         end
 
@@ -103,8 +103,18 @@ module Api
           return render json: { error: "File size must be between 1 byte and 50MB" }, status: :unprocessable_entity
         end
 
+        unless uploaded_object_available?(s3_key, file_size)
+          return render json: { error: "Uploaded file could not be verified. Please upload it again." }, status: :unprocessable_entity
+        end
+
+        doc_type = document_params[:document_type]
+        if doc_type.present? && !Document::DOCUMENT_TYPES.include?(doc_type)
+          return render json: { error: "Invalid document type. Allowed: #{Document::DOCUMENT_TYPES.join(', ')}" }, status: :unprocessable_entity
+        end
+
         document = @tax_return.documents.build(document_params)
         document.uploaded_by = current_user
+        document.upload_source = current_user.staff? ? "staff" : "client"
 
         if document.save
           render json: document_json(document), status: :created
@@ -124,7 +134,8 @@ module Api
           download_url = S3Service.presign_download(
             s3_key: @document.s3_key,
             filename: @document.filename,
-            expires_in: 3600
+            expires_in: 3600,
+            disposition: params[:disposition]
           )
         rescue StandardError => e
           Rails.logger.error "S3 presign download failed for document #{@document.id}: #{e.message}"
@@ -183,8 +194,13 @@ module Api
           file_size: doc.file_size,
           uploaded_by: doc.uploaded_by ? {
             id: doc.uploaded_by.id,
-            email: doc.uploaded_by.email
+            email: doc.uploaded_by.email,
+            name: doc.uploaded_by.full_name,
+            role: doc.uploaded_by.role
           } : nil,
+          uploaded_by_source: doc.upload_source,
+          uploaded_by_label: doc.upload_source_label,
+          uploaded_by_name: doc.uploaded_by_display_name,
           created_at: doc.created_at,
           tax_return_id: doc.tax_return_id
         }

@@ -4,6 +4,7 @@ module Api
   module V1
     class ClientContactsController < BaseController
       before_action :authenticate_user!
+      before_action :require_staff!
       before_action :set_client
 
       # GET /api/v1/clients/:client_id/contacts

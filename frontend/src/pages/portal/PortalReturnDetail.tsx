@@ -5,6 +5,18 @@ import type { PortalTaxReturnDetail, PortalDocument } from '../../lib/api'
 import { formatFileSize } from '../../lib/formatUtils'
 import DocumentViewer from '../../components/common/DocumentViewer'
 
+const uploadSourceClasses = (source?: 'client' | 'staff' | 'intake') => {
+  if (source === 'staff') return 'bg-blue-50 text-blue-700 border-blue-200'
+  if (source === 'intake') return 'bg-amber-50 text-amber-700 border-amber-200'
+  return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+}
+
+const uploadSourceLabel = (source?: 'client' | 'staff' | 'intake') => {
+  if (source === 'staff') return 'From Cornerstone'
+  if (source === 'intake') return 'Submitted with intake'
+  return 'Uploaded by you'
+}
+
 export default function PortalReturnDetail() {
   const { id } = useParams<{ id: string }>()
   const [taxReturn, setTaxReturn] = useState<PortalTaxReturnDetail | null>(null)
@@ -43,7 +55,13 @@ export default function PortalReturnDetail() {
 
   const fetchViewUrl = useCallback(async () => {
     if (!viewingDoc || !taxReturn) return null
-    const result = await api.portalGetDocumentDownloadUrl(taxReturn.id, viewingDoc.id)
+    const result = await api.portalGetDocumentDownloadUrl(taxReturn.id, viewingDoc.id, 'inline')
+    return result.data?.download_url || null
+  }, [viewingDoc, taxReturn])
+
+  const fetchDownloadUrl = useCallback(async () => {
+    if (!viewingDoc || !taxReturn) return null
+    const result = await api.portalGetDocumentDownloadUrl(taxReturn.id, viewingDoc.id, 'attachment')
     return result.data?.download_url || null
   }, [viewingDoc, taxReturn])
 
@@ -253,9 +271,14 @@ export default function PortalReturnDetail() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-gray-900 truncate">{doc.filename}</p>
-                    <p className="text-xs text-gray-400">
-                      {doc.document_type?.replaceAll('_', ' ') || 'Other'} · {formatFileSize(doc.file_size)}
-                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                      <span>{doc.document_type?.replaceAll('_', ' ') || 'Other'}</span>
+                      <span>·</span>
+                      <span>{formatFileSize(doc.file_size)}</span>
+                      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${uploadSourceClasses(doc.uploaded_by_source)}`}>
+                        {uploadSourceLabel(doc.uploaded_by_source)}
+                      </span>
+                    </div>
                   </div>
                   <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -274,6 +297,7 @@ export default function PortalReturnDetail() {
         filename={viewingDoc?.filename || ''}
         contentType={viewingDoc?.content_type || null}
         onFetchUrl={fetchViewUrl}
+        onFetchDownloadUrl={fetchDownloadUrl}
       />
     </div>
   )

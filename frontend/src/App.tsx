@@ -22,6 +22,13 @@ import Form2848 from "./pages/public/Form2848"
 // Intake (not lazy — public-facing)
 import IntakeForm from "./pages/intake/IntakeForm"
 
+// Portal Pages - loaded eagerly so tab navigation does not flash the large route fallback.
+import PortalDashboard from "./pages/portal/PortalDashboard"
+import PortalReturns from "./pages/portal/PortalReturns"
+import PortalReturnDetail from "./pages/portal/PortalReturnDetail"
+import PortalDocuments from "./pages/portal/PortalDocuments"
+import PortalSettings from "./pages/portal/PortalSettings"
+
 // Admin Pages — lazy loaded (CST-12: code splitting)
 const Dashboard = lazy(() => import("./pages/admin/Dashboard"))
 const ClientList = lazy(() => import("./pages/admin/ClientList"))
@@ -35,13 +42,6 @@ const TimeTracking = lazy(() => import("./pages/admin/TimeTracking"))
 const Schedule = lazy(() => import("./pages/admin/Schedule"))
 const Operations = lazy(() => import("./pages/admin/Operations"))
 const DailyTaskBoard = lazy(() => import("./pages/admin/DailyTaskBoard"))
-
-// Portal Pages — lazy loaded
-const PortalDashboard = lazy(() => import("./pages/portal/PortalDashboard"))
-const PortalReturns = lazy(() => import("./pages/portal/PortalReturns"))
-const PortalReturnDetail = lazy(() => import("./pages/portal/PortalReturnDetail"))
-const PortalDocuments = lazy(() => import("./pages/portal/PortalDocuments"))
-const PortalSettings = lazy(() => import("./pages/portal/PortalSettings"))
 
 // Loading fallback for lazy routes
 function AdminLoadingFallback() {
@@ -115,11 +115,11 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Suspense fallback={<AdminLoadingFallback />}><PortalDashboard /></Suspense>} />
-          <Route path="returns" element={<Suspense fallback={<AdminLoadingFallback />}><PortalReturns /></Suspense>} />
-          <Route path="returns/:id" element={<Suspense fallback={<AdminLoadingFallback />}><PortalReturnDetail /></Suspense>} />
-          <Route path="documents" element={<Suspense fallback={<AdminLoadingFallback />}><PortalDocuments /></Suspense>} />
-          <Route path="settings" element={<Suspense fallback={<AdminLoadingFallback />}><PortalSettings /></Suspense>} />
+          <Route index element={<PortalDashboard />} />
+          <Route path="returns" element={<PortalReturns />} />
+          <Route path="returns/:id" element={<PortalReturnDetail />} />
+          <Route path="documents" element={<PortalDocuments />} />
+          <Route path="settings" element={<PortalSettings />} />
         </Route>
       </Routes>
     </BrowserRouter>
