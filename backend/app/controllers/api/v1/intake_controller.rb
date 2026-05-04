@@ -15,7 +15,8 @@ module Api
           render json: {
             message: "Intake form submitted successfully",
             client: client_response(result.client),
-            tax_return: tax_return_response(result.tax_return)
+            tax_return: tax_return_response(result.tax_return),
+            document_upload: document_upload_response(result.tax_return)
           }, status: :created
         else
           render json: {
@@ -65,6 +66,16 @@ module Api
           id: tax_return.id,
           tax_year: tax_return.tax_year,
           status: tax_return.status_name
+        }
+      end
+
+      def document_upload_response(tax_return)
+        {
+          upload_token: tax_return.signed_id(
+            purpose: :intake_document_upload,
+            expires_in: 24.hours
+          ),
+          expires_in: 24.hours.to_i
         }
       end
     end

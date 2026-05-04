@@ -8,6 +8,8 @@ import {
   emptyDependent,
 } from '../../types/intake';
 import { api } from '../../lib/api';
+import { ALLOWED_CONTENT_TYPES, DOCUMENT_TYPES, MAX_FILE_SIZE } from '../../lib/documentConstants';
+import { formatFileSize } from '../../lib/formatUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FadeUp } from '../../components/ui/MotionComponents';
 
@@ -19,10 +21,17 @@ const STEPS = [
   'Spouse Information',
   'Dependents',
   'Refund Preference',
+  'Documents',
   'Authorization',
 ];
 
 type ServiceType = 'personal' | 'business' | null;
+type IntakeDocumentType = typeof DOCUMENT_TYPES[number]['value'];
+type IntakeDocumentDraft = {
+  id: string;
+  file: File;
+  documentType: IntakeDocumentType;
+};
 
 export default function IntakeForm() {
   const [searchParams] = useSearchParams();
@@ -57,6 +66,9 @@ export default function IntakeForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const [intakeDocuments, setIntakeDocuments] = useState<IntakeDocumentDraft[]>([]);
+  const [documentError, setDocumentError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
 
   // Auto-reset for kiosk mode
@@ -66,6 +78,9 @@ export default function IntakeForm() {
     setIsSubmitted(false);
     setErrors({});
     setSubmitError(null);
+    setUploadNotice(null);
+    setIntakeDocuments([]);
+    setDocumentError(null);
     setCountdown(null);
     setServiceType(null);
     setBusinessFormData({ name: '', email: '', phone: '', business_name: '', message: '' });
@@ -126,7 +141,7 @@ export default function IntakeForm() {
         if (!formData.filing_status) newErrors.filing_status = 'Filing status is required';
         break;
 
-      case 7: // Authorization
+      case 8: // Authorization
         if (!formData.authorization_confirmed)
           newErrors.authorization_confirmed = 'You must confirm the information is accurate';
         if (!formData.signature.trim()) newErrors.signature = 'Electronic signature is required';
@@ -189,16 +204,64 @@ export default function IntakeForm() {
 
     const result = await api.submitIntake(submitData);
 
-    setIsSubmitting(false);
-
     if (result.error) {
+      setIsSubmitting(false);
       setSubmitError(result.error);
       if (result.errors && result.errors.length > 0) {
         setSubmitError(result.errors.join(', '));
       }
     } else {
+      const uploadToken = result.data?.document_upload?.upload_token;
+      if (uploadToken && intakeDocuments.length > 0) {
+        const uploadedCount = await uploadIntakeDocuments(uploadToken);
+        if (uploadedCount === intakeDocuments.length) {
+          setUploadNotice(`${uploadedCount} document${uploadedCount === 1 ? '' : 's'} uploaded successfully.`);
+        } else {
+          setUploadNotice(`${uploadedCount} of ${intakeDocuments.length} documents uploaded. Our team received your intake form and can help collect anything missing.`);
+        }
+      }
+      setIsSubmitting(false);
       setIsSubmitted(true);
     }
+  };
+
+  const uploadIntakeDocuments = async (uploadToken: string) => {
+    let uploadedCount = 0;
+
+    for (const doc of intakeDocuments) {
+      try {
+        const presignResult = await api.presignIntakeDocumentUpload(
+          uploadToken,
+          doc.file.name,
+          doc.file.type,
+          doc.file.size
+        );
+
+        if (presignResult.error || !presignResult.data) continue;
+
+        const uploadResponse = await fetch(presignResult.data.upload_url, {
+          method: 'PUT',
+          body: doc.file,
+          headers: { 'Content-Type': doc.file.type },
+        });
+
+        if (!uploadResponse.ok) continue;
+
+        const registerResult = await api.registerIntakeDocument(uploadToken, {
+          filename: doc.file.name,
+          s3_key: presignResult.data.s3_key,
+          content_type: doc.file.type,
+          file_size: doc.file.size,
+          document_type: doc.documentType,
+        });
+
+        if (!registerResult.error) uploadedCount += 1;
+      } catch {
+        continue;
+      }
+    }
+
+    return uploadedCount;
   };
 
   // Handle business inquiry form submission
@@ -523,6 +586,11 @@ export default function IntakeForm() {
             <p className="text-gray-600 mb-6">
               Your intake form has been submitted successfully. We'll review your information and contact you soon.
             </p>
+            {uploadNotice && (
+              <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-6">
+                {uploadNotice}
+              </p>
+            )}
 
             {isKioskMode ? (
               <div className="space-y-4">
@@ -623,6 +691,15 @@ export default function IntakeForm() {
                 <StepRefundPreference formData={formData} updateField={updateField} isKioskMode={isKioskMode} />
               )}
               {currentStep === 7 && (
+                <StepDocuments
+                  documents={intakeDocuments}
+                  setDocuments={setIntakeDocuments}
+                  error={documentError}
+                  setError={setDocumentError}
+                  isKioskMode={isKioskMode}
+                />
+              )}
+              {currentStep === 8 && (
                 <StepAuthorization formData={formData} updateField={updateField} errors={errors} isKioskMode={isKioskMode} />
               )}
             </motion.div>
@@ -658,7 +735,7 @@ export default function IntakeForm() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Submitting...
+                  {intakeDocuments.length > 0 ? 'Submitting and uploading...' : 'Submitting...'}
                 </span>
               ) : currentStep === STEPS.length - 1 ? (
                 'Submit Form'
@@ -1473,6 +1550,129 @@ function StepRefundPreference({ formData, updateField, isKioskMode }: StepProps)
               </label>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface StepDocumentsProps {
+  documents: IntakeDocumentDraft[];
+  setDocuments: React.Dispatch<React.SetStateAction<IntakeDocumentDraft[]>>;
+  error: string | null;
+  setError: React.Dispatch<React.SetStateAction<string | null>>;
+  isKioskMode?: boolean;
+}
+
+const documentTypeForFile = (fileName: string): IntakeDocumentType => {
+  const normalized = fileName.toLowerCase();
+  if (normalized.includes('w-2') || normalized.includes('w2')) return 'w2';
+  if (normalized.includes('1099')) return '1099';
+  if (normalized.includes('id') || normalized.includes('license')) return 'id';
+  if (normalized.includes('prior') || normalized.includes('last-year')) return 'prior_return';
+  return 'other';
+};
+
+function StepDocuments({ documents, setDocuments, error, setError, isKioskMode }: StepDocumentsProps) {
+  const addFiles = (fileList: FileList | null) => {
+    if (!fileList) return;
+
+    const files = Array.from(fileList);
+    const invalid = files.find(file => !ALLOWED_CONTENT_TYPES.includes(file.type as typeof ALLOWED_CONTENT_TYPES[number]));
+    if (invalid) {
+      setError(`${invalid.name} is not supported. Please upload PDF, JPEG, or PNG files.`);
+      return;
+    }
+
+    const tooLarge = files.find(file => file.size > MAX_FILE_SIZE);
+    if (tooLarge) {
+      setError(`${tooLarge.name} is too large. Maximum file size is ${formatFileSize(MAX_FILE_SIZE)}.`);
+      return;
+    }
+
+    setError(null);
+    setDocuments(prev => [
+      ...prev,
+      ...files.map(file => ({
+        id: crypto.randomUUID(),
+        file,
+        documentType: documentTypeForFile(file.name),
+      })),
+    ]);
+  };
+
+  const updateDocumentType = (id: string, documentType: IntakeDocumentType) => {
+    setDocuments(prev => prev.map(doc => doc.id === id ? { ...doc, documentType } : doc));
+  };
+
+  const removeDocument = (id: string) => {
+    setDocuments(prev => prev.filter(doc => doc.id !== id));
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <p className="text-gray-600">
+          Upload any tax documents you already have. You can also skip this and send documents later through the client portal.
+        </p>
+        <p className="mt-2 text-sm text-gray-500">
+          Accepted files: PDF, JPEG, and PNG up to {formatFileSize(MAX_FILE_SIZE)} each.
+        </p>
+      </div>
+
+      <label
+        className={`block border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors ${isKioskMode ? 'min-h-[150px]' : ''}`}
+      >
+        <input
+          type="file"
+          multiple
+          accept=".pdf,.jpg,.jpeg,.png"
+          className="hidden"
+          onChange={(event) => {
+            addFiles(event.target.files);
+            event.target.value = '';
+          }}
+        />
+        <svg className="w-10 h-10 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+        </svg>
+        <span className={`font-medium text-primary ${isKioskMode ? 'text-lg' : ''}`}>Choose documents</span>
+        <span className="block text-sm text-gray-500 mt-1">You may select more than one file.</span>
+      </label>
+
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {documents.length > 0 && (
+        <div className="space-y-3">
+          {documents.map(doc => (
+            <div key={doc.id} className="border border-gray-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-[1fr_180px_auto] gap-3 sm:items-center">
+              <div className="min-w-0">
+                <p className="font-medium text-gray-900 truncate">{doc.file.name}</p>
+                <p className="text-sm text-gray-500">{formatFileSize(doc.file.size)}</p>
+              </div>
+              <select
+                value={doc.documentType}
+                onChange={(event) => updateDocumentType(doc.id, event.target.value as IntakeDocumentType)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+                aria-label={`Document type for ${doc.file.name}`}
+              >
+                {DOCUMENT_TYPES.map(type => (
+                  <option key={type.value} value={type.value}>{type.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => removeDocument(doc.id)}
+                className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>

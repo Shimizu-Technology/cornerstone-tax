@@ -68,6 +68,10 @@ module Api
 
       # GET /api/v1/time_entries/:id
       def show
+        unless current_user.admin? || @time_entry.user_id == current_user.id
+          return render json: { error: "Time entry not found" }, status: :not_found
+        end
+
         render json: { time_entry: serialize_time_entry(@time_entry) }
       end
 
@@ -409,10 +413,6 @@ module Api
 
       def set_time_entry
         @time_entry = TimeEntry.find(params[:id])
-        unless current_user.admin? || @time_entry.user_id == current_user.id
-          render json: { error: "Time entry not found" }, status: :not_found
-          return
-        end
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Time entry not found" }, status: :not_found
       end

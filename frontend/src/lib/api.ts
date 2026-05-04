@@ -152,6 +152,10 @@ export interface IntakeSubmitResponse {
     tax_year: number;
     status: string;
   };
+  document_upload: {
+    upload_token: string;
+    expires_in: number;
+  };
 }
 
 export interface WorkflowStage {
@@ -1039,6 +1043,24 @@ export const api = {
     fetchApiPublic<IntakeSubmitResponse>('/api/v1/intake', {
       method: 'POST',
       body: JSON.stringify({ intake: data }),
+    }),
+
+  presignIntakeDocumentUpload: (uploadToken: string, filename: string, contentType: string, fileSize: number) =>
+    fetchApiPublic<PresignResponse>('/api/v1/intake_documents/presign', {
+      method: 'POST',
+      body: JSON.stringify({ upload_token: uploadToken, filename, content_type: contentType, file_size: fileSize }),
+    }),
+
+  registerIntakeDocument: (uploadToken: string, data: {
+    filename: string;
+    s3_key: string;
+    content_type: string;
+    file_size: number;
+    document_type: string;
+  }) =>
+    fetchApiPublic<{ document: Document }>('/api/v1/intake_documents', {
+      method: 'POST',
+      body: JSON.stringify({ upload_token: uploadToken, document: data }),
     }),
 
   // Contact form (public - no auth required)

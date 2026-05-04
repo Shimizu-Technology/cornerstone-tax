@@ -11,6 +11,8 @@ Rails.application.routes.draw do
 
       # Intake form submission (public, no auth required)
       post "intake", to: "intake#create"
+      post "intake_documents/presign", to: "intake_documents#presign"
+      post "intake_documents", to: "intake_documents#create"
 
       # Contact form submission (public, no auth required)
       post "contact", to: "contact#create"

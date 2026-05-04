@@ -99,7 +99,7 @@ module ClerkAuthenticatable
     if user
       # Only update if we have new info and it's different
       updates = {}
-      updates[:email] = email if email.present? && email != user.email && !user.email.include?("@placeholder.local")
+      updates[:email] = email if email.present? && email.downcase != user.email.to_s.downcase
       updates[:first_name] = first_name if first_name.present? && first_name != user.first_name
       updates[:last_name] = last_name if last_name.present? && last_name != user.last_name
       
