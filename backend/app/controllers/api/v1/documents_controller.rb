@@ -114,6 +114,7 @@ module Api
 
         document = @tax_return.documents.build(document_params)
         document.uploaded_by = current_user
+        document.upload_source = current_user.staff? ? "staff" : "client"
 
         if document.save
           render json: document_json(document), status: :created

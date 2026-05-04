@@ -92,7 +92,7 @@ module Api
           return render json: { error: "Invalid document type. Allowed: #{Document::DOCUMENT_TYPES.join(', ')}" }, status: :unprocessable_entity
         end
 
-        document = @tax_return.documents.build(document_params.merge(document_type: doc_type))
+        document = @tax_return.documents.build(document_params.merge(document_type: doc_type, upload_source: "intake"))
 
         if document.save
           DocumentUploadNotificationJob.perform_later(document.id, @tax_return.id)

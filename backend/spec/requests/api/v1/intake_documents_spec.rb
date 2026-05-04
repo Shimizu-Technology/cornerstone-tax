@@ -98,6 +98,8 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       expect(response).to have_http_status(:created)
       expect(tax_return.documents.count).to eq(1)
       expect(tax_return.documents.first.filename).to eq("w2.pdf")
+      expect(tax_return.documents.first.upload_source).to eq("intake")
+      expect(JSON.parse(response.body).dig("document", "uploaded_by_source")).to eq("intake")
     end
 
     it "rejects registration when S3 cannot verify the uploaded object" do

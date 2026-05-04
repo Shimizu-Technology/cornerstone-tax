@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_15_063545) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_04_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -165,8 +165,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_063545) do
     t.string "s3_key", null: false
     t.bigint "tax_return_id", null: false
     t.datetime "updated_at", null: false
+    t.string "upload_source"
     t.bigint "uploaded_by_id"
     t.index ["tax_return_id"], name: "index_documents_on_tax_return_id"
+    t.index ["upload_source"], name: "index_documents_on_upload_source"
     t.index ["uploaded_by_id"], name: "index_documents_on_uploaded_by_id"
   end
 
@@ -447,7 +449,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_063545) do
     t.index ["tax_return_id"], name: "index_time_entries_on_tax_return_id"
     t.index ["time_category_id"], name: "index_time_entries_on_time_category_id"
     t.index ["user_id"], name: "index_time_entries_on_user_id"
-    t.index ["user_id"], name: "index_time_entries_one_active_per_user", unique: true, where: "((status)::text = ANY ((ARRAY['clocked_in'::character varying, 'on_break'::character varying])::text[]))"
+    t.index ["user_id"], name: "index_time_entries_one_active_per_user", unique: true, where: "((status)::text = ANY (ARRAY[('clocked_in'::character varying)::text, ('on_break'::character varying)::text]))"
     t.index ["work_date"], name: "index_time_entries_on_work_date"
   end
 
@@ -504,7 +506,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_063545) do
     t.index ["client_id"], name: "index_users_on_client_id_unique", unique: true, where: "(client_id IS NOT NULL)"
     t.index ["email"], name: "index_users_on_email"
     t.index ["role"], name: "index_users_on_role"
-    t.check_constraint "role::text = ANY (ARRAY['admin'::character varying, 'employee'::character varying, 'client'::character varying]::text[])", name: "check_valid_role"
+    t.check_constraint "role::text = ANY (ARRAY['admin'::character varying::text, 'employee'::character varying::text, 'client'::character varying::text])", name: "check_valid_role"
   end
 
   create_table "workflow_events", force: :cascade do |t|

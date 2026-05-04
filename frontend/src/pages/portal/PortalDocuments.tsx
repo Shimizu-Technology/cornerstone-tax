@@ -18,11 +18,17 @@ type QueuedPortalDocument = {
   documentType: string
 }
 
-const uploadSourceClasses = (source?: 'client' | 'staff') => (
-  source === 'staff'
-    ? 'bg-blue-50 text-blue-700 border-blue-200'
-    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-)
+const uploadSourceClasses = (source?: 'client' | 'staff' | 'intake') => {
+  if (source === 'staff') return 'bg-blue-50 text-blue-700 border-blue-200'
+  if (source === 'intake') return 'bg-amber-50 text-amber-700 border-amber-200'
+  return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+}
+
+const uploadSourceLabel = (source?: 'client' | 'staff' | 'intake') => {
+  if (source === 'staff') return 'From Cornerstone'
+  if (source === 'intake') return 'Submitted with intake'
+  return 'Uploaded by you'
+}
 
 export default function PortalDocuments() {
   useEffect(() => { document.title = 'Documents | Cornerstone Client Portal' }, [])
@@ -420,7 +426,7 @@ export default function PortalDocuments() {
                       <span>·</span>
                       <span>{new Date(doc.created_at).toLocaleDateString()}</span>
                       <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${uploadSourceClasses(doc.uploaded_by_source)}`}>
-                        {doc.uploaded_by_source === 'staff' ? 'From Cornerstone' : 'Uploaded by you'}
+                        {uploadSourceLabel(doc.uploaded_by_source)}
                       </span>
                     </div>
                   </div>

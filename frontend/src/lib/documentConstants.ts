@@ -71,11 +71,14 @@ export const getDocumentExtension = (filename: string) => {
 }
 
 export const getDocumentContentType = (file: File) => {
+  const extensionContentType = CONTENT_TYPE_BY_EXTENSION[getDocumentExtension(file.name)]
+  if (extensionContentType) return extensionContentType
+
   if (ALLOWED_CONTENT_TYPES.includes(file.type as typeof ALLOWED_CONTENT_TYPES[number])) {
     return file.type
   }
 
-  return CONTENT_TYPE_BY_EXTENSION[getDocumentExtension(file.name)] || file.type || 'application/octet-stream'
+  return file.type || 'application/octet-stream'
 }
 
 export const isAllowedDocumentFile = (file: File) => {

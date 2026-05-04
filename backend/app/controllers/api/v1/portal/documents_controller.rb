@@ -102,6 +102,7 @@ module Api
 
           document = @tax_return.documents.build(document_params)
           document.uploaded_by = current_user
+          document.upload_source = "client"
 
           if document.save
             DocumentUploadNotificationJob.perform_later(document.id, @tax_return.id)

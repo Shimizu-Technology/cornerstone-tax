@@ -25,16 +25,24 @@ class Document < ApplicationRecord
   after_create :log_upload_event
 
   def upload_source
-    uploaded_by&.staff? ? "staff" : "client"
+    self[:upload_source].presence || (uploaded_by&.staff? ? "staff" : "client")
   end
 
   def upload_source_label
-    upload_source == "staff" ? "Uploaded by staff" : "Uploaded by client"
+    case upload_source
+    when "staff"
+      "Uploaded by staff"
+    when "intake"
+      "Uploaded with intake"
+    else
+      "Uploaded by client"
+    end
   end
 
   def uploaded_by_display_name
     return "Cornerstone staff" if uploaded_by&.staff?
     return uploaded_by.full_name if uploaded_by&.client?
+    return "Public intake form" if upload_source == "intake"
 
     "Client"
   end
