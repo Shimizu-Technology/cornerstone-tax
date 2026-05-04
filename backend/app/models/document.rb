@@ -7,7 +7,18 @@ class Document < ApplicationRecord
   validates :filename, presence: true
   validates :s3_key, presence: true
 
-  DOCUMENT_TYPES = %w[w2 1099 id prior_return other].freeze
+  DOCUMENT_TYPES = %w[
+    w2
+    1099
+    id
+    prior_return
+    draft_return
+    final_return
+    tax_notice
+    organizer
+    supporting_statement
+    other
+  ].freeze
 
   validates :document_type, inclusion: { in: DOCUMENT_TYPES }, allow_blank: true
 

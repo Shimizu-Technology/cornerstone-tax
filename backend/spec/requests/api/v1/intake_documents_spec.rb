@@ -80,6 +80,9 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       token = JSON.parse(response.body).dig("document_upload", "upload_token")
       tax_return = TaxReturn.last
 
+      allow(S3Service).to receive(:configured?).and_return(true)
+      allow(S3Service).to receive(:object_exists?).and_return(true)
+
       post "/api/v1/intake_documents",
            params: {
              upload_token: token,
@@ -95,6 +98,30 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       expect(response).to have_http_status(:created)
       expect(tax_return.documents.count).to eq(1)
       expect(tax_return.documents.first.filename).to eq("w2.pdf")
+    end
+
+    it "rejects registration when S3 cannot verify the uploaded object" do
+      submit_intake
+      token = JSON.parse(response.body).dig("document_upload", "upload_token")
+      tax_return = TaxReturn.last
+
+      allow(S3Service).to receive(:configured?).and_return(true)
+      allow(S3Service).to receive(:object_exists?).and_return(false)
+
+      post "/api/v1/intake_documents",
+           params: {
+             upload_token: token,
+             document: {
+               filename: "w2.pdf",
+               s3_key: "tax_returns/#{tax_return.id}/w2.pdf",
+               content_type: "application/pdf",
+               file_size: 1024,
+               document_type: "w2"
+             }
+           }
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(Document.count).to eq(0)
     end
 
     it "rejects S3 keys outside the signed tax return scope" do

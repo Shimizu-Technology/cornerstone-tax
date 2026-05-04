@@ -3,7 +3,13 @@ import { api } from '../../lib/api'
 import type { Document } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
 import { formatFileSize } from '../../lib/formatUtils'
-import { ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE, DOCUMENT_TYPES } from '../../lib/documentConstants'
+import {
+  ACCEPTED_DOCUMENT_EXTENSIONS,
+  DOCUMENT_TYPES,
+  MAX_FILE_SIZE,
+  getDocumentContentType,
+  isAllowedDocumentFile,
+} from '../../lib/documentConstants'
 import DocumentViewer from '../common/DocumentViewer'
 
 interface DocumentUploadProps {
@@ -12,17 +18,60 @@ interface DocumentUploadProps {
   onDocumentsChange: () => void
 }
 
-const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
+type QueuedDocument = {
+  id: string
+  file: File
+  documentType: string
+}
 
+const documentTypeForFile = (fileName: string) => {
+  const normalized = fileName.toLowerCase()
+  if (normalized.includes('w-2') || normalized.includes('w2')) return 'w2'
+  if (normalized.includes('1099')) return '1099'
+  if (normalized.includes('id') || normalized.includes('license') || normalized.includes('passport')) return 'id'
+  if (normalized.includes('draft')) return 'draft_return'
+  if (normalized.includes('final')) return 'final_return'
+  if (normalized.includes('notice') || normalized.includes('letter')) return 'tax_notice'
+  if (normalized.includes('organizer')) return 'organizer'
+  if (normalized.includes('prior') || normalized.includes('last-year')) return 'prior_return'
+  return 'other'
+}
 
 export default function DocumentUpload({ taxReturnId, documents, onDocumentsChange }: DocumentUploadProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
-  const [selectedType, setSelectedType] = useState('other')
+  const [queuedDocuments, setQueuedDocuments] = useState<QueuedDocument[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const queueFiles = useCallback((files: File[]) => {
+    setError(null)
+    setSuccess(null)
+
+    const invalidSize = files.find(file => file.size > MAX_FILE_SIZE)
+    if (invalidSize) {
+      setError(`${invalidSize.name} is too large. Maximum file size is 50MB.`)
+      return
+    }
+
+    const invalidType = files.find(file => !isAllowedDocumentFile(file))
+    if (invalidType) {
+      setError(`${invalidType.name} is not supported. Accepted files include PDF, images, Word, Excel, PowerPoint, CSV, and text files.`)
+      return
+    }
+
+    setQueuedDocuments(prev => [
+      ...prev,
+      ...files.map(file => ({
+        id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+        file,
+        documentType: documentTypeForFile(file.name),
+      })),
+    ])
+  }, [])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -34,115 +83,77 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
     setIsDragging(false)
   }, [])
 
-  const uploadFile = async (file: File) => {
-    setError(null)
-
-    // CST-16: Client-side file validation
-    if (file.size > MAX_FILE_SIZE) {
-      setError(`File size (${formatFileSize(file.size)}) exceeds maximum allowed size of 50MB`)
-      return
-    }
-
-    const fileType = file.type || ''
-    const fileExt = '.' + file.name.split('.').pop()?.toLowerCase()
-    if (!ALLOWED_CONTENT_TYPES.includes(fileType as typeof ALLOWED_CONTENT_TYPES[number]) && !ALLOWED_FILE_EXTENSIONS.includes(fileExt)) {
-      setError('File type not allowed. Accepted types: PDF, JPEG, PNG')
-      return
-    }
-
-    setUploading(true)
-    setUploadProgress('Getting upload URL...')
-
-    try {
-      // 1. Get presigned URL
-      const presignResult = await api.presignDocumentUpload(
-        taxReturnId,
-        file.name,
-        file.type || 'application/octet-stream',
-        file.size
-      )
-
-      if (presignResult.error || !presignResult.data) {
-        throw new Error(presignResult.error || 'Failed to get upload URL')
-      }
-
-      const { upload_url, s3_key } = presignResult.data
-
-      // 2. Upload to S3
-      setUploadProgress('Uploading to cloud...')
-      console.log('Uploading to S3:', upload_url.substring(0, 100) + '...')
-      
-      try {
-        const uploadResponse = await fetch(upload_url, {
-          method: 'PUT',
-          body: file,
-          headers: {
-            'Content-Type': file.type || 'application/octet-stream',
-          },
-        })
-
-        console.log('S3 upload response:', uploadResponse.status, uploadResponse.statusText)
-
-        if (!uploadResponse.ok) {
-          const errorText = await uploadResponse.text().catch(() => 'No error details')
-          console.error('S3 upload error:', errorText)
-          throw new Error(`Failed to upload file to cloud storage: ${uploadResponse.status}`)
-        }
-      } catch (fetchError) {
-        console.error('S3 fetch error:', fetchError)
-        throw new Error('Failed to upload to cloud. Check browser console for details.')
-      }
-
-      // 3. Register document in database
-      setUploadProgress('Registering document...')
-      const registerResult = await api.registerDocument(taxReturnId, {
-        filename: file.name,
-        s3_key: s3_key,
-        content_type: file.type || 'application/octet-stream',
-        file_size: file.size,
-        document_type: selectedType,
-      })
-
-      if (registerResult.error) {
-        throw new Error(registerResult.error)
-      }
-
-      // Immediately refresh the documents list
-      setUploadProgress(null)
-      setUploading(false)
-      onDocumentsChange()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
-      setUploadProgress(null)
-      setUploading(false)
-    }
-  }
-
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
-
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0) {
-      uploadFile(files[0])
-    }
-  }, [taxReturnId, selectedType])
+    if (uploading) return
+    queueFiles(Array.from(e.dataTransfer.files))
+  }, [queueFiles, uploading])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files && files.length > 0) {
-      uploadFile(files[0])
-    }
-    // Reset input so same file can be selected again
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) queueFiles(files)
     e.target.value = ''
+  }
+
+  const updateQueuedType = (id: string, documentType: string) => {
+    setQueuedDocuments(prev => prev.map(doc => doc.id === id ? { ...doc, documentType } : doc))
+  }
+
+  const removeQueuedDocument = (id: string) => {
+    setQueuedDocuments(prev => prev.filter(doc => doc.id !== id))
+  }
+
+  const uploadQueuedDocuments = async () => {
+    if (queuedDocuments.length === 0 || uploading) return
+
+    setUploading(true)
+    setError(null)
+    setSuccess(null)
+
+    let uploadedCount = 0
+    try {
+      for (const [index, queuedDoc] of queuedDocuments.entries()) {
+        const file = queuedDoc.file
+        const contentType = getDocumentContentType(file)
+        setUploadProgress(`Uploading ${index + 1} of ${queuedDocuments.length}: ${file.name}`)
+
+        const presignResult = await api.presignDocumentUpload(taxReturnId, file.name, contentType, file.size)
+        if (presignResult.error || !presignResult.data) throw new Error(presignResult.error || `Could not prepare ${file.name}`)
+
+        const uploadResponse = await fetch(presignResult.data.upload_url, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': contentType },
+        })
+        if (!uploadResponse.ok) throw new Error(`Failed to upload ${file.name}`)
+
+        const registerResult = await api.registerDocument(taxReturnId, {
+          filename: file.name,
+          s3_key: presignResult.data.s3_key,
+          content_type: contentType,
+          file_size: file.size,
+          document_type: queuedDoc.documentType,
+        })
+        if (registerResult.error) throw new Error(registerResult.error)
+        uploadedCount += 1
+      }
+
+      setQueuedDocuments([])
+      setSuccess(`${uploadedCount} document${uploadedCount === 1 ? '' : 's'} uploaded for this client.`)
+      onDocumentsChange()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploadProgress(null)
+      setUploading(false)
+    }
   }
 
   const handleDownload = async (doc: Document) => {
     try {
-      const result = await api.getDocumentDownloadUrl(taxReturnId, doc.id)
-      if (result.data?.download_url) {
-        window.open(result.data.download_url, '_blank')
-      }
+      const result = await api.getDocumentDownloadUrl(taxReturnId, doc.id, 'attachment')
+      if (result.data?.download_url) window.open(result.data.download_url, '_blank')
     } catch (err) {
       console.error('Download error:', err)
     }
@@ -150,7 +161,13 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
 
   const fetchViewUrl = useCallback(async () => {
     if (!viewingDoc) return null
-    const result = await api.getDocumentDownloadUrl(taxReturnId, viewingDoc.id)
+    const result = await api.getDocumentDownloadUrl(taxReturnId, viewingDoc.id, 'inline')
+    return result.data?.download_url || null
+  }, [viewingDoc, taxReturnId])
+
+  const fetchDownloadUrl = useCallback(async () => {
+    if (!viewingDoc) return null
+    const result = await api.getDocumentDownloadUrl(taxReturnId, viewingDoc.id, 'attachment')
     return result.data?.download_url || null
   }, [viewingDoc, taxReturnId])
 
@@ -169,27 +186,13 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
 
   return (
     <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
-      <h2 className="text-lg font-semibold text-gray-900 tracking-tight mb-4">Documents</h2>
-
-      {/* Document Type Selector */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Document Type
-        </label>
-        <select
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value)}
-          className="w-full sm:w-64 px-3 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
-        >
-          {DOCUMENT_TYPES.map((type) => (
-            <option key={type.value} value={type.value}>
-              {type.label}
-            </option>
-          ))}
-        </select>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Documents</h2>
+          <p className="text-sm text-gray-500 mt-1">Upload client documents, draft returns, notices, and finished files for portal review.</p>
+        </div>
       </div>
 
-      {/* Upload Zone */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -197,38 +200,80 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
         onClick={() => fileInputRef.current?.click()}
         className={`
           border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors
-          ${isDragging
-            ? 'border-primary bg-primary/5'
-            : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
-          }
+          ${isDragging ? 'border-primary bg-primary/5' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'}
           ${uploading ? 'pointer-events-none opacity-60' : ''}
         `}
       >
         <input
           ref={fileInputRef}
-          type="file" aria-label="Upload document"
+          type="file"
+          aria-label="Select client documents to upload"
           onChange={handleFileSelect}
           className="hidden"
-          accept=".pdf,.jpg,.jpeg,.png"
+          accept={ACCEPTED_DOCUMENT_EXTENSIONS}
+          multiple
         />
 
-        {uploading ? (
-          <div>
-            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-gray-600">{uploadProgress}</p>
-          </div>
-        ) : (
-          <>
-            <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            <p className="text-gray-600 mb-1">
-              <span className="font-medium text-primary">Click to upload</span> or drag and drop
-            </p>
-            <p className="text-sm text-gray-500">PDF, JPEG, or PNG up to 50MB</p>
-          </>
-        )}
+        <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+        </svg>
+        <p className="text-gray-600 mb-1">
+          <span className="font-medium text-primary">Choose documents</span> or drag and drop
+        </p>
+        <p className="text-sm text-gray-500">PDF, images, Word, Excel, PowerPoint, CSV, or text up to 50MB each</p>
       </div>
+
+      {queuedDocuments.length > 0 && (
+        <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Ready to upload</h3>
+              <p className="text-xs text-gray-500">Review the files below, then confirm the upload.</p>
+            </div>
+            <button
+              type="button"
+              onClick={uploadQueuedDocuments}
+              disabled={uploading}
+              className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary-dark disabled:opacity-60"
+            >
+              {uploading ? 'Uploading...' : `Upload ${queuedDocuments.length} document${queuedDocuments.length === 1 ? '' : 's'}`}
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {queuedDocuments.map(doc => (
+              <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl bg-white p-3 border border-gray-100">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900 truncate">{doc.file.name}</p>
+                  <p className="text-xs text-gray-500">{formatFileSize(doc.file.size)}</p>
+                </div>
+                <select
+                  value={doc.documentType}
+                  onChange={(e) => updateQueuedType(doc.id, e.target.value)}
+                  className="px-3 py-2 border border-secondary-dark rounded-lg text-sm bg-white"
+                  aria-label={`Document type for ${doc.file.name}`}
+                >
+                  {DOCUMENT_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => removeQueuedDocument(doc.id)}
+                  disabled={uploading}
+                  className="text-sm text-gray-500 hover:text-red-600 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {uploading && uploadProgress && (
+        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 text-sm">
+          {uploadProgress}
+        </div>
+      )}
 
       {error && (
         <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
@@ -236,7 +281,12 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
         </div>
       )}
 
-      {/* Document List */}
+      {success && (
+        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">
+          {success}
+        </div>
+      )}
+
       {documents.length > 0 && (
         <div className="mt-6">
           <h3 className="text-sm font-medium text-gray-700 mb-3">Uploaded Documents</h3>
@@ -254,35 +304,23 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{doc.filename}</p>
                     <p className="text-xs text-gray-500">
-                      {doc.document_type?.toUpperCase() || 'Other'} • {formatFileSize(doc.file_size)} • {formatDateTime(doc.created_at)}
+                      {doc.document_type?.replaceAll('_', ' ').toUpperCase() || 'Other'} • {formatFileSize(doc.file_size)} • {formatDateTime(doc.created_at)}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setViewingDoc(doc) }}
-                    className="p-2 text-gray-500 hover:text-primary transition-colors"
-                    title="View"
-                  >
+                  <button onClick={(e) => { e.stopPropagation(); setViewingDoc(doc) }} className="p-2 text-gray-500 hover:text-primary transition-colors" title="Preview">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
                   </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDownload(doc) }}
-                    className="p-2 text-gray-500 hover:text-primary transition-colors"
-                    title="Download"
-                  >
+                  <button onClick={(e) => { e.stopPropagation(); handleDownload(doc) }} className="p-2 text-gray-500 hover:text-primary transition-colors" title="Download">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                   </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(doc) }}
-                    className="p-2 text-gray-500 hover:text-red-600 transition-colors"
-                    title="Delete"
-                  >
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(doc) }} className="p-2 text-gray-500 hover:text-red-600 transition-colors" title="Delete">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
@@ -304,6 +342,7 @@ export default function DocumentUpload({ taxReturnId, documents, onDocumentsChan
         filename={viewingDoc?.filename || ''}
         contentType={viewingDoc?.content_type || null}
         onFetchUrl={fetchViewUrl}
+        onFetchDownloadUrl={fetchDownloadUrl}
       />
     </div>
   )

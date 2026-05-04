@@ -8,7 +8,13 @@ import {
   emptyDependent,
 } from '../../types/intake';
 import { api } from '../../lib/api';
-import { ALLOWED_CONTENT_TYPES, DOCUMENT_TYPES, MAX_FILE_SIZE } from '../../lib/documentConstants';
+import {
+  ACCEPTED_DOCUMENT_EXTENSIONS,
+  DOCUMENT_TYPES,
+  MAX_FILE_SIZE,
+  getDocumentContentType,
+  isAllowedDocumentFile,
+} from '../../lib/documentConstants';
 import { formatFileSize } from '../../lib/formatUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FadeUp } from '../../components/ui/MotionComponents';
@@ -230,10 +236,11 @@ export default function IntakeForm() {
 
     for (const doc of intakeDocuments) {
       try {
+        const contentType = getDocumentContentType(doc.file);
         const presignResult = await api.presignIntakeDocumentUpload(
           uploadToken,
           doc.file.name,
-          doc.file.type,
+          contentType,
           doc.file.size
         );
 
@@ -242,7 +249,7 @@ export default function IntakeForm() {
         const uploadResponse = await fetch(presignResult.data.upload_url, {
           method: 'PUT',
           body: doc.file,
-          headers: { 'Content-Type': doc.file.type },
+          headers: { 'Content-Type': contentType },
         });
 
         if (!uploadResponse.ok) continue;
@@ -250,7 +257,7 @@ export default function IntakeForm() {
         const registerResult = await api.registerIntakeDocument(uploadToken, {
           filename: doc.file.name,
           s3_key: presignResult.data.s3_key,
-          content_type: doc.file.type,
+          content_type: contentType,
           file_size: doc.file.size,
           document_type: doc.documentType,
         });
@@ -1569,6 +1576,10 @@ const documentTypeForFile = (fileName: string): IntakeDocumentType => {
   if (normalized.includes('w-2') || normalized.includes('w2')) return 'w2';
   if (normalized.includes('1099')) return '1099';
   if (normalized.includes('id') || normalized.includes('license')) return 'id';
+  if (normalized.includes('draft')) return 'draft_return';
+  if (normalized.includes('final')) return 'final_return';
+  if (normalized.includes('notice') || normalized.includes('letter')) return 'tax_notice';
+  if (normalized.includes('organizer')) return 'organizer';
   if (normalized.includes('prior') || normalized.includes('last-year')) return 'prior_return';
   return 'other';
 };
@@ -1578,9 +1589,9 @@ function StepDocuments({ documents, setDocuments, error, setError, isKioskMode }
     if (!fileList) return;
 
     const files = Array.from(fileList);
-    const invalid = files.find(file => !ALLOWED_CONTENT_TYPES.includes(file.type as typeof ALLOWED_CONTENT_TYPES[number]));
+    const invalid = files.find(file => !isAllowedDocumentFile(file));
     if (invalid) {
-      setError(`${invalid.name} is not supported. Please upload PDF, JPEG, or PNG files.`);
+      setError(`${invalid.name} is not supported. Accepted files include PDF, images, Word, Excel, PowerPoint, CSV, and text files.`);
       return;
     }
 
@@ -1616,7 +1627,7 @@ function StepDocuments({ documents, setDocuments, error, setError, isKioskMode }
           Upload any tax documents you already have. You can also skip this and send documents later through the client portal.
         </p>
         <p className="mt-2 text-sm text-gray-500">
-          Accepted files: PDF, JPEG, and PNG up to {formatFileSize(MAX_FILE_SIZE)} each.
+          Accepted files: PDF, images, Word, Excel, PowerPoint, CSV, and text files up to {formatFileSize(MAX_FILE_SIZE)} each.
         </p>
       </div>
 
@@ -1626,7 +1637,7 @@ function StepDocuments({ documents, setDocuments, error, setError, isKioskMode }
         <input
           type="file"
           multiple
-          accept=".pdf,.jpg,.jpeg,.png"
+          accept={ACCEPTED_DOCUMENT_EXTENSIONS}
           className="hidden"
           onChange={(event) => {
             addFiles(event.target.files);

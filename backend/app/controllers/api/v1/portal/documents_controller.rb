@@ -44,7 +44,7 @@ module Api
           end
 
           unless ALLOWED_CONTENT_TYPES.include?(content_type)
-            return render json: { error: "Only PDF, JPEG, and PNG files are accepted" }, status: :unprocessable_entity
+            return render json: { error: "Accepted file types include PDF, images, Word, Excel, PowerPoint, CSV, and text files" }, status: :unprocessable_entity
           end
 
           unless content_type_matches_extension?(content_type, filename)
@@ -91,6 +91,10 @@ module Api
             return render json: { error: "File size must be between 1 byte and 50MB" }, status: :unprocessable_entity
           end
 
+          unless uploaded_object_available?(s3_key, file_size)
+            return render json: { error: "Uploaded file could not be verified. Please upload it again." }, status: :unprocessable_entity
+          end
+
           doc_type = document_params[:document_type]
           if doc_type.present? && !Document::DOCUMENT_TYPES.include?(doc_type)
             return render json: { error: "Invalid document type. Allowed: #{Document::DOCUMENT_TYPES.join(', ')}" }, status: :unprocessable_entity
@@ -117,7 +121,8 @@ module Api
             download_url = S3Service.presign_download(
               s3_key: @document.s3_key,
               filename: @document.filename,
-              expires_in: 3600
+              expires_in: 3600,
+              disposition: params[:disposition]
             )
           rescue StandardError => e
             Rails.logger.error "S3 presign download failed for document #{@document.id}: #{e.message}"

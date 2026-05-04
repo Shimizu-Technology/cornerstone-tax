@@ -785,6 +785,8 @@ export interface DownloadResponse {
   expires_in: number;
 }
 
+type DocumentDisposition = 'inline' | 'attachment';
+
 // Service Types and Tasks
 export interface ServiceTask {
   id: number;
@@ -1836,8 +1838,8 @@ export const api = {
       body: JSON.stringify({ document: data }),
     }),
 
-  getDocumentDownloadUrl: (taxReturnId: number, documentId: number) =>
-    fetchApi<DownloadResponse>(`/api/v1/tax_returns/${taxReturnId}/documents/${documentId}/download`),
+  getDocumentDownloadUrl: (taxReturnId: number, documentId: number, disposition: DocumentDisposition = 'attachment') =>
+    fetchApi<DownloadResponse>(`/api/v1/tax_returns/${taxReturnId}/documents/${documentId}/download?disposition=${disposition}`),
 
   deleteDocument: (taxReturnId: number, documentId: number) =>
     fetchApi<void>(`/api/v1/tax_returns/${taxReturnId}/documents/${documentId}`, {
@@ -1970,8 +1972,8 @@ export const api = {
       body: JSON.stringify({ document: data }),
     }),
 
-  portalGetDocumentDownloadUrl: (taxReturnId: number, documentId: number) =>
-    fetchApi<{ download_url: string; expires_in: number }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents/${documentId}/download`),
+  portalGetDocumentDownloadUrl: (taxReturnId: number, documentId: number, disposition: DocumentDisposition = 'attachment') =>
+    fetchApi<{ download_url: string; expires_in: number }>(`/api/v1/portal/tax_returns/${taxReturnId}/documents/${documentId}/download?disposition=${disposition}`),
 
   portalGetSettings: () =>
     fetchApi<{ notification_preference: string }>('/api/v1/portal/settings'),

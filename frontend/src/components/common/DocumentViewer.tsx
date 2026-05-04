@@ -9,18 +9,21 @@ interface DocumentViewerProps {
   filename: string
   contentType: string | null
   onFetchUrl: () => Promise<string | null>
+  onFetchDownloadUrl?: () => Promise<string | null>
 }
 
-export default function DocumentViewer({ isOpen, onClose, filename, contentType, onFetchUrl }: DocumentViewerProps) {
+export default function DocumentViewer({ isOpen, onClose, filename, contentType, onFetchUrl, onFetchDownloadUrl }: DocumentViewerProps) {
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fetchIdRef = useRef(0)
 
   const handleDownload = useCallback(async () => {
-    if (!url) return
+    let targetUrl = url
     try {
-      const res = await fetch(url)
+      targetUrl = onFetchDownloadUrl ? await onFetchDownloadUrl() : url
+      if (!targetUrl) return
+      const res = await fetch(targetUrl)
       if (!res.ok) throw new Error(`Download failed: ${res.status}`)
       const blob = await res.blob()
       const blobUrl = URL.createObjectURL(blob)
@@ -32,9 +35,9 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
       document.body.removeChild(a)
       URL.revokeObjectURL(blobUrl)
     } catch {
-      window.open(url, '_blank')
+      if (targetUrl) window.open(targetUrl, '_blank')
     }
-  }, [url, filename])
+  }, [url, filename, onFetchDownloadUrl])
 
   const fetchUrl = useCallback(async () => {
     const thisId = ++fetchIdRef.current
@@ -97,7 +100,19 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
 
   const isImage = contentType?.startsWith('image/')
   const isPdf = contentType === 'application/pdf'
-  const canPreview = isImage || isPdf
+  const isText = contentType === 'text/plain' || contentType === 'text/csv' || contentType === 'application/csv'
+  const isOffice = [
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ].includes(contentType || '')
+  const canPreview = isImage || isPdf || isText || isOffice
+  const officePreviewUrl = url && isOffice
+    ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`
+    : null
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -201,10 +216,28 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
             <>
               {isPdf && (
                 <iframe
-                  src={url}
+                  src={`${url}#toolbar=1&navpanes=0`}
                   className="w-full h-full border-0"
                   title={filename}
                 />
+              )}
+
+              {isText && (
+                <iframe
+                  src={url}
+                  className="w-full h-full border-0 bg-white"
+                  title={filename}
+                />
+              )}
+
+              {officePreviewUrl && (
+                <div className="h-full bg-white">
+                  <iframe
+                    src={officePreviewUrl}
+                    className="w-full h-full border-0"
+                    title={filename}
+                  />
+                </div>
               )}
 
               {isImage && (
@@ -227,7 +260,7 @@ export default function DocumentViewer({ isOpen, onClose, filename, contentType,
                     </div>
                     <p className="text-gray-700 font-medium mb-2">Preview not available</p>
                     <p className="text-gray-500 text-sm mb-4">
-                      This file type ({contentType || 'unknown'}) can't be previewed in the browser.
+                      This file type ({contentType || 'unknown'}) can't be previewed here yet.
                     </p>
                     <button
                       onClick={handleDownload}

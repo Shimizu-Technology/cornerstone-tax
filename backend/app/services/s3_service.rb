@@ -42,20 +42,33 @@ class S3Service
       { url: url, s3_key: s3_key }
     end
 
-    # Generate a presigned URL for downloading a file
-    def presign_download(s3_key:, filename: nil, expires_in: 3600)
+    # Generate a presigned URL for viewing or downloading a file.
+    def presign_download(s3_key:, filename: nil, expires_in: 3600, disposition: "attachment")
       options = {
         bucket: bucket,
         key: s3_key,
         expires_in: expires_in
       }
 
-      # Set content disposition to trigger download with original filename
       if filename
-        options[:response_content_disposition] = "attachment; filename=\"#{filename}\""
+        safe_disposition = disposition == "inline" ? "inline" : "attachment"
+        safe_filename = filename.gsub(/["\r\n]/, "_")
+        options[:response_content_disposition] = "#{safe_disposition}; filename=\"#{safe_filename}\""
       end
 
       presigner.presigned_url(:get_object, options)
+    end
+
+    def object_exists?(s3_key:, expected_size: nil)
+      object = client.head_object(bucket: bucket, key: s3_key)
+      return true if expected_size.blank?
+
+      object.content_length.to_i == expected_size.to_i
+    rescue Aws::S3::Errors::NotFound, Aws::S3::Errors::NoSuchKey
+      false
+    rescue Aws::S3::Errors::ServiceError => e
+      Rails.logger.error("S3 head_object error: #{e.message}")
+      false
     end
 
     # Delete a file from S3

@@ -43,7 +43,13 @@ export default function PortalReturnDetail() {
 
   const fetchViewUrl = useCallback(async () => {
     if (!viewingDoc || !taxReturn) return null
-    const result = await api.portalGetDocumentDownloadUrl(taxReturn.id, viewingDoc.id)
+    const result = await api.portalGetDocumentDownloadUrl(taxReturn.id, viewingDoc.id, 'inline')
+    return result.data?.download_url || null
+  }, [viewingDoc, taxReturn])
+
+  const fetchDownloadUrl = useCallback(async () => {
+    if (!viewingDoc || !taxReturn) return null
+    const result = await api.portalGetDocumentDownloadUrl(taxReturn.id, viewingDoc.id, 'attachment')
     return result.data?.download_url || null
   }, [viewingDoc, taxReturn])
 
@@ -274,6 +280,7 @@ export default function PortalReturnDetail() {
         filename={viewingDoc?.filename || ''}
         contentType={viewingDoc?.content_type || null}
         onFetchUrl={fetchViewUrl}
+        onFetchDownloadUrl={fetchDownloadUrl}
       />
     </div>
   )
