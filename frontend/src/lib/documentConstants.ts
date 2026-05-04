@@ -89,9 +89,11 @@ export const isAllowedDocumentFile = (file: File) => {
 
 export const inferDocumentType = (fileName: string): DocumentType => {
   const normalized = fileName.toLowerCase()
+  const tokens = normalized.split(/[^a-z0-9]+/).filter(Boolean)
+
   if (normalized.includes('w-2') || normalized.includes('w2')) return 'w2'
   if (normalized.includes('1099')) return '1099'
-  if (normalized.includes('id') || normalized.includes('license') || normalized.includes('passport')) return 'id'
+  if (tokens.includes('id') || normalized.includes('license') || normalized.includes('passport')) return 'id'
   if (normalized.includes('draft')) return 'draft_return'
   if (normalized.includes('final')) return 'final_return'
   if (normalized.includes('notice') || normalized.includes('letter')) return 'tax_notice'
