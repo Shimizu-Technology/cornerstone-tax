@@ -15,15 +15,17 @@ module Payroll
     end
 
     def call
-      users = User.staff.where(id: entries_in_range.where.not(user_id: nil).select(:user_id)).order(:last_name, :first_name, :email).to_a
+      entries = entries_in_range.where.not(user_id: nil).includes(:time_category).to_a
+      users = User.staff.where(id: entries.map(&:user_id).uniq).order(:last_name, :first_name, :email).to_a
+      entries_by_user_id = entries.group_by(&:user_id)
 
       {
         source: SOURCE,
         start_date: start_date.iso8601,
         end_date: end_date.iso8601,
         generated_at: Time.current.iso8601,
-        employees: users.map { |user| serialize_user(user) },
-        summary: summary
+        employees: users.map { |user| serialize_user(user, entries_by_user_id.fetch(user.id, [])) },
+        summary: summary(entries)
       }
     end
 
@@ -40,9 +42,8 @@ module Payroll
       TimeEntry.where(work_date: start_date..end_date)
     end
 
-    def serialize_user(user)
-      user_entries = entries_in_range.where(user_id: user.id)
-      countable = user_entries.countable.includes(:time_category)
+    def serialize_user(user, user_entries)
+      countable = user_entries.select { |entry| countable?(entry) }
       grouped_days = countable.group_by(&:work_date).sort_by { |date, _| date }
 
       days = grouped_days.map do |date, entries|
@@ -79,38 +80,46 @@ module Payroll
       }
     end
 
-    def issues_for(scope)
-      pending = scope.where(approval_status: "pending")
-      denied = scope.where(approval_status: "denied")
-      pending_overtime = scope.where(overtime_status: "pending")
-      denied_overtime = scope.where(overtime_status: "denied")
-      open_clock = scope.where(status: %w[clocked_in on_break])
+    def issues_for(entries)
+      pending = entries.select { |entry| entry.approval_status == "pending" }
+      denied = entries.select { |entry| entry.approval_status == "denied" }
+      pending_overtime = entries.select { |entry| entry.overtime_status == "pending" }
+      denied_overtime = entries.select { |entry| entry.overtime_status == "denied" }
+      open_clock = entries.select { |entry| entry.status.in?(%w[clocked_in on_break]) }
 
       {
-        pending_count: pending.count,
-        pending_hours: round_hours(pending.sum(:hours).to_f),
-        pending_overtime_count: pending_overtime.count,
-        pending_overtime_hours: round_hours(pending_overtime.sum(:hours).to_f),
-        denied_count: denied.count,
-        denied_hours: round_hours(denied.sum(:hours).to_f),
-        denied_overtime_count: denied_overtime.count,
-        denied_overtime_hours: round_hours(denied_overtime.sum(:hours).to_f),
-        open_clock_count: open_clock.count,
-        open_clock_entry_ids: open_clock.pluck(:id)
+        pending_count: pending.size,
+        pending_hours: sum_hours(pending),
+        pending_overtime_count: pending_overtime.size,
+        pending_overtime_hours: sum_hours(pending_overtime),
+        denied_count: denied.size,
+        denied_hours: sum_hours(denied),
+        denied_overtime_count: denied_overtime.size,
+        denied_overtime_hours: sum_hours(denied_overtime),
+        open_clock_count: open_clock.size,
+        open_clock_entry_ids: open_clock.map(&:id)
       }
     end
 
-    def summary
-      all_entries = entries_in_range
+    def summary(entries)
+      countable = entries.select { |entry| countable?(entry) }
       {
-        employee_count: all_entries.where.not(user_id: nil).distinct.count(:user_id),
-        countable_hours: round_hours(all_entries.countable.sum(:hours).to_f),
-        pending_count: all_entries.where(approval_status: "pending").count,
-        denied_count: all_entries.where(approval_status: "denied").count,
-        pending_overtime_count: all_entries.where(overtime_status: "pending").count,
-        denied_overtime_count: all_entries.where(overtime_status: "denied").count,
-        open_clock_count: all_entries.where(status: %w[clocked_in on_break]).count
+        employee_count: entries.map(&:user_id).uniq.size,
+        countable_hours: sum_hours(countable),
+        pending_count: entries.count { |entry| entry.approval_status == "pending" },
+        denied_count: entries.count { |entry| entry.approval_status == "denied" },
+        pending_overtime_count: entries.count { |entry| entry.overtime_status == "pending" },
+        denied_overtime_count: entries.count { |entry| entry.overtime_status == "denied" },
+        open_clock_count: entries.count { |entry| entry.status.in?(%w[clocked_in on_break]) }
       }
+    end
+
+    def countable?(entry)
+      entry.status == "completed" && !entry.approval_status.in?(%w[denied pending])
+    end
+
+    def sum_hours(entries)
+      round_hours(entries.sum { |entry| entry.hours.to_f })
     end
 
     def round_hours(value)
