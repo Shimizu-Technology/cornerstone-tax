@@ -167,6 +167,9 @@ Rails.application.routes.draw do
 
       # Payroll ingest (shared-secret auth, service-to-service)
       post "payroll/ingest", to: "payroll_ingest#create"
+      namespace :payroll do
+        resource :time_summary, only: [ :show ], controller: :time_summaries
+      end
 
       # Admin-only routes
       namespace :admin do
