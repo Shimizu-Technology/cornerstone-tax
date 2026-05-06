@@ -4,6 +4,7 @@ module Api
   module V1
     class IntakeDocumentsController < BaseController
       include DocumentValidatable
+      include DocumentNotificationEnqueueable
 
       before_action :set_tax_return_from_upload_token
 
@@ -95,7 +96,7 @@ module Api
         document = @tax_return.documents.build(document_params.merge(document_type: doc_type, upload_source: "intake"))
 
         if document.save
-          DocumentUploadNotificationJob.perform_later(document.id, @tax_return.id)
+          enqueue_document_upload_notification(document, @tax_return)
           render json: { document: document_json(document) }, status: :created
         else
           render json: { errors: document.errors.full_messages }, status: :unprocessable_entity

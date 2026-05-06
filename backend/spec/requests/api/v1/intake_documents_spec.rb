@@ -102,6 +102,32 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       expect(JSON.parse(response.body).dig("document", "uploaded_by_source")).to eq("intake")
     end
 
+    it "still registers the document when notification enqueueing fails" do
+      submit_intake
+      token = JSON.parse(response.body).dig("document_upload", "upload_token")
+      tax_return = TaxReturn.last
+
+      allow(S3Service).to receive(:configured?).and_return(true)
+      allow(S3Service).to receive(:object_exists?).and_return(true)
+      allow(DocumentUploadNotificationJob).to receive(:perform_later).and_raise(StandardError, "queue unavailable")
+
+      post "/api/v1/intake_documents",
+           params: {
+             upload_token: token,
+             document: {
+               filename: "1099.pdf",
+               s3_key: "tax_returns/#{tax_return.id}/1099.pdf",
+               content_type: "application/pdf",
+               file_size: 2048,
+               document_type: "1099"
+             }
+           }
+
+      expect(response).to have_http_status(:created)
+      expect(tax_return.documents.count).to eq(1)
+      expect(tax_return.documents.first.filename).to eq("1099.pdf")
+    end
+
     it "rejects registration when S3 cannot verify the uploaded object" do
       submit_intake
       token = JSON.parse(response.body).dig("document_upload", "upload_token")
