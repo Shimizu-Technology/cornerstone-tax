@@ -30,7 +30,9 @@ RSpec.describe "Api::V1::Portal::Documents", type: :request do
     it "still registers the document when notification enqueueing fails" do
       allow(S3Service).to receive(:configured?).and_return(true)
       allow(S3Service).to receive(:object_exists?).and_return(true)
-      allow(DocumentUploadNotificationJob).to receive(:perform_later).and_raise(StandardError, "queue unavailable")
+      allow(DocumentUploadNotificationJob).to receive(:perform_later).and_raise(
+        ActiveRecord::StatementInvalid.new("solid_queue_jobs does not exist")
+      )
 
       post "/api/v1/portal/tax_returns/#{tax_return.id}/documents",
            params: {
