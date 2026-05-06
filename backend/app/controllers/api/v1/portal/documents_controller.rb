@@ -5,6 +5,7 @@ module Api
     module Portal
       class DocumentsController < BaseController
         include DocumentValidatable
+        include DocumentNotificationEnqueueable
 
         before_action :set_tax_return
         before_action :set_document, only: [:download]
@@ -105,7 +106,7 @@ module Api
           document.upload_source = "client"
 
           if document.save
-            DocumentUploadNotificationJob.perform_later(document.id, @tax_return.id)
+            enqueue_document_upload_notification(document, @tax_return)
             render json: { document: serialize_document(document) }, status: :created
           else
             render json: { errors: document.errors.full_messages }, status: :unprocessable_entity
