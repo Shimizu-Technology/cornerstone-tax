@@ -61,6 +61,7 @@ export default function TaxReturns() {
   const [filingFilter, setFilingFilter] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [page, setPage] = useState(1)
+  const [reloadKey, setReloadKey] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
 
@@ -93,7 +94,7 @@ export default function TaxReturns() {
 
     const debounce = setTimeout(fetchReturns, 300)
     return () => clearTimeout(debounce)
-  }, [search, stageFilter, yearFilter, paymentFilter, filingFilter, page])
+  }, [search, stageFilter, yearFilter, paymentFilter, filingFilter, page, reloadKey])
 
   // Fetch stages and users on mount
   useEffect(() => {
@@ -135,6 +136,7 @@ export default function TaxReturns() {
 
   const reloadFirstPage = () => {
     setPage(1)
+    setReloadKey(key => key + 1)
   }
 
   const formatMoney = (cents: number) => `$${(cents / 100).toFixed(2)}`

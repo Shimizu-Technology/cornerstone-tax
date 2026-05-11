@@ -144,6 +144,10 @@ const UserIcon = () => (
 const dollarsFromCents = (cents: number | null | undefined) => ((cents || 0) / 100).toFixed(2)
 const centsFromDollars = (value: string) => Math.round((parseFloat(value || '0') || 0) * 100)
 const labelize = (value: string | null | undefined) => (value || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
+const apiErrorMessage = (result: { error?: string; errors?: string[] }, fallback: string) => {
+  if (result.errors?.length) return result.errors.join(', ')
+  return result.error || fallback
+}
 
 export default function TaxReturnDetailPage() {
   useEffect(() => { document.title = 'Tax Return Details | Cornerstone Admin' }, [])
@@ -298,7 +302,11 @@ export default function TaxReturnDetailPage() {
     if (!taxReturn) return
     setSaving(true)
     try {
-      await api.updateTaxReturn(taxReturn.id, { workflow_stage_id: stageId })
+      const result = await api.updateTaxReturn(taxReturn.id, { workflow_stage_id: stageId })
+      if (result.error || result.errors?.length) {
+        alert(apiErrorMessage(result, 'Failed to update status'))
+        return
+      }
       await loadTaxReturn()
     } catch (err) {
       alert('Failed to update status')
@@ -311,10 +319,13 @@ export default function TaxReturnDetailPage() {
     if (!taxReturn) return
     setSaving(true)
     try {
-      if (userId) {
-        await api.assignTaxReturn(taxReturn.id, userId)
-      } else {
-        await api.updateTaxReturn(taxReturn.id, { assigned_to_id: null })
+      const result = userId
+        ? await api.assignTaxReturn(taxReturn.id, userId)
+        : await api.updateTaxReturn(taxReturn.id, { assigned_to_id: null })
+
+      if (result.error || result.errors?.length) {
+        alert(apiErrorMessage(result, 'Failed to update assignment'))
+        return
       }
       await loadTaxReturn()
     } catch (err) {
@@ -328,7 +339,11 @@ export default function TaxReturnDetailPage() {
     if (!taxReturn) return
     setSaving(true)
     try {
-      await api.updateTaxReturn(taxReturn.id, { reviewed_by_id: userId })
+      const result = await api.updateTaxReturn(taxReturn.id, { reviewed_by_id: userId })
+      if (result.error || result.errors?.length) {
+        alert(apiErrorMessage(result, 'Failed to update reviewer'))
+        return
+      }
       await loadTaxReturn()
     } catch (err) {
       alert('Failed to update reviewer')
@@ -341,7 +356,11 @@ export default function TaxReturnDetailPage() {
     if (!taxReturn) return
     setSaving(true)
     try {
-      await api.updateTaxReturn(taxReturn.id, { notes })
+      const result = await api.updateTaxReturn(taxReturn.id, { notes })
+      if (result.error || result.errors?.length) {
+        alert(apiErrorMessage(result, 'Failed to save notes'))
+        return
+      }
       await loadTaxReturn()
       setEditingNotes(false)
     } catch (err) {
@@ -355,7 +374,11 @@ export default function TaxReturnDetailPage() {
     if (!taxReturn) return
     setSaving(true)
     try {
-      await api.updateTaxReturn(taxReturn.id, detailsForm)
+      const result = await api.updateTaxReturn(taxReturn.id, detailsForm)
+      if (result.error || result.errors?.length) {
+        alert(apiErrorMessage(result, 'Failed to save return details'))
+        return
+      }
       await loadTaxReturn()
     } catch (err) {
       alert('Failed to save return details')
@@ -368,7 +391,7 @@ export default function TaxReturnDetailPage() {
     if (!taxReturn) return
     setSaving(true)
     try {
-      await api.updateTaxReturn(taxReturn.id, {
+      const result = await api.updateTaxReturn(taxReturn.id, {
         payment_status: paymentForm.payment_status,
         base_fee_cents: centsFromDollars(paymentForm.base_fee),
         discount_amount_cents: centsFromDollars(paymentForm.discount_amount),
@@ -376,6 +399,10 @@ export default function TaxReturnDetailPage() {
         amount_paid_cents: centsFromDollars(paymentForm.amount_paid),
         payment_notes: paymentForm.payment_notes,
       })
+      if (result.error || result.errors?.length) {
+        alert(apiErrorMessage(result, 'Failed to save payment details'))
+        return
+      }
       await loadTaxReturn()
     } catch (err) {
       alert('Failed to save payment details')
@@ -388,12 +415,16 @@ export default function TaxReturnDetailPage() {
     if (!taxReturn) return
     setSaving(true)
     try {
-      await api.updateTaxReturn(taxReturn.id, {
+      const result = await api.updateTaxReturn(taxReturn.id, {
         filing_status: filingForm.filing_status,
         filed_at: filingForm.filed_at || null,
         drt_confirmation: filingForm.drt_confirmation,
         irs_confirmation: filingForm.irs_confirmation,
       })
+      if (result.error || result.errors?.length) {
+        alert(apiErrorMessage(result, 'Failed to save filing details'))
+        return
+      }
       await loadTaxReturn()
     } catch (err) {
       alert('Failed to save filing details')
@@ -406,7 +437,11 @@ export default function TaxReturnDetailPage() {
     if (!taxReturn) return
     setSaving(true)
     try {
-      await api.updateTaxReturn(taxReturn.id, portalForm)
+      const result = await api.updateTaxReturn(taxReturn.id, portalForm)
+      if (result.error || result.errors?.length) {
+        alert(apiErrorMessage(result, 'Failed to save portal settings'))
+        return
+      }
       await loadTaxReturn()
     } catch (err) {
       alert('Failed to save portal settings')
