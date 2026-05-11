@@ -29,6 +29,37 @@ RSpec.describe TaxReturn, type: :model do
     )
   end
 
+  it "records changed payment fields in payment audit values" do
+    tax_return = described_class.create!(client: client, tax_year: 2026)
+
+    tax_return.update!(base_fee_cents: 50_000, discount_reason: "CEO discount")
+
+    event = tax_return.workflow_events.find_by!(event_type: "payment_updated")
+    expect(event.old_value).to eq("base_fee_cents: 0; discount_reason: none")
+    expect(event.new_value).to eq("base_fee_cents: 50000; discount_reason: CEO discount")
+    expect(event.description).to include("base_fee_cents", "discount_reason")
+  end
+
+  it "records changed filing fields in filing audit values" do
+    tax_return = described_class.create!(client: client, tax_year: 2026)
+
+    tax_return.update!(drt_confirmation: "DRT-123")
+
+    event = tax_return.workflow_events.find_by!(event_type: "filing_updated")
+    expect(event.old_value).to eq("drt_confirmation: none")
+    expect(event.new_value).to eq("drt_confirmation: DRT-123")
+  end
+
+  it "records changed portal fields in portal audit values" do
+    tax_return = described_class.create!(client: client, tax_year: 2026)
+
+    tax_return.update!(documents_enabled: false)
+
+    event = tax_return.workflow_events.find_by!(event_type: "portal_updated")
+    expect(event.old_value).to eq("documents_enabled: true")
+    expect(event.new_value).to eq("documents_enabled: false")
+  end
+
   it "returns a validation error instead of raising when filing status is nil" do
     tax_return = described_class.new(client: client, tax_year: 2026, filing_status: nil)
 

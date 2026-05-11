@@ -8,6 +8,16 @@ class TaxReturn < ApplicationRecord
   PAYMENT_STATUSES = %w[unpaid partially_paid paid waived].freeze
   FILING_STATUSES = %w[not_filed ready_to_file filed_drt filed_irs accepted rejected paper_filed].freeze
   SIGNATURE_STATUSES = %w[not_needed requested signed waived].freeze
+  PAYMENT_AUDIT_FIELDS = %w[
+    payment_status base_fee_cents discount_amount_cents discount_reason
+    amount_paid_cents paid_at payment_notes
+  ].freeze
+  FILING_AUDIT_FIELDS = %w[
+    filing_status filed_at drt_confirmation irs_confirmation
+  ].freeze
+  PORTAL_AUDIT_FIELDS = %w[
+    portal_visible documents_enabled signature_status signature_requested_at signed_at
+  ].freeze
 
   belongs_to :client
   belongs_to :workflow_stage, optional: true
@@ -147,9 +157,9 @@ class TaxReturn < ApplicationRecord
   def log_payment_change
     workflow_events.create!(
       event_type: "payment_updated",
-      old_value: payment_status_before_last_save,
-      new_value: payment_status,
-      description: "Payment details updated",
+      old_value: audit_values_before(PAYMENT_AUDIT_FIELDS),
+      new_value: audit_values_after(PAYMENT_AUDIT_FIELDS),
+      description: "Payment details updated: #{audit_field_names(PAYMENT_AUDIT_FIELDS)}",
       user: current_actor
     )
   end
@@ -157,9 +167,9 @@ class TaxReturn < ApplicationRecord
   def log_filing_change
     workflow_events.create!(
       event_type: "filing_updated",
-      old_value: filing_status_before_last_save,
-      new_value: filing_status,
-      description: "Filing details updated",
+      old_value: audit_values_before(FILING_AUDIT_FIELDS),
+      new_value: audit_values_after(FILING_AUDIT_FIELDS),
+      description: "Filing details updated: #{audit_field_names(FILING_AUDIT_FIELDS)}",
       user: current_actor
     )
   end
@@ -167,10 +177,39 @@ class TaxReturn < ApplicationRecord
   def log_portal_change
     workflow_events.create!(
       event_type: "portal_updated",
-      old_value: portal_visible_before_last_save&.to_s,
-      new_value: portal_visible.to_s,
-      description: "Client portal settings updated",
+      old_value: audit_values_before(PORTAL_AUDIT_FIELDS),
+      new_value: audit_values_after(PORTAL_AUDIT_FIELDS),
+      description: "Client portal settings updated: #{audit_field_names(PORTAL_AUDIT_FIELDS)}",
       user: current_actor
     )
+  end
+
+  def audit_values_before(fields)
+    audit_values_for(fields, 0)
+  end
+
+  def audit_values_after(fields)
+    audit_values_for(fields, 1)
+  end
+
+  def audit_values_for(fields, value_index)
+    changed_audit_fields(fields).map do |field, values|
+      "#{field}: #{format_audit_value(values[value_index])}"
+    end.join("; ").truncate(255)
+  end
+
+  def audit_field_names(fields)
+    changed_audit_fields(fields).keys.join(", ").truncate(255)
+  end
+
+  def changed_audit_fields(fields)
+    saved_changes.slice(*fields)
+  end
+
+  def format_audit_value(value)
+    return "none" if value.nil?
+    return value.iso8601 if value.respond_to?(:iso8601)
+
+    value.to_s
   end
 end
