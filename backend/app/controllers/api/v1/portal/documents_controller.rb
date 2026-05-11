@@ -12,7 +12,7 @@ module Api
 
         # GET /api/v1/portal/tax_returns/:tax_return_id/documents
         def index
-          documents = @tax_return.documents.order(created_at: :desc)
+          documents = @tax_return.documents.includes(:uploaded_by).order(created_at: :desc)
           render json: {
             documents: documents.map { |doc| serialize_document(doc) }
           }

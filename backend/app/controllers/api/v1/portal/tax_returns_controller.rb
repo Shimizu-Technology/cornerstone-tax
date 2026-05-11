@@ -29,7 +29,7 @@ module Api
 
         def set_tax_return
           @tax_return = current_client.tax_returns
-                                      .includes(:workflow_stage, :assigned_to, :income_sources, :documents)
+                                      .includes(:workflow_stage, :assigned_to, :income_sources, documents: :uploaded_by)
                                       .where(portal_visible: true)
                                       .find(params[:id])
         end
