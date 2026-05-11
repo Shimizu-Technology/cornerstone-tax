@@ -62,7 +62,7 @@ class CreateIntakeService
     }
 
     if @client
-      @client.update!(attrs.compact)
+      @client.update!(attrs)
     else
       @client = Client.create!(attrs)
     end
@@ -92,16 +92,21 @@ class CreateIntakeService
 
     tax_year = @params[:tax_year] || Date.current.year
 
-    @tax_return = @client.tax_returns.create!(
+    @tax_return = @client.tax_returns.find_or_initialize_by(
       tax_year: tax_year,
-      workflow_stage: initial_stage,
-      source: "public_intake",
       return_type: "individual",
+      form_type: "general"
+    )
+
+    @tax_return.assign_attributes(
+      workflow_stage: @tax_return.workflow_stage || initial_stage,
+      source: "public_intake",
       jurisdiction: "both",
       portal_visible: true,
       documents_enabled: true,
-      received_at: Time.current
+      received_at: @tax_return.received_at || Time.current
     )
+    @tax_return.save!
   end
 
   def create_income_sources

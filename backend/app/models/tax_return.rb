@@ -114,6 +114,8 @@ class TaxReturn < ApplicationRecord
   end
 
   def saved_change_to_payment_fields?
+    return false if previously_new_record?
+
     saved_change_to_payment_status? ||
       saved_change_to_base_fee_cents? ||
       saved_change_to_discount_amount_cents? ||
@@ -124,6 +126,8 @@ class TaxReturn < ApplicationRecord
   end
 
   def saved_change_to_filing_fields?
+    return false if previously_new_record?
+
     saved_change_to_filing_status? ||
       saved_change_to_filed_at? ||
       saved_change_to_drt_confirmation? ||
@@ -131,6 +135,8 @@ class TaxReturn < ApplicationRecord
   end
 
   def saved_change_to_portal_fields?
+    return false if previously_new_record?
+
     saved_change_to_portal_visible? ||
       saved_change_to_documents_enabled? ||
       saved_change_to_signature_status? ||

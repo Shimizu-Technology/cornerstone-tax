@@ -5,7 +5,7 @@ require "rails_helper"
 RSpec.describe "Api::V1::IntakeDocuments", type: :request do
   let!(:stage) { WorkflowStage.create!(name: "Intake Received", slug: "intake_received", position: 1) }
 
-  def submit_intake
+  def submit_intake(overrides = {})
     post "/api/v1/intake",
          params: {
            intake: {
@@ -19,7 +19,7 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
              signature: "Intake Client",
              signature_date: Date.current.iso8601,
              authorization_confirmed: true
-           }
+           }.merge(overrides)
          }
   end
 
@@ -33,6 +33,55 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
 
       expect(token).to be_present
       expect(TaxReturn.find_signed!(token, purpose: :intake_document_upload)).to eq(TaxReturn.last)
+    end
+
+    it "updates returning clients without retaining omitted optional intake fields" do
+      client = Client.create!(
+        first_name: "Intake",
+        last_name: "Client",
+        email: "intake-docs@example.com",
+        spouse_name: "Former Spouse",
+        spouse_dob: "1988-02-03",
+        changes_from_prior_year: "Moved"
+      )
+
+      submit_intake
+
+      expect(response).to have_http_status(:created)
+      client.reload
+      expect(client.spouse_name).to be_nil
+      expect(client.spouse_dob).to be_nil
+      expect(client.changes_from_prior_year).to be_nil
+    end
+
+    it "reuses the current public intake tax return instead of rolling back duplicate submissions" do
+      client = Client.create!(
+        first_name: "Intake",
+        last_name: "Client",
+        email: "intake-docs@example.com"
+      )
+      tax_return = client.tax_returns.create!(
+        tax_year: Date.current.year,
+        workflow_stage: stage,
+        return_type: "individual",
+        form_type: "general",
+        source: "admin_created",
+        portal_visible: false,
+        documents_enabled: false
+      )
+
+      expect do
+        submit_intake
+      end.not_to change(TaxReturn, :count)
+
+      expect(response).to have_http_status(:created)
+      payload = JSON.parse(response.body)
+      tax_return.reload
+      expect(payload.dig("tax_return", "id")).to eq(tax_return.id)
+      expect(tax_return.source).to eq("public_intake")
+      expect(tax_return.portal_visible).to be(true)
+      expect(tax_return.documents_enabled).to be(true)
+      expect(tax_return.intake_submissions.count).to eq(1)
     end
   end
 
