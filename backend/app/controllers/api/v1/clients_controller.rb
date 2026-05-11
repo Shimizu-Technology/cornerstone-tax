@@ -110,7 +110,7 @@ module Api
                               WorkflowStage.active.ordered.first
               tax_year = (params.dig(:client, :tax_year) || Date.current.year).to_i
               
-              tax_return = client.tax_returns.create!(
+              tax_return = client.tax_returns.build(
                 tax_year: tax_year,
                 workflow_stage: initial_stage,
                 source: "admin_created",
@@ -119,13 +119,8 @@ module Api
                 documents_enabled: true,
                 received_at: Time.current
               )
-
-              # Log workflow event
-              tax_return.workflow_events.create!(
-                event_type: "status_changed",
-                new_value: initial_stage&.name,
-                description: "Client created via quick create"
-              )
+              tax_return.current_actor = current_user
+              tax_return.save!
             end
 
             render json: { 

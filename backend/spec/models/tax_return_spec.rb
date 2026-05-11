@@ -66,4 +66,12 @@ RSpec.describe TaxReturn, type: :model do
     expect { tax_return.valid? }.not_to raise_error
     expect(tax_return.errors[:filing_status]).to be_present
   end
+
+  it "sets filed_at when a return is marked paper filed" do
+    tax_return = described_class.create!(client: client, tax_year: 2026)
+
+    tax_return.update!(filing_status: "paper_filed")
+
+    expect(tax_return.filed_at).to be_present
+  end
 end
