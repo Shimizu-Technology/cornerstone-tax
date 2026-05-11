@@ -69,6 +69,7 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
         portal_visible: false,
         documents_enabled: false
       )
+      status_event_count = tax_return.workflow_events.where(event_type: "status_changed").count
 
       expect do
         submit_intake
@@ -82,6 +83,7 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       expect(tax_return.portal_visible).to be(false)
       expect(tax_return.documents_enabled).to be(false)
       expect(tax_return.intake_submissions.count).to eq(1)
+      expect(tax_return.workflow_events.where(event_type: "status_changed").count).to eq(status_event_count)
     end
 
     it "replaces submitted dependents and income sources on returning-client resubmission" do

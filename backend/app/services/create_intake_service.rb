@@ -99,6 +99,7 @@ class CreateIntakeService
       return_type: "individual",
       form_type: "general"
     )
+    @created_tax_return = @tax_return.new_record?
 
     @tax_return.assign_attributes(
       workflow_stage: @tax_return.workflow_stage || initial_stage,
@@ -128,6 +129,8 @@ class CreateIntakeService
   end
 
   def log_intake_event
+    return unless @created_tax_return
+
     @tax_return.workflow_events.create!(
       event_type: "status_changed",
       new_value: @tax_return.workflow_stage&.name,
