@@ -104,8 +104,8 @@ class CreateIntakeService
       workflow_stage: @tax_return.workflow_stage || initial_stage,
       source: "public_intake",
       jurisdiction: "both",
-      portal_visible: true,
-      documents_enabled: true,
+      portal_visible: @tax_return.new_record? ? true : @tax_return.portal_visible,
+      documents_enabled: @tax_return.new_record? ? true : @tax_return.documents_enabled,
       received_at: @tax_return.received_at || Time.current
     )
     @tax_return.save!

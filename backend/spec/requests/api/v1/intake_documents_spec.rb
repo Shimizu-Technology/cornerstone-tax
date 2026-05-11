@@ -79,8 +79,8 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       tax_return.reload
       expect(payload.dig("tax_return", "id")).to eq(tax_return.id)
       expect(tax_return.source).to eq("public_intake")
-      expect(tax_return.portal_visible).to be(true)
-      expect(tax_return.documents_enabled).to be(true)
+      expect(tax_return.portal_visible).to be(false)
+      expect(tax_return.documents_enabled).to be(false)
       expect(tax_return.intake_submissions.count).to eq(1)
     end
 
