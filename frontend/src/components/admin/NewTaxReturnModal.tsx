@@ -30,45 +30,47 @@ const PAYMENT_STATUSES = [
 ]
 
 const centsFromDollars = (value: string) => Math.round((parseFloat(value || '0') || 0) * 100)
+const initialFormFor = (defaultClient?: NewTaxReturnModalProps['defaultClient']) => ({
+  client_id: defaultClient?.id?.toString() || '',
+  tax_year: currentYear.toString(),
+  return_type: defaultClient?.client_type === 'business' ? 'business' : 'individual',
+  form_type: defaultClient?.client_type === 'business' ? '1120S' : '1040',
+  jurisdiction: 'both',
+  workflow_stage_id: '',
+  assigned_to_id: '',
+  reviewed_by_id: '',
+  priority: 'normal',
+  payment_status: 'unpaid',
+  base_fee: '',
+  discount_amount: '',
+  discount_reason: '',
+  amount_paid: '',
+  portal_visible: false,
+  documents_enabled: true,
+  signature_status: 'not_needed',
+  notes: '',
+})
 
 export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCreated }: NewTaxReturnModalProps) {
   const navigate = useNavigate()
+  const defaultClientId = defaultClient?.id
+  const defaultClientType = defaultClient?.client_type
+  const hasDefaultClient = Boolean(defaultClientId)
   const [clients, setClients] = useState<ClientSummary[]>([])
   const [clientSearch, setClientSearch] = useState('')
   const [stages, setStages] = useState<WorkflowStage[]>([])
   const [users, setUsers] = useState<UserSummary[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    client_id: defaultClient?.id?.toString() || '',
-    tax_year: currentYear.toString(),
-    return_type: defaultClient?.client_type === 'business' ? 'business' : 'individual',
-    form_type: defaultClient?.client_type === 'business' ? '1120S' : '1040',
-    jurisdiction: 'both',
-    workflow_stage_id: '',
-    assigned_to_id: '',
-    reviewed_by_id: '',
-    priority: 'normal',
-    payment_status: 'unpaid',
-    base_fee: '',
-    discount_amount: '',
-    discount_reason: '',
-    amount_paid: '',
-    portal_visible: false,
-    documents_enabled: true,
-    signature_status: 'not_needed',
-    notes: '',
-  })
+  const [form, setForm] = useState(() => initialFormFor(defaultClient))
 
   useEffect(() => {
     if (!isOpen) return
-    setForm(prev => ({
-      ...prev,
-      client_id: defaultClient?.id?.toString() || prev.client_id,
-      return_type: defaultClient?.client_type === 'business' ? 'business' : prev.return_type,
-      form_type: defaultClient?.client_type === 'business' ? '1120S' : prev.form_type,
-    }))
-  }, [defaultClient, isOpen])
+    setError(null)
+    setClientSearch('')
+    setClients([])
+    setForm(initialFormFor(defaultClient))
+  }, [defaultClientId, defaultClientType, isOpen])
 
   useEffect(() => {
     if (!isOpen) return
@@ -86,15 +88,23 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
   }, [isOpen])
 
   useEffect(() => {
-    if (!isOpen || defaultClient) return
+    if (!isOpen || hasDefaultClient) {
+      setClients([])
+      return
+    }
+
+    let cancelled = false
 
     const timeout = window.setTimeout(async () => {
       const result = await api.getClients({ search: clientSearch, per_page: 10 })
-      if (result.data) setClients(result.data.clients)
+      if (!cancelled && result.data) setClients(result.data.clients)
     }, 250)
 
-    return () => window.clearTimeout(timeout)
-  }, [clientSearch, defaultClient, isOpen])
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [clientSearch, hasDefaultClient, isOpen])
 
   const selectedClient = defaultClient || clients.find(c => c.id.toString() === form.client_id)
   const finalFee = Math.max(centsFromDollars(form.base_fee) - centsFromDollars(form.discount_amount), 0)
