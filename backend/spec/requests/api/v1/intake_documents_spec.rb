@@ -66,6 +66,7 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
         return_type: "individual",
         form_type: "general",
         source: "admin_created",
+        jurisdiction: "federal",
         portal_visible: false,
         documents_enabled: false
       )
@@ -79,7 +80,8 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       payload = JSON.parse(response.body)
       tax_return.reload
       expect(payload.dig("tax_return", "id")).to eq(tax_return.id)
-      expect(tax_return.source).to eq("public_intake")
+      expect(tax_return.source).to eq("admin_created")
+      expect(tax_return.jurisdiction).to eq("federal")
       expect(tax_return.portal_visible).to be(false)
       expect(tax_return.documents_enabled).to be(false)
       expect(tax_return.intake_submissions.count).to eq(1)

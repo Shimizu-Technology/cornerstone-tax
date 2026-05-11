@@ -103,8 +103,8 @@ class CreateIntakeService
 
     @tax_return.assign_attributes(
       workflow_stage: @tax_return.workflow_stage || initial_stage,
-      source: "public_intake",
-      jurisdiction: "both",
+      source: @tax_return.new_record? ? "public_intake" : @tax_return.source,
+      jurisdiction: @tax_return.new_record? ? "both" : @tax_return.jurisdiction,
       portal_visible: @tax_return.new_record? ? true : @tax_return.portal_visible,
       documents_enabled: @tax_return.new_record? ? true : @tax_return.documents_enabled,
       received_at: @tax_return.received_at || Time.current
