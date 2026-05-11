@@ -95,6 +95,47 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
     end
   end
 
+  describe "GET /api/v1/tax_returns/:id" do
+    it "uses preloaded document uploaders in the detail response" do
+      tax_return = TaxReturn.create!(client: client, tax_year: 2026, workflow_stage: workflow_stage)
+      2.times do |index|
+        uploader = User.create!(
+          clerk_id: "spec-document-uploader-#{index}",
+          email: "document-uploader-#{index}@example.com",
+          role: "employee",
+          first_name: "Uploader",
+          last_name: index.to_s
+        )
+        tax_return.documents.create!(
+          filename: "document-#{index}.pdf",
+          s3_key: "tax_returns/#{tax_return.id}/document-#{index}.pdf",
+          uploaded_by: uploader,
+          upload_source: "staff"
+        )
+      end
+      stub_clerk_for(staff_user)
+
+      user_selects = []
+      subscriber = lambda do |_name, _started, _finished, _id, payload|
+        sql = payload[:sql]
+        user_selects << sql if sql.match?(/SELECT .*FROM "users"/)
+      end
+
+      ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+        get "/api/v1/tax_returns/#{tax_return.id}", headers: auth_headers_for(staff_user)
+      end
+
+      expect(response).to have_http_status(:ok)
+      uploaded_by_names = JSON.parse(response.body).dig("tax_return", "documents").map do |document|
+        document.dig("uploaded_by", "name")
+      end
+      expect(uploaded_by_names).to eq(["Uploader 1", "Uploader 0"])
+
+      individual_user_lookups = user_selects.select { |sql| sql.include?('"users"."id" =') }
+      expect(individual_user_lookups).to be_empty
+    end
+  end
+
   describe "POST /api/v1/tax_returns" do
     it "creates one status audit event for the initial workflow stage" do
       stub_clerk_for(staff_user)

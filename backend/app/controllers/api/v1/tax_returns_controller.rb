@@ -270,7 +270,7 @@ module Api
           income_sources: tr.income_sources.map do |src|
             { id: src.id, source_type: src.source_type, payer_name: src.payer_name }
           end,
-          documents: tr.documents.includes(:uploaded_by).order(created_at: :desc).map do |doc|
+          documents: tr.documents.sort_by(&:created_at).reverse.map do |doc|
             {
               id: doc.id,
               filename: doc.filename,
@@ -290,7 +290,7 @@ module Api
               tax_return_id: doc.tax_return_id
             }
           end,
-          workflow_events: tr.workflow_events.recent.map do |event|
+          workflow_events: tr.workflow_events.sort_by(&:created_at).reverse.map do |event|
             {
               id: event.id,
               event_type: event.event_type,
