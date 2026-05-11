@@ -68,7 +68,7 @@ class TaxReturn < ApplicationRecord
     self.form_type = "general" if form_type.blank?
     self.received_at ||= Time.current
     self.paid_at = Time.current if payment_status == "paid" && paid_at.blank?
-    self.filed_at = Time.current if filing_status.start_with?("filed_") && filed_at.blank?
+    self.filed_at = Time.current if filing_status&.start_with?("filed_") && filed_at.blank?
     self.signature_requested_at = Time.current if signature_status == "requested" && signature_requested_at.blank?
     self.signed_at = Time.current if signature_status == "signed" && signed_at.blank?
   end

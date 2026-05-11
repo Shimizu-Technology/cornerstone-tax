@@ -28,4 +28,11 @@ RSpec.describe TaxReturn, type: :model do
       "portal_updated"
     )
   end
+
+  it "returns a validation error instead of raising when filing status is nil" do
+    tax_return = described_class.new(client: client, tax_year: 2026, filing_status: nil)
+
+    expect { tax_return.valid? }.not_to raise_error
+    expect(tax_return.errors[:filing_status]).to be_present
+  end
 end
