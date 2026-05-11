@@ -83,6 +83,54 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       expect(tax_return.documents_enabled).to be(true)
       expect(tax_return.intake_submissions.count).to eq(1)
     end
+
+    it "replaces submitted dependents and income sources on returning-client resubmission" do
+      client = Client.create!(
+        first_name: "Intake",
+        last_name: "Client",
+        email: "intake-docs@example.com"
+      )
+      tax_return = client.tax_returns.create!(
+        tax_year: Date.current.year,
+        workflow_stage: stage,
+        return_type: "individual",
+        form_type: "general",
+        source: "public_intake"
+      )
+      client.dependents.create!(name: "Old Dependent", relationship: "Child")
+      tax_return.income_sources.create!(source_type: "w2", payer_name: "Old Employer")
+
+      submitted_dependents = [
+        {
+          name: "New Dependent",
+          date_of_birth: "2015-05-01",
+          relationship: "Child",
+          months_lived_with_client: 12,
+          is_student: true,
+          is_disabled: false,
+          can_be_claimed_by_other: false
+        }
+      ]
+      submitted_income_sources = [
+        {
+          source_type: "1099",
+          payer_name: "New Payer",
+          notes: "Contract income"
+        }
+      ]
+
+      submit_intake(dependents: submitted_dependents, income_sources: submitted_income_sources)
+
+      expect(response).to have_http_status(:created)
+      expect(client.dependents.reload.pluck(:name)).to eq(["New Dependent"])
+      expect(tax_return.income_sources.reload.pluck(:payer_name)).to eq(["New Payer"])
+
+      submit_intake(dependents: submitted_dependents, income_sources: submitted_income_sources)
+
+      expect(response).to have_http_status(:created)
+      expect(client.dependents.reload.pluck(:name)).to eq(["New Dependent"])
+      expect(tax_return.income_sources.reload.pluck(:payer_name)).to eq(["New Payer"])
+    end
   end
 
   describe "POST /api/v1/intake_documents/presign" do
