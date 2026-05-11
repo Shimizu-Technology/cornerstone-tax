@@ -32,7 +32,12 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       token = payload.dig("document_upload", "upload_token")
 
       expect(token).to be_present
-      expect(TaxReturn.find_signed!(token, purpose: :intake_document_upload)).to eq(TaxReturn.last)
+      tax_return = TaxReturn.find_signed!(token, purpose: :intake_document_upload)
+      status_events = tax_return.workflow_events.where(event_type: "status_changed")
+
+      expect(tax_return).to eq(TaxReturn.last)
+      expect(status_events.count).to eq(1)
+      expect(status_events.first.new_value).to eq("Intake Received")
     end
 
     it "updates returning clients without retaining omitted optional intake fields" do

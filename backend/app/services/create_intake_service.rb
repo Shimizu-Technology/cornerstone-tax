@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Service to process client intake form submissions
-# Creates: Client, Dependents, TaxReturn, IncomeSources, and logs the initial WorkflowEvent
+# Creates: Client, Dependents, TaxReturn, IncomeSources, and IntakeSubmission snapshot
 class CreateIntakeService
   Result = Struct.new(:success?, :client, :tax_return, :errors, keyword_init: true)
 
@@ -21,7 +21,6 @@ class CreateIntakeService
       create_tax_return
       create_income_sources
       create_intake_submission
-      log_intake_event
 
       Result.new(success?: true, client: @client, tax_return: @tax_return, errors: [])
     end
@@ -99,7 +98,6 @@ class CreateIntakeService
       return_type: "individual",
       form_type: "general"
     )
-    @created_tax_return = @tax_return.new_record?
 
     @tax_return.assign_attributes(
       workflow_stage: @tax_return.workflow_stage || initial_stage,
@@ -126,16 +124,6 @@ class CreateIntakeService
         notes: source_params[:notes]
       )
     end
-  end
-
-  def log_intake_event
-    return unless @created_tax_return
-
-    @tax_return.workflow_events.create!(
-      event_type: "status_changed",
-      new_value: @tax_return.workflow_stage&.name,
-      description: "Client intake form submitted"
-    )
   end
 
   def create_intake_submission
