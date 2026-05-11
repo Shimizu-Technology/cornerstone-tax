@@ -87,13 +87,6 @@ module Api
         tax_return.received_at ||= Time.current
 
         if tax_return.save
-          tax_return.workflow_events.create!(
-            event_type: "status_changed",
-            new_value: tax_return.workflow_stage&.name,
-            description: "Tax return created by staff",
-            user: current_user
-          )
-
           render json: { tax_return: tax_return_detail(tax_return.reload) }, status: :created
         else
           render json: { errors: tax_return.errors.full_messages }, status: :unprocessable_entity
