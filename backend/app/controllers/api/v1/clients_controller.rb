@@ -112,7 +112,12 @@ module Api
               
               tax_return = client.tax_returns.create!(
                 tax_year: tax_year,
-                workflow_stage: initial_stage
+                workflow_stage: initial_stage,
+                source: "admin_created",
+                return_type: client.client_type == "business" ? "business" : "individual",
+                portal_visible: false,
+                documents_enabled: true,
+                received_at: Time.current
               )
 
               # Log workflow event
@@ -359,7 +364,22 @@ module Api
             {
               id: tr.id,
               tax_year: tr.tax_year,
+              return_type: tr.return_type,
+              form_type: tr.form_type,
+              jurisdiction: tr.jurisdiction,
+              source: tr.source,
+              priority: tr.priority,
               notes: tr.notes,
+              payment_status: tr.payment_status,
+              base_fee_cents: tr.base_fee_cents,
+              discount_amount_cents: tr.discount_amount_cents,
+              amount_paid_cents: tr.amount_paid_cents,
+              final_fee_cents: tr.final_fee_cents,
+              balance_due_cents: tr.balance_due_cents,
+              filing_status: tr.filing_status,
+              portal_visible: tr.portal_visible,
+              documents_enabled: tr.documents_enabled,
+              signature_status: tr.signature_status,
               status: tr.workflow_stage&.name,
               status_slug: tr.workflow_stage&.slug,
               status_color: tr.workflow_stage&.color,

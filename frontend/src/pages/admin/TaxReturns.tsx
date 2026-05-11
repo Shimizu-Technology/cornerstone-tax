@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
 import { formatDateTime } from '../../lib/dateUtils'
 import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
+import NewTaxReturnModal from '../../components/admin/NewTaxReturnModal'
 
 // Define types locally to avoid Vite import caching issues
 interface TaxReturnSummaryLocal {
@@ -18,6 +19,12 @@ interface TaxReturnSummaryLocal {
   status_slug: string
   status_color: string
   assigned_to: { id: number; name: string } | null
+  return_type: string
+  form_type: string | null
+  payment_status: string
+  filing_status: string
+  portal_visible: boolean
+  balance_due_cents: number
   created_at: string
   updated_at: string
 }
@@ -50,6 +57,9 @@ export default function TaxReturns() {
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
   const [yearFilter, setYearFilter] = useState<number | ''>('')
+  const [paymentFilter, setPaymentFilter] = useState('')
+  const [filingFilter, setFilingFilter] = useState('')
+  const [showCreateModal, setShowCreateModal] = useState(false)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
@@ -58,10 +68,19 @@ export default function TaxReturns() {
   useEffect(() => {
     const fetchReturns = async () => {
       setLoading(true)
-      const params: { page: number; search?: string; stage?: string; year?: number } = { page }
+      const params: {
+        page: number
+        search?: string
+        stage?: string
+        year?: number
+        payment_status?: string
+        filing_status?: string
+      } = { page }
       if (search) params.search = search
       if (stageFilter) params.stage = stageFilter
       if (yearFilter) params.year = yearFilter
+      if (paymentFilter) params.payment_status = paymentFilter
+      if (filingFilter) params.filing_status = filingFilter
 
       const response = await api.getTaxReturns(params)
       if (response.data) {
@@ -74,7 +93,7 @@ export default function TaxReturns() {
 
     const debounce = setTimeout(fetchReturns, 300)
     return () => clearTimeout(debounce)
-  }, [search, stageFilter, yearFilter, page])
+  }, [search, stageFilter, yearFilter, paymentFilter, filingFilter, page])
 
   // Fetch stages and users on mount
   useEffect(() => {
@@ -114,6 +133,12 @@ export default function TaxReturns() {
   const currentYear = new Date().getFullYear()
   const yearOptions = Array.from({ length: 6 }, (_, i) => currentYear - i)
 
+  const reloadFirstPage = () => {
+    setPage(1)
+  }
+
+  const formatMoney = (cents: number) => `$${(cents / 100).toFixed(2)}`
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -125,13 +150,28 @@ export default function TaxReturns() {
               {totalCount} total return{totalCount !== 1 ? 's' : ''} • Manage status and assignments
             </p>
           </div>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center justify-center gap-2 bg-primary text-white px-5 py-3 rounded-xl font-medium hover:bg-primary-dark transition-all shadow-md hover:shadow-lg"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Tax Return
+          </button>
         </div>
       </FadeUp>
+
+      <NewTaxReturnModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreated={reloadFirstPage}
+      />
 
       {/* Filters */}
       <FadeUp delay={0.05}>
         <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark p-5 sm:p-6 hover:shadow-md transition-shadow duration-300">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
             {/* Search */}
             <div>
               <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
@@ -191,11 +231,48 @@ export default function TaxReturns() {
             {/* Clear Filters */}
             <div className="flex items-end">
               <button
-                onClick={() => { setSearch(''); setStageFilter(''); setYearFilter(''); setPage(1) }}
+                onClick={() => { setSearch(''); setStageFilter(''); setYearFilter(''); setPaymentFilter(''); setFilingFilter(''); setPage(1) }}
                 className="text-sm text-gray-600 hover:text-primary transition-colors font-medium"
               >
                 Clear Filters
               </button>
+            </div>
+            <div>
+              <label htmlFor="payment" className="block text-sm font-medium text-gray-700 mb-2">
+                Payment
+              </label>
+              <select
+                id="payment"
+                value={paymentFilter}
+                onChange={(e) => { setPaymentFilter(e.target.value); setPage(1) }}
+                className="w-full px-4 py-2.5 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
+              >
+                <option value="">All Payments</option>
+                <option value="unpaid">Unpaid</option>
+                <option value="partially_paid">Partially Paid</option>
+                <option value="paid">Paid</option>
+                <option value="waived">Waived</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="filing" className="block text-sm font-medium text-gray-700 mb-2">
+                Filing
+              </label>
+              <select
+                id="filing"
+                value={filingFilter}
+                onChange={(e) => { setFilingFilter(e.target.value); setPage(1) }}
+                className="w-full px-4 py-2.5 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
+              >
+                <option value="">All Filing</option>
+                <option value="not_filed">Not Filed</option>
+                <option value="ready_to_file">Ready to File</option>
+                <option value="filed_drt">Filed DRT</option>
+                <option value="filed_irs">Filed IRS</option>
+                <option value="accepted">Accepted</option>
+                <option value="rejected">Rejected</option>
+                <option value="paper_filed">Paper Filed</option>
+              </select>
             </div>
           </div>
         </div>
@@ -255,6 +332,12 @@ export default function TaxReturns() {
                           Assigned To
                         </th>
                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                          Payment
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                          Filing
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                           Date
                         </th>
                         <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -284,6 +367,9 @@ export default function TaxReturns() {
                           </td>
                           <td className="px-6 py-4">
                             <span className="font-semibold text-gray-900">{taxReturn.tax_year}</span>
+                            <p className="text-xs text-gray-500">
+                              {taxReturn.form_type || 'General'} • {taxReturn.return_type.replaceAll('_', ' ')}
+                            </p>
                           </td>
                           <td className="px-6 py-4">
                             <select
@@ -299,6 +385,23 @@ export default function TaxReturns() {
                                 </option>
                               ))}
                             </select>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              taxReturn.payment_status === 'paid' ? 'bg-green-100 text-green-700' :
+                              taxReturn.payment_status === 'partially_paid' ? 'bg-amber-100 text-amber-700' :
+                              taxReturn.payment_status === 'waived' ? 'bg-blue-100 text-blue-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {taxReturn.payment_status.replaceAll('_', ' ')}
+                            </span>
+                            {taxReturn.balance_due_cents > 0 && (
+                              <p className="text-xs text-gray-500 mt-1">Due {formatMoney(taxReturn.balance_due_cents)}</p>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-700 capitalize">{taxReturn.filing_status.replaceAll('_', ' ')}</span>
+                            {taxReturn.portal_visible && <p className="text-xs text-primary mt-1">Visible in portal</p>}
                           </td>
                           <td className="px-6 py-4">
                             <select
@@ -340,7 +443,7 @@ export default function TaxReturns() {
                             <p className="font-medium text-gray-900 hover:text-primary truncate transition-colors">
                               {taxReturn.client.full_name}
                             </p>
-                            <p className="text-sm text-gray-500">{taxReturn.tax_year} Tax Return</p>
+                            <p className="text-sm text-gray-500">{taxReturn.tax_year} {taxReturn.form_type || 'Tax'} Return</p>
                           </Link>
                           <span 
                             className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white shadow-sm flex-shrink-0"
@@ -373,6 +476,16 @@ export default function TaxReturns() {
                               <option key={user.id} value={user.id}>{user.full_name}</option>
                             ))}
                           </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="text-gray-400">Payment</p>
+                            <p className="font-medium capitalize">{taxReturn.payment_status.replaceAll('_', ' ')}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-400">Filing</p>
+                            <p className="font-medium capitalize">{taxReturn.filing_status.replaceAll('_', ' ')}</p>
+                          </div>
                         </div>
                         
                         <div className="flex justify-between items-center pt-2">

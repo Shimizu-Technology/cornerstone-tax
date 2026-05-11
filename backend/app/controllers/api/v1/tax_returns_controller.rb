@@ -28,12 +28,28 @@ module Api
           returns = returns.where(assigned_to_id: params[:assigned_to])
         end
 
+        if params[:payment_status].present?
+          returns = returns.where(payment_status: params[:payment_status])
+        end
+
+        if params[:filing_status].present?
+          returns = returns.where(filing_status: params[:filing_status])
+        end
+
+        if params[:return_type].present?
+          returns = returns.where(return_type: params[:return_type])
+        end
+
+        if params[:portal_visible].present?
+          returns = returns.where(portal_visible: ActiveModel::Type::Boolean.new.cast(params[:portal_visible]))
+        end
+
         # Search by client name
         if params[:search].present?
           search_term = "%#{params[:search].downcase}%"
           returns = returns.joins(:client).where(
-            "LOWER(clients.first_name) LIKE ? OR LOWER(clients.last_name) LIKE ?",
-            search_term, search_term
+            "LOWER(clients.first_name) LIKE ? OR LOWER(clients.last_name) LIKE ? OR LOWER(clients.email) LIKE ? OR LOWER(clients.business_name) LIKE ?",
+            search_term, search_term, search_term, search_term
           )
         end
 
@@ -62,6 +78,26 @@ module Api
         ).find(params[:id])
 
         render json: { tax_return: tax_return_detail(tax_return) }
+      end
+
+      # POST /api/v1/tax_returns
+      def create
+        tax_return = TaxReturn.new(tax_return_create_params)
+        tax_return.current_actor = current_user
+        tax_return.received_at ||= Time.current
+
+        if tax_return.save
+          tax_return.workflow_events.create!(
+            event_type: "status_changed",
+            new_value: tax_return.workflow_stage&.name,
+            description: "Tax return created by staff",
+            user: current_user
+          )
+
+          render json: { tax_return: tax_return_detail(tax_return.reload) }, status: :created
+        else
+          render json: { errors: tax_return.errors.full_messages }, status: :unprocessable_entity
+        end
       end
 
       # PATCH /api/v1/tax_returns/:id
@@ -96,18 +132,62 @@ module Api
 
       def tax_return_params
         params.require(:tax_return).permit(
-          :workflow_stage_id, :assigned_to_id, :reviewed_by_id, :notes
+          :workflow_stage_id, :assigned_to_id, :reviewed_by_id, :notes,
+          :return_type, :form_type, :jurisdiction, :source, :priority,
+          :received_at, :due_on,
+          :payment_status, :base_fee_cents, :discount_amount_cents,
+          :discount_reason, :amount_paid_cents, :paid_at, :payment_notes,
+          :filing_status, :filed_at, :drt_confirmation, :irs_confirmation,
+          :portal_visible, :documents_enabled, :signature_status,
+          :signature_requested_at, :signed_at
         )
+      end
+
+      def tax_return_create_params
+        params.require(:tax_return).permit(
+          :client_id, :tax_year, :workflow_stage_id, :assigned_to_id,
+          :reviewed_by_id, :notes, :return_type, :form_type, :jurisdiction,
+          :source, :priority, :received_at, :due_on, :payment_status,
+          :base_fee_cents, :discount_amount_cents, :discount_reason,
+          :amount_paid_cents, :paid_at, :payment_notes, :filing_status,
+          :filed_at, :drt_confirmation, :irs_confirmation, :portal_visible,
+          :documents_enabled, :signature_status, :signature_requested_at,
+          :signed_at
+        ).tap do |permitted|
+          permitted[:source] ||= "admin_created"
+          permitted[:workflow_stage_id] ||= WorkflowStage.active.ordered.first&.id
+        end
       end
 
       def tax_return_summary(tr)
         {
           id: tr.id,
           tax_year: tr.tax_year,
+          return_type: tr.return_type,
+          form_type: tr.form_type,
+          jurisdiction: tr.jurisdiction,
+          source: tr.source,
+          priority: tr.priority,
+          payment_status: tr.payment_status,
+          filing_status: tr.filing_status,
+          portal_visible: tr.portal_visible,
+          documents_enabled: tr.documents_enabled,
+          signature_status: tr.signature_status,
+          base_fee_cents: tr.base_fee_cents,
+          discount_amount_cents: tr.discount_amount_cents,
+          amount_paid_cents: tr.amount_paid_cents,
+          final_fee_cents: tr.final_fee_cents,
+          balance_due_cents: tr.balance_due_cents,
+          due_on: tr.due_on,
           client: {
             id: tr.client.id,
             full_name: tr.client.full_name,
-            email: tr.client.email
+            email: tr.client.email,
+            phone: tr.client.phone,
+            client_type: tr.client.client_type,
+            business_name: tr.client.business_name,
+            has_portal_access: tr.client.user&.portal_active? || false,
+            portal_invite_pending: tr.client.user&.portal_invite_pending? || false
           },
           status: tr.workflow_stage&.name,
           status_slug: tr.workflow_stage&.slug,
@@ -125,7 +205,32 @@ module Api
         {
           id: tr.id,
           tax_year: tr.tax_year,
+          return_type: tr.return_type,
+          form_type: tr.form_type,
+          jurisdiction: tr.jurisdiction,
+          source: tr.source,
+          priority: tr.priority,
           notes: tr.notes,
+          received_at: tr.received_at,
+          due_on: tr.due_on,
+          payment_status: tr.payment_status,
+          base_fee_cents: tr.base_fee_cents,
+          discount_amount_cents: tr.discount_amount_cents,
+          discount_reason: tr.discount_reason,
+          amount_paid_cents: tr.amount_paid_cents,
+          final_fee_cents: tr.final_fee_cents,
+          balance_due_cents: tr.balance_due_cents,
+          paid_at: tr.paid_at,
+          payment_notes: tr.payment_notes,
+          filing_status: tr.filing_status,
+          filed_at: tr.filed_at,
+          drt_confirmation: tr.drt_confirmation,
+          irs_confirmation: tr.irs_confirmation,
+          portal_visible: tr.portal_visible,
+          documents_enabled: tr.documents_enabled,
+          signature_status: tr.signature_status,
+          signature_requested_at: tr.signature_requested_at,
+          signed_at: tr.signed_at,
           completed_at: tr.completed_at,
           created_at: tr.created_at,
           updated_at: tr.updated_at,
@@ -134,7 +239,9 @@ module Api
             full_name: tr.client.full_name,
             email: tr.client.email,
             phone: tr.client.phone,
-            filing_status: tr.client.filing_status
+            filing_status: tr.client.filing_status,
+            has_portal_access: tr.client.user&.portal_active? || false,
+            portal_invite_pending: tr.client.user&.portal_invite_pending? || false
           },
           workflow_stage: tr.workflow_stage ? {
             id: tr.workflow_stage.id,

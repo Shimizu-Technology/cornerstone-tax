@@ -54,6 +54,8 @@ export default function PortalDocuments() {
   }, [selectedReturnId])
 
   const closeViewer = useCallback(() => setViewingDoc(null), [])
+  const selectedReturn = taxReturns.find(tr => tr.id === selectedReturnId)
+  const uploadsEnabled = selectedReturn?.documents_enabled !== false
 
   useEffect(() => {
     async function loadReturns() {
@@ -111,6 +113,11 @@ export default function PortalDocuments() {
     setUploadError(null)
     setUploadSuccess(null)
 
+    if (!uploadsEnabled) {
+      setUploadError('Document uploads are not enabled for this return right now.')
+      return
+    }
+
     const invalidSize = files.find(file => file.size > MAX_FILE_SIZE)
     if (invalidSize) {
       setUploadError(`${invalidSize.name} is too large. Maximum file size is 50MB.`)
@@ -131,7 +138,7 @@ export default function PortalDocuments() {
         documentType: inferDocumentType(file.name),
       })),
     ])
-  }, [])
+  }, [uploadsEnabled])
 
   const updateQueuedType = (id: string, documentType: string) => {
     setQueuedDocuments(prev => prev.map(doc => doc.id === id ? { ...doc, documentType } : doc))
@@ -142,7 +149,7 @@ export default function PortalDocuments() {
   }
 
   const uploadQueuedDocuments = async () => {
-    if (!selectedReturnId || queuedDocuments.length === 0 || uploading) return
+    if (!selectedReturnId || queuedDocuments.length === 0 || uploading || !uploadsEnabled) return
     const returnId = selectedReturnId
 
     setUploading(true)
@@ -294,9 +301,11 @@ export default function PortalDocuments() {
 
       <div className="bg-white rounded-xl border border-secondary-dark p-5">
         <h2 className="font-semibold text-gray-900 mb-1">Upload Documents</h2>
-        <p className="text-sm text-gray-500 mb-4">Select one or more files first. Nothing uploads until you confirm.</p>
+        <p className="text-sm text-gray-500 mb-4">
+          {uploadsEnabled ? 'Select one or more files first. Nothing uploads until you confirm.' : 'Cornerstone has disabled uploads for this return. You can still preview and download existing documents.'}
+        </p>
 
-        <div
+        {uploadsEnabled && <div
           className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
             dragActive ? 'border-primary bg-primary/5' : uploading ? 'border-gray-200 bg-gray-50' : 'border-gray-300 hover:border-primary/50 hover:bg-secondary/50'
           }`}
@@ -323,7 +332,7 @@ export default function PortalDocuments() {
               <p className="text-xs text-gray-400 mt-1">PDF, images, Word, Excel, PowerPoint, CSV, or text up to 50MB each</p>
             </div>
           </div>
-        </div>
+        </div>}
 
         {queuedDocuments.length > 0 && (
           <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">

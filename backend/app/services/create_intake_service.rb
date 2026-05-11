@@ -20,6 +20,7 @@ class CreateIntakeService
       create_dependents
       create_tax_return
       create_income_sources
+      create_intake_submission
       log_intake_event
 
       Result.new(success?: true, client: @client, tax_return: @tax_return, errors: [])
@@ -35,7 +36,8 @@ class CreateIntakeService
   private
 
   def create_client
-    @client = Client.create!(
+    @client = find_existing_client
+    attrs = {
       first_name: @params[:first_name],
       last_name: @params[:last_name],
       date_of_birth: @params[:date_of_birth],
@@ -57,7 +59,13 @@ class CreateIntakeService
       bank_account_type: @params[:bank_account_type],
       other_income: @params[:other_income],
       comments: @params[:comments]
-    )
+    }
+
+    if @client
+      @client.update!(attrs.compact)
+    else
+      @client = Client.create!(attrs)
+    end
   end
 
   def create_dependents
@@ -86,7 +94,13 @@ class CreateIntakeService
 
     @tax_return = @client.tax_returns.create!(
       tax_year: tax_year,
-      workflow_stage: initial_stage
+      workflow_stage: initial_stage,
+      source: "public_intake",
+      return_type: "individual",
+      jurisdiction: "both",
+      portal_visible: true,
+      documents_enabled: true,
+      received_at: Time.current
     )
   end
 
@@ -110,5 +124,23 @@ class CreateIntakeService
       new_value: @tax_return.workflow_stage&.name,
       description: "Client intake form submitted"
     )
+  end
+
+  def create_intake_submission
+    IntakeSubmission.create!(
+      client: @client,
+      tax_return: @tax_return,
+      payload: @params.except(:bank_routing_number, :bank_account_number).to_h,
+      source: "public_intake",
+      status: "received",
+      submitted_at: Time.current
+    )
+  end
+
+  def find_existing_client
+    email = @params[:email].to_s.strip.downcase
+    return nil if email.blank?
+
+    Client.active.find_by("LOWER(email) = ?", email)
   end
 end

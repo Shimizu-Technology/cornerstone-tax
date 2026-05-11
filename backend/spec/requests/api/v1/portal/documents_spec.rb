@@ -24,7 +24,7 @@ RSpec.describe "Api::V1::Portal::Documents", type: :request do
     )
   end
 
-  let(:tax_return) { TaxReturn.create!(client: client, tax_year: 2026) }
+  let(:tax_return) { TaxReturn.create!(client: client, tax_year: 2026, portal_visible: true) }
 
   describe "POST /api/v1/portal/tax_returns/:tax_return_id/documents" do
     it "still registers the document when notification enqueueing fails" do

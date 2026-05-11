@@ -209,6 +209,22 @@ export default function PortalReturnDetail() {
         </div>
       </div>
 
+      {taxReturn.signature_status === 'requested' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+          <h2 className="font-semibold text-amber-900 mb-1">Signature Requested</h2>
+          <p className="text-sm text-amber-800">
+            Your return is ready for signature. Upload signed documents here in the portal or contact Cornerstone if you need help.
+          </p>
+        </div>
+      )}
+
+      {taxReturn.documents_enabled === false && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
+          <h2 className="font-semibold text-gray-900 mb-1">Uploads Paused</h2>
+          <p className="text-sm text-gray-600">Document uploads are currently disabled for this return, but your existing documents remain available below.</p>
+        </div>
+      )}
+
       {/* Two-column layout for income sources and documents */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Income Sources */}

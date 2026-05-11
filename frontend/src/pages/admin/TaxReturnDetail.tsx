@@ -20,7 +20,32 @@ interface IncomeSourceLocal {
 interface TaxReturnDetailLocal {
   id: number
   tax_year: number
+  return_type: string
+  form_type: string | null
+  jurisdiction: string
+  source: string
+  priority: string
   notes: string | null
+  received_at: string | null
+  due_on: string | null
+  payment_status: string
+  base_fee_cents: number
+  discount_amount_cents: number
+  discount_reason: string | null
+  amount_paid_cents: number
+  final_fee_cents: number
+  balance_due_cents: number
+  paid_at: string | null
+  payment_notes: string | null
+  filing_status: string
+  filed_at: string | null
+  drt_confirmation: string | null
+  irs_confirmation: string | null
+  portal_visible: boolean
+  documents_enabled: boolean
+  signature_status: string
+  signature_requested_at: string | null
+  signed_at: string | null
   completed_at: string | null
   created_at: string
   updated_at: string
@@ -30,6 +55,8 @@ interface TaxReturnDetailLocal {
     email: string
     phone: string
     filing_status: string
+    has_portal_access?: boolean
+    portal_invite_pending?: boolean
   }
   workflow_stage: {
     id: number
@@ -114,6 +141,10 @@ const UserIcon = () => (
   </svg>
 )
 
+const dollarsFromCents = (cents: number | null | undefined) => ((cents || 0) / 100).toFixed(2)
+const centsFromDollars = (value: string) => Math.round((parseFloat(value || '0') || 0) * 100)
+const labelize = (value: string | null | undefined) => (value || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
+
 export default function TaxReturnDetailPage() {
   useEffect(() => { document.title = 'Tax Return Details | Cornerstone Admin' }, [])
 
@@ -130,6 +161,32 @@ export default function TaxReturnDetailPage() {
   const [saving, setSaving] = useState(false)
   const [editingNotes, setEditingNotes] = useState(false)
   const [notes, setNotes] = useState('')
+  const [paymentForm, setPaymentForm] = useState({
+    payment_status: 'unpaid',
+    base_fee: '0.00',
+    discount_amount: '0.00',
+    discount_reason: '',
+    amount_paid: '0.00',
+    payment_notes: '',
+  })
+  const [filingForm, setFilingForm] = useState({
+    filing_status: 'not_filed',
+    filed_at: '',
+    drt_confirmation: '',
+    irs_confirmation: '',
+  })
+  const [portalForm, setPortalForm] = useState({
+    portal_visible: false,
+    documents_enabled: true,
+    signature_status: 'not_needed',
+  })
+  const [detailsForm, setDetailsForm] = useState({
+    return_type: 'individual',
+    form_type: '',
+    jurisdiction: 'both',
+    priority: 'normal',
+    due_on: '',
+  })
 
   // Income source modal
   const [showIncomeModal, setShowIncomeModal] = useState(false)
@@ -165,6 +222,7 @@ export default function TaxReturnDetailPage() {
       if (result.data) {
         setTaxReturn(result.data.tax_return)
         setNotes(result.data.tax_return.notes || '')
+        syncForms(result.data.tax_return)
       } else if (result.error) {
         setError(result.error)
       }
@@ -182,10 +240,40 @@ export default function TaxReturnDetailPage() {
       if (result.data) {
         setTaxReturn(result.data.tax_return)
         setNotes(result.data.tax_return.notes || '')
+        syncForms(result.data.tax_return)
       }
     } catch (err) {
       console.error('Failed to refresh tax return:', err)
     }
+  }
+
+  const syncForms = (tr: TaxReturnDetailLocal) => {
+    setPaymentForm({
+      payment_status: tr.payment_status || 'unpaid',
+      base_fee: dollarsFromCents(tr.base_fee_cents),
+      discount_amount: dollarsFromCents(tr.discount_amount_cents),
+      discount_reason: tr.discount_reason || '',
+      amount_paid: dollarsFromCents(tr.amount_paid_cents),
+      payment_notes: tr.payment_notes || '',
+    })
+    setFilingForm({
+      filing_status: tr.filing_status || 'not_filed',
+      filed_at: tr.filed_at ? tr.filed_at.slice(0, 10) : '',
+      drt_confirmation: tr.drt_confirmation || '',
+      irs_confirmation: tr.irs_confirmation || '',
+    })
+    setPortalForm({
+      portal_visible: tr.portal_visible,
+      documents_enabled: tr.documents_enabled,
+      signature_status: tr.signature_status || 'not_needed',
+    })
+    setDetailsForm({
+      return_type: tr.return_type || 'individual',
+      form_type: tr.form_type || '',
+      jurisdiction: tr.jurisdiction || 'both',
+      priority: tr.priority || 'normal',
+      due_on: tr.due_on || '',
+    })
   }
 
   const loadDropdownData = async () => {
@@ -258,6 +346,70 @@ export default function TaxReturnDetailPage() {
       setEditingNotes(false)
     } catch (err) {
       alert('Failed to save notes')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveDetails = async () => {
+    if (!taxReturn) return
+    setSaving(true)
+    try {
+      await api.updateTaxReturn(taxReturn.id, detailsForm)
+      await loadTaxReturn()
+    } catch (err) {
+      alert('Failed to save return details')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSavePayment = async () => {
+    if (!taxReturn) return
+    setSaving(true)
+    try {
+      await api.updateTaxReturn(taxReturn.id, {
+        payment_status: paymentForm.payment_status,
+        base_fee_cents: centsFromDollars(paymentForm.base_fee),
+        discount_amount_cents: centsFromDollars(paymentForm.discount_amount),
+        discount_reason: paymentForm.discount_reason,
+        amount_paid_cents: centsFromDollars(paymentForm.amount_paid),
+        payment_notes: paymentForm.payment_notes,
+      })
+      await loadTaxReturn()
+    } catch (err) {
+      alert('Failed to save payment details')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveFiling = async () => {
+    if (!taxReturn) return
+    setSaving(true)
+    try {
+      await api.updateTaxReturn(taxReturn.id, {
+        filing_status: filingForm.filing_status,
+        filed_at: filingForm.filed_at || null,
+        drt_confirmation: filingForm.drt_confirmation,
+        irs_confirmation: filingForm.irs_confirmation,
+      })
+      await loadTaxReturn()
+    } catch (err) {
+      alert('Failed to save filing details')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSavePortal = async () => {
+    if (!taxReturn) return
+    setSaving(true)
+    try {
+      await api.updateTaxReturn(taxReturn.id, portalForm)
+      await loadTaxReturn()
+    } catch (err) {
+      alert('Failed to save portal settings')
     } finally {
       setSaving(false)
     }
@@ -426,8 +578,174 @@ export default function TaxReturnDetailPage() {
             </div>
           </FadeUp>
 
-          {/* Client Info Card */}
+          {/* Return Setup */}
+          <FadeUp delay={0.08}>
+            <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Return Setup</h2>
+                <button onClick={handleSaveDetails} disabled={saving} className="text-primary hover:text-primary-dark text-sm font-medium disabled:opacity-50">
+                  Save
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
+                  <select value={detailsForm.return_type} onChange={e => setDetailsForm({ ...detailsForm, return_type: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl">
+                    <option value="individual">Individual</option>
+                    <option value="business">Business</option>
+                    <option value="amended">Amended</option>
+                    <option value="prior_year">Prior Year</option>
+                    <option value="extension">Extension</option>
+                    <option value="notice">Notice Response</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Form</label>
+                  <input value={detailsForm.form_type} onChange={e => setDetailsForm({ ...detailsForm, form_type: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" placeholder="1040" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Jurisdiction</label>
+                  <select value={detailsForm.jurisdiction} onChange={e => setDetailsForm({ ...detailsForm, jurisdiction: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl">
+                    <option value="both">Guam + Federal</option>
+                    <option value="guam">Guam</option>
+                    <option value="federal">Federal</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                  <select value={detailsForm.priority} onChange={e => setDetailsForm({ ...detailsForm, priority: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl">
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+                  <input type="date" value={detailsForm.due_on} onChange={e => setDetailsForm({ ...detailsForm, due_on: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" />
+                </div>
+              </div>
+            </div>
+          </FadeUp>
+
+          {/* Payment */}
           <FadeUp delay={0.1}>
+            <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Payment & Discount</h2>
+                  <p className="text-sm text-gray-500">
+                    Final fee ${dollarsFromCents(taxReturn.final_fee_cents)} • Balance due ${dollarsFromCents(taxReturn.balance_due_cents)}
+                  </p>
+                </div>
+                <button onClick={handleSavePayment} disabled={saving} className="px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark font-medium disabled:opacity-50">
+                  Save Payment
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Base Fee</label>
+                  <input value={paymentForm.base_fee} onChange={e => setPaymentForm({ ...paymentForm, base_fee: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" inputMode="decimal" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Discount</label>
+                  <input value={paymentForm.discount_amount} onChange={e => setPaymentForm({ ...paymentForm, discount_amount: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" inputMode="decimal" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Amount Paid</label>
+                  <input value={paymentForm.amount_paid} onChange={e => setPaymentForm({ ...paymentForm, amount_paid: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" inputMode="decimal" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <select value={paymentForm.payment_status} onChange={e => setPaymentForm({ ...paymentForm, payment_status: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl">
+                    <option value="unpaid">Unpaid</option>
+                    <option value="partially_paid">Partially Paid</option>
+                    <option value="paid">Paid</option>
+                    <option value="waived">Waived</option>
+                  </select>
+                </div>
+                <div className="rounded-xl bg-secondary/50 p-3">
+                  <p className="text-xs text-gray-500">Current Balance</p>
+                  <p className="text-xl font-bold text-gray-900">${dollarsFromCents(taxReturn.balance_due_cents)}</p>
+                </div>
+                <div className="sm:col-span-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Discount Reason</label>
+                  <input value={paymentForm.discount_reason} onChange={e => setPaymentForm({ ...paymentForm, discount_reason: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" placeholder="CEO approved discount, courtesy adjustment..." />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Notes</label>
+                  <input value={paymentForm.payment_notes} onChange={e => setPaymentForm({ ...paymentForm, payment_notes: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Cash, check #, partial payment..." />
+                </div>
+              </div>
+            </div>
+          </FadeUp>
+
+          {/* Filing and Portal */}
+          <FadeUp delay={0.12}>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Filing</h2>
+                  <button onClick={handleSaveFiling} disabled={saving} className="text-primary hover:text-primary-dark text-sm font-medium disabled:opacity-50">Save</button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Filing Status</label>
+                    <select value={filingForm.filing_status} onChange={e => setFilingForm({ ...filingForm, filing_status: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl">
+                      <option value="not_filed">Not Filed</option>
+                      <option value="ready_to_file">Ready to File</option>
+                      <option value="filed_drt">Filed with DRT</option>
+                      <option value="filed_irs">Filed with IRS</option>
+                      <option value="accepted">Accepted</option>
+                      <option value="rejected">Rejected</option>
+                      <option value="paper_filed">Paper Filed</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Filed Date</label>
+                    <input type="date" value={filingForm.filed_at} onChange={e => setFilingForm({ ...filingForm, filed_at: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" />
+                  </div>
+                  <input value={filingForm.drt_confirmation} onChange={e => setFilingForm({ ...filingForm, drt_confirmation: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl" placeholder="DRT confirmation" />
+                  <input value={filingForm.irs_confirmation} onChange={e => setFilingForm({ ...filingForm, irs_confirmation: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl" placeholder="IRS confirmation" />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Client Portal</h2>
+                    <p className="text-sm text-gray-500">
+                      {taxReturn.client.has_portal_access ? 'Portal account active' : taxReturn.client.portal_invite_pending ? 'Invite pending' : 'Client not invited yet'}
+                    </p>
+                  </div>
+                  <button onClick={handleSavePortal} disabled={saving} className="text-primary hover:text-primary-dark text-sm font-medium disabled:opacity-50">Save</button>
+                </div>
+                <div className="space-y-3">
+                  <label className="flex items-start gap-3 rounded-xl border border-secondary-dark p-3">
+                    <input type="checkbox" checked={portalForm.portal_visible} onChange={e => setPortalForm({ ...portalForm, portal_visible: e.target.checked })} className="mt-1" />
+                    <span><span className="block font-medium text-gray-900">Visible to client</span><span className="text-sm text-gray-500">Shows this return in the client portal.</span></span>
+                  </label>
+                  <label className="flex items-start gap-3 rounded-xl border border-secondary-dark p-3">
+                    <input type="checkbox" checked={portalForm.documents_enabled} onChange={e => setPortalForm({ ...portalForm, documents_enabled: e.target.checked })} className="mt-1" />
+                    <span><span className="block font-medium text-gray-900">Allow document uploads</span><span className="text-sm text-gray-500">Client can upload missing or signed documents.</span></span>
+                  </label>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Signature Status</label>
+                    <select value={portalForm.signature_status} onChange={e => setPortalForm({ ...portalForm, signature_status: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl">
+                      <option value="not_needed">Not Needed</option>
+                      <option value="requested">Requested</option>
+                      <option value="signed">Signed</option>
+                      <option value="waived">Waived</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </FadeUp>
+
+          {/* Client Info Card */}
+          <FadeUp delay={0.14}>
             <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 tracking-tight">Client Information</h2>
@@ -582,6 +900,22 @@ export default function TaxReturnDetailPage() {
                 <div className="flex justify-between">
                   <dt className="text-gray-500">Tax Year</dt>
                   <dd className="font-bold text-lg">{taxReturn.tax_year}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Return</dt>
+                  <dd className="font-medium text-right">{taxReturn.form_type || 'General'} • {labelize(taxReturn.return_type)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Payment</dt>
+                  <dd className="font-medium capitalize">{labelize(taxReturn.payment_status)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Filing</dt>
+                  <dd className="font-medium capitalize">{labelize(taxReturn.filing_status)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Portal</dt>
+                  <dd className="font-medium">{taxReturn.portal_visible ? 'Visible' : 'Hidden'}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-gray-500">Assigned To</dt>

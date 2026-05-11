@@ -285,10 +285,31 @@ export interface ClientDetailResponse {
 export interface TaxReturnSummary {
   id: number;
   tax_year: number;
+  return_type: string;
+  form_type: string | null;
+  jurisdiction: string;
+  source: string;
+  priority: string;
+  payment_status: string;
+  filing_status: string;
+  portal_visible: boolean;
+  documents_enabled: boolean;
+  signature_status: string;
+  base_fee_cents: number;
+  discount_amount_cents: number;
+  amount_paid_cents: number;
+  final_fee_cents: number;
+  balance_due_cents: number;
+  due_on: string | null;
   client: {
     id: number;
     full_name: string;
     email: string;
+    phone?: string | null;
+    client_type?: string;
+    business_name?: string | null;
+    has_portal_access?: boolean;
+    portal_invite_pending?: boolean;
   };
   status: string;
   status_slug: string;
@@ -320,7 +341,32 @@ export interface TaxReturnsResponse {
 export interface TaxReturnDetail {
   id: number;
   tax_year: number;
+  return_type: string;
+  form_type: string | null;
+  jurisdiction: string;
+  source: string;
+  priority: string;
   notes: string | null;
+  received_at: string | null;
+  due_on: string | null;
+  payment_status: string;
+  base_fee_cents: number;
+  discount_amount_cents: number;
+  discount_reason: string | null;
+  amount_paid_cents: number;
+  final_fee_cents: number;
+  balance_due_cents: number;
+  paid_at: string | null;
+  payment_notes: string | null;
+  filing_status: string;
+  filed_at: string | null;
+  drt_confirmation: string | null;
+  irs_confirmation: string | null;
+  portal_visible: boolean;
+  documents_enabled: boolean;
+  signature_status: string;
+  signature_requested_at: string | null;
+  signed_at: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -330,6 +376,8 @@ export interface TaxReturnDetail {
     email: string;
     phone: string;
     filing_status: string;
+    has_portal_access?: boolean;
+    portal_invite_pending?: boolean;
   };
   workflow_stage: {
     id: number;
@@ -723,10 +771,14 @@ export interface Document {
 export interface PortalTaxReturnSummary {
   id: number;
   tax_year: number;
+  return_type?: string;
+  form_type?: string | null;
   status: string;
   status_slug: string;
   status_color: string | null;
   assigned_to: string | null;
+  documents_enabled?: boolean;
+  signature_status?: string;
   income_sources: { id: number; source_type: string; payer_name: string }[];
   documents_count: number;
   created_at: string;
@@ -1444,18 +1496,37 @@ export const api = {
   },
 
   // Tax Returns
-  getTaxReturns: (params?: { page?: number; search?: string; stage?: string; year?: number }) => {
+  getTaxReturns: (params?: {
+    page?: number;
+    search?: string;
+    stage?: string;
+    year?: number;
+    payment_status?: string;
+    filing_status?: string;
+    return_type?: string;
+    portal_visible?: boolean;
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
     if (params?.search) searchParams.set('search', params.search);
     if (params?.stage) searchParams.set('stage', params.stage);
     if (params?.year) searchParams.set('year', params.year.toString());
+    if (params?.payment_status) searchParams.set('payment_status', params.payment_status);
+    if (params?.filing_status) searchParams.set('filing_status', params.filing_status);
+    if (params?.return_type) searchParams.set('return_type', params.return_type);
+    if (params?.portal_visible !== undefined) searchParams.set('portal_visible', String(params.portal_visible));
     const query = searchParams.toString();
     return fetchApi<TaxReturnsResponse>(`/api/v1/tax_returns${query ? `?${query}` : ''}`);
   },
 
   getTaxReturn: (id: number) =>
     fetchApi<{ tax_return: TaxReturnDetail }>(`/api/v1/tax_returns/${id}`),
+
+  createTaxReturn: (data: Record<string, unknown>) =>
+    fetchApi<{ tax_return: TaxReturnDetail }>('/api/v1/tax_returns', {
+      method: 'POST',
+      body: JSON.stringify({ tax_return: data }),
+    }),
 
   updateTaxReturn: (id: number, data: Record<string, unknown>) =>
     fetchApi<{ tax_return: TaxReturnSummary }>(`/api/v1/tax_returns/${id}`, {

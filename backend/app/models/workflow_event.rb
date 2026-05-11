@@ -19,6 +19,9 @@ class WorkflowEvent < ApplicationRecord
     income_source_added
     income_source_updated
     income_source_removed
+    payment_updated
+    filing_updated
+    portal_updated
   ].freeze
 
   validates :event_type, inclusion: { in: EVENT_TYPES }

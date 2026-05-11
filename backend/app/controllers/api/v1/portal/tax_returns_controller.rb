@@ -10,6 +10,7 @@ module Api
         def index
           tax_returns = current_client.tax_returns
                                       .includes(:workflow_stage, :assigned_to, :income_sources, :documents)
+                                      .where(portal_visible: true)
                                       .order(tax_year: :desc)
 
           render json: {
@@ -29,6 +30,7 @@ module Api
         def set_tax_return
           @tax_return = current_client.tax_returns
                                       .includes(:workflow_stage, :assigned_to, :income_sources, :documents)
+                                      .where(portal_visible: true)
                                       .find(params[:id])
         end
 
@@ -40,6 +42,10 @@ module Api
             status_slug: tr.workflow_stage&.slug || "unknown",
             status_color: tr.workflow_stage&.color,
             assigned_to: tr.assigned_to&.full_name,
+            return_type: tr.return_type,
+            form_type: tr.form_type,
+            documents_enabled: tr.documents_enabled,
+            signature_status: tr.signature_status,
             income_sources: tr.income_sources.map { |is| { id: is.id, source_type: is.source_type, payer_name: is.payer_name } },
             documents_count: tr.documents.size,
             created_at: tr.created_at,
