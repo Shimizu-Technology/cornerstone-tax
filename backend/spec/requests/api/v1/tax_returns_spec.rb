@@ -19,6 +19,15 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
     )
   end
 
+  def create_portal_user_for(portal_client)
+    User.create!(
+      clerk_id: "spec-portal-user-#{portal_client.id}",
+      email: portal_client.email,
+      role: "client",
+      client: portal_client
+    )
+  end
+
   let!(:staff_user) do
     User.create!(
       clerk_id: "spec-tax-return-staff",
@@ -107,6 +116,67 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
       expect(status_events.count).to eq(1)
       expect(status_events.first.new_value).to eq("Intake Received")
       expect(status_events.first.user).to eq(staff_user)
+    end
+
+    it "serializes preloaded portal state after creating a return" do
+      create_portal_user_for(client)
+      stub_clerk_for(staff_user)
+
+      post "/api/v1/tax_returns",
+           params: {
+             tax_return: {
+               client_id: client.id,
+               tax_year: 2027,
+               workflow_stage_id: workflow_stage.id
+             }
+           }.to_json,
+           headers: auth_headers_for(staff_user)
+
+      expect(response).to have_http_status(:created)
+      expect(JSON.parse(response.body).dig("tax_return", "client", "has_portal_access")).to be(true)
+    end
+  end
+
+  describe "PATCH /api/v1/tax_returns/:id" do
+    it "serializes preloaded portal state after updating a return" do
+      create_portal_user_for(client)
+      tax_return = TaxReturn.create!(client: client, tax_year: 2026, workflow_stage: workflow_stage)
+      stub_clerk_for(staff_user)
+
+      patch "/api/v1/tax_returns/#{tax_return.id}",
+            params: {
+              tax_return: {
+                priority: "high"
+              }
+            }.to_json,
+            headers: auth_headers_for(staff_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("tax_return", "client", "has_portal_access")).to be(true)
+    end
+  end
+
+  describe "POST /api/v1/tax_returns/:id/assign" do
+    it "serializes preloaded portal state after assigning a return" do
+      create_portal_user_for(client)
+      assignee = User.create!(
+        clerk_id: "spec-tax-return-assignee",
+        email: "tax-return-assignee@example.com",
+        role: "employee",
+        first_name: "Spec",
+        last_name: "Assignee"
+      )
+      tax_return = TaxReturn.create!(client: client, tax_year: 2026, workflow_stage: workflow_stage)
+      stub_clerk_for(staff_user)
+
+      post "/api/v1/tax_returns/#{tax_return.id}/assign",
+           params: {
+             user_id: assignee.id
+           }.to_json,
+           headers: auth_headers_for(staff_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("tax_return", "client", "has_portal_access")).to be(true)
     end
   end
 end

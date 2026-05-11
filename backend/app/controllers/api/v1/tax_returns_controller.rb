@@ -3,13 +3,24 @@
 module Api
   module V1
     class TaxReturnsController < BaseController
+      SUMMARY_INCLUDES = [{ client: :user }, :workflow_stage, :assigned_to].freeze
+      DETAIL_INCLUDES = [
+        { client: :user },
+        :workflow_stage,
+        :assigned_to,
+        :reviewed_by,
+        :income_sources,
+        { documents: :uploaded_by },
+        { workflow_events: :user }
+      ].freeze
+
       # Require authentication and staff role for all actions
       before_action :authenticate_user!
       before_action :require_staff!
 
       # GET /api/v1/tax_returns
       def index
-        returns = TaxReturn.includes({ client: :user }, :workflow_stage, :assigned_to)
+        returns = TaxReturn.includes(*SUMMARY_INCLUDES)
                            .order(created_at: :desc)
 
         # Filter by stage
@@ -72,10 +83,7 @@ module Api
 
       # GET /api/v1/tax_returns/:id
       def show
-        tax_return = TaxReturn.includes(
-          { client: :user }, :workflow_stage, :assigned_to, :reviewed_by,
-          :income_sources, :documents, :workflow_events
-        ).find(params[:id])
+        tax_return = tax_return_detail_scope.find(params[:id])
 
         render json: { tax_return: tax_return_detail(tax_return) }
       end
@@ -87,7 +95,7 @@ module Api
         tax_return.received_at ||= Time.current
 
         if tax_return.save
-          render json: { tax_return: tax_return_detail(tax_return.reload) }, status: :created
+          render json: { tax_return: tax_return_detail(tax_return_detail_scope.find(tax_return.id)) }, status: :created
         else
           render json: { errors: tax_return.errors.full_messages }, status: :unprocessable_entity
         end
@@ -99,7 +107,7 @@ module Api
         tax_return.current_actor = current_user  # For audit logging
 
         if tax_return.update(tax_return_params)
-          render json: { tax_return: tax_return_summary(tax_return.reload) }
+          render json: { tax_return: tax_return_summary(tax_return_summary_scope.find(tax_return.id)) }
         else
           render json: { errors: tax_return.errors.full_messages }, status: :unprocessable_entity
         end
@@ -115,13 +123,21 @@ module Api
 
         render json: {
           message: "Tax return assigned to #{user.full_name}",
-          tax_return: tax_return_summary(tax_return)
+          tax_return: tax_return_summary(tax_return_summary_scope.find(tax_return.id))
         }
       rescue ActiveRecord::RecordNotFound => e
         render json: { error: e.message }, status: :not_found
       end
 
       private
+
+      def tax_return_summary_scope
+        TaxReturn.includes(*SUMMARY_INCLUDES)
+      end
+
+      def tax_return_detail_scope
+        TaxReturn.includes(*DETAIL_INCLUDES)
+      end
 
       def tax_return_params
         params.require(:tax_return).permit(
