@@ -46,6 +46,46 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
     )
   end
 
+  describe "GET /api/v1/tax_returns" do
+    it "preloads client portal users for the list response" do
+      clients = 2.times.map do |index|
+        Client.create!(
+          first_name: "Portal",
+          last_name: "Client #{index}",
+          email: "portal-client-#{index}@example.com"
+        )
+      end
+      clients.each_with_index do |portal_client, index|
+        User.create!(
+          clerk_id: "spec-portal-client-#{index}",
+          email: portal_client.email,
+          role: "client",
+          client: portal_client
+        )
+        TaxReturn.create!(
+          client: portal_client,
+          tax_year: 2026,
+          workflow_stage: workflow_stage
+        )
+      end
+      stub_clerk_for(staff_user)
+
+      user_selects = []
+      subscriber = lambda do |_name, _started, _finished, _id, payload|
+        sql = payload[:sql]
+        user_selects << sql if sql.match?(/SELECT .*FROM "users"/)
+      end
+
+      ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+        get "/api/v1/tax_returns", headers: auth_headers_for(staff_user)
+      end
+
+      expect(response).to have_http_status(:ok)
+      portal_user_selects = user_selects.reject { |sql| sql.include?('"clerk_id"') }
+      expect(portal_user_selects.count).to eq(1)
+    end
+  end
+
   describe "POST /api/v1/tax_returns" do
     it "creates one status audit event for the initial workflow stage" do
       stub_clerk_for(staff_user)

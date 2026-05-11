@@ -9,7 +9,7 @@ module Api
 
       # GET /api/v1/tax_returns
       def index
-        returns = TaxReturn.includes(:client, :workflow_stage, :assigned_to)
+        returns = TaxReturn.includes({ client: :user }, :workflow_stage, :assigned_to)
                            .order(created_at: :desc)
 
         # Filter by stage
@@ -73,7 +73,7 @@ module Api
       # GET /api/v1/tax_returns/:id
       def show
         tax_return = TaxReturn.includes(
-          :client, :workflow_stage, :assigned_to, :reviewed_by,
+          { client: :user }, :workflow_stage, :assigned_to, :reviewed_by,
           :income_sources, :documents, :workflow_events
         ).find(params[:id])
 
