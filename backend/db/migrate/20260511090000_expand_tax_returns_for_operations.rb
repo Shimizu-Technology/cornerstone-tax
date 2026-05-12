@@ -31,6 +31,8 @@ class ExpandTaxReturnsForOperations < ActiveRecord::Migration[8.1]
       t.datetime :signed_at
     end
 
+    execute "UPDATE tax_returns SET portal_visible = TRUE"
+
     remove_index :tax_returns, name: "index_tax_returns_on_client_id_and_tax_year"
     add_index :tax_returns,
       [:client_id, :tax_year, :return_type, :form_type],
