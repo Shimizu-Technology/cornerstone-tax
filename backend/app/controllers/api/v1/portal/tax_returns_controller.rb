@@ -64,6 +64,8 @@ module Api
             status_slug: tr.workflow_stage&.slug || "unknown",
             status_color: tr.workflow_stage&.color,
             assigned_to: tr.assigned_to&.full_name,
+            documents_enabled: tr.documents_enabled,
+            signature_status: tr.signature_status,
             income_sources: tr.income_sources.map { |is|
               { id: is.id, source_type: is.source_type, payer_name: is.payer_name }
             },
