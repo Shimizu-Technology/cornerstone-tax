@@ -120,8 +120,11 @@ module Api
                 received_at: Time.current
               )
               tax_return.current_actor = current_user
-              tax_return.save!
-              log_return_created_event(tax_return)
+
+              TaxReturn.transaction do
+                tax_return.save!
+                log_return_created_event(tax_return)
+              end
             end
 
             render json: { 

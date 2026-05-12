@@ -40,5 +40,30 @@ RSpec.describe "Api::V1::Clients", type: :request do
       expect(creation_event.user).to eq(staff_user)
       expect(status_events).to be_empty
     end
+
+    it "rolls back quick-created clients and tax returns if the creation audit event fails" do
+      invalid_event = WorkflowEvent.new
+      invalid_event.valid?
+      allow_any_instance_of(Api::V1::ClientsController).to receive(:log_return_created_event).and_raise(
+        ActiveRecord::RecordInvalid.new(invalid_event)
+      )
+
+      expect do
+        post "/api/v1/clients",
+             params: {
+               client: {
+                 first_name: "Rollback",
+                 last_name: "Client",
+                 email: "rollback-client@example.com",
+                 has_tax_returns: true,
+                 tax_year: 2026
+               }
+             },
+             headers: auth_headers_for(staff_user)
+      end.not_to change(Client, :count)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(TaxReturn.where(tax_year: 2026).count).to eq(0)
+    end
   end
 end
