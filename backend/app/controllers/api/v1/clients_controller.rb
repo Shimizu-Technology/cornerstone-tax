@@ -109,7 +109,7 @@ module Api
               initial_stage = WorkflowStage.find_by(slug: "intake_received") ||
                               WorkflowStage.active.ordered.first
               tax_year = (params.dig(:client, :tax_year) || Date.current.year).to_i
-              
+
               tax_return = client.tax_returns.build(
                 tax_year: tax_year,
                 workflow_stage: initial_stage,
@@ -137,6 +137,10 @@ module Api
         end
       rescue ActiveRecord::RecordInvalid => e
         render json: { errors: [e.message] }, status: :unprocessable_entity
+      rescue ActiveRecord::RecordNotUnique
+        render json: {
+          errors: ["A tax return with these client, year, return type, and form details already exists"]
+        }, status: :unprocessable_entity
       end
 
       # PATCH /api/v1/clients/:id

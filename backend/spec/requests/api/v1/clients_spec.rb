@@ -65,5 +65,30 @@ RSpec.describe "Api::V1::Clients", type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
       expect(TaxReturn.where(tax_year: 2026).count).to eq(0)
     end
+
+    it "returns a validation error when a concurrent tax return create hits the unique index" do
+      allow_any_instance_of(TaxReturn).to receive(:save!).and_raise(
+        ActiveRecord::RecordNotUnique.new("duplicate key value violates unique constraint")
+      )
+
+      expect do
+        post "/api/v1/clients",
+             params: {
+               client: {
+                 first_name: "Duplicate",
+                 last_name: "Client",
+                 email: "duplicate-client@example.com",
+                 has_tax_returns: true,
+                 tax_year: 2026
+               }
+             },
+             headers: auth_headers_for(staff_user)
+      end.not_to change(Client, :count)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(JSON.parse(response.body).fetch("errors")).to include(
+        "A tax return with these client, year, return type, and form details already exists"
+      )
+    end
   end
 end

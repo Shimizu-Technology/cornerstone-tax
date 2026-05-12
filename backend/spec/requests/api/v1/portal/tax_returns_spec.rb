@@ -59,6 +59,7 @@ RSpec.describe "Api::V1::Portal::TaxReturns", type: :request do
   describe "GET /api/v1/portal/tax_returns/:id" do
     it "includes client-facing portal flags in the detail response" do
       tax_return.update!(documents_enabled: false, signature_status: "requested")
+      create_uploaded_document(0)
 
       get "/api/v1/portal/tax_returns/#{tax_return.id}",
           headers: auth_headers_for(client_user)
@@ -67,7 +68,8 @@ RSpec.describe "Api::V1::Portal::TaxReturns", type: :request do
       payload = JSON.parse(response.body).fetch("tax_return")
       expect(payload).to include(
         "documents_enabled" => false,
-        "signature_status" => "requested"
+        "signature_status" => "requested",
+        "documents_count" => 1
       )
     end
 

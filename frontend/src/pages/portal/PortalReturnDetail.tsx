@@ -247,16 +247,20 @@ export default function PortalReturnDetail() {
         {/* Documents */}
         <div className="bg-white rounded-xl border border-secondary-dark p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-900">Documents ({taxReturn.documents.length})</h2>
-            <Link
-              to="/portal/documents"
-              className="text-primary text-sm font-medium hover:underline inline-flex items-center gap-1"
-            >
-              Upload
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </Link>
+            <h2 className="font-semibold text-gray-900">Documents ({taxReturn.documents_count})</h2>
+            {taxReturn.documents_enabled !== false ? (
+              <Link
+                to="/portal/documents"
+                className="text-primary text-sm font-medium hover:underline inline-flex items-center gap-1"
+              >
+                Upload
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </Link>
+            ) : (
+              <span className="text-sm font-medium text-gray-400">Uploads paused</span>
+            )}
           </div>
 
           {taxReturn.documents.length === 0 ? (
