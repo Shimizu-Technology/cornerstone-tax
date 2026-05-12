@@ -96,11 +96,11 @@ class CreateIntakeService
   end
 
   def create_dependents
-    return unless @params[:dependents].present?
+    return unless @params.key?(:dependents)
 
     @client.dependents.destroy_all
 
-    @params[:dependents].each do |dep_params|
+    Array(@params[:dependents]).each do |dep_params|
       next if dep_params[:name].blank?
 
       @client.dependents.create!(
@@ -139,11 +139,11 @@ class CreateIntakeService
   end
 
   def create_income_sources
-    return unless @params[:income_sources].present?
+    return unless @params.key?(:income_sources)
 
     @tax_return.income_sources.destroy_all
 
-    @params[:income_sources].each do |source_params|
+    Array(@params[:income_sources]).each do |source_params|
       next if source_params[:source_type].blank? && source_params[:payer_name].blank?
 
       @tax_return.income_sources.create!(

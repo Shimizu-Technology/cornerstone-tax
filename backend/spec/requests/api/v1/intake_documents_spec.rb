@@ -139,6 +139,29 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       expect(client.dependents.reload.pluck(:name)).to eq(["New Dependent"])
       expect(tax_return.income_sources.reload.pluck(:payer_name)).to eq(["New Payer"])
     end
+
+    it "clears dependents and income sources when re-submitted as empty arrays" do
+      client = Client.create!(
+        first_name: "Intake",
+        last_name: "Client",
+        email: "intake-docs@example.com"
+      )
+      tax_return = client.tax_returns.create!(
+        tax_year: Date.current.year,
+        workflow_stage: stage,
+        return_type: "individual",
+        form_type: "general",
+        source: "public_intake"
+      )
+      client.dependents.create!(name: "Old Dependent", relationship: "Child")
+      tax_return.income_sources.create!(source_type: "w2", payer_name: "Old Employer")
+
+      submit_intake(dependents: [], income_sources: [])
+
+      expect(response).to have_http_status(:created)
+      expect(client.dependents.reload).to be_empty
+      expect(tax_return.income_sources.reload).to be_empty
+    end
   end
 
   describe "POST /api/v1/intake_documents/presign" do

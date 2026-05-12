@@ -389,6 +389,19 @@ export default function TaxReturns() {
                             </select>
                           </td>
                           <td className="px-6 py-4">
+                            <select
+                              value={taxReturn.assigned_to?.id || ''}
+                              onChange={(e) => handleAssignmentChange(taxReturn.id, parseInt(e.target.value))}
+                              className="text-sm border border-secondary-dark rounded-lg px-3 py-1.5 bg-white hover:border-primary focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
+                              aria-label={`Assigned to for ${taxReturn.client.full_name}`}
+                            >
+                              <option value="">Unassigned</option>
+                              {users.map(user => (
+                                <option key={user.id} value={user.id}>{user.full_name}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-6 py-4">
                             <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                               taxReturn.payment_status === 'paid' ? 'bg-green-100 text-green-700' :
                               taxReturn.payment_status === 'partially_paid' ? 'bg-amber-100 text-amber-700' :
@@ -404,19 +417,6 @@ export default function TaxReturns() {
                           <td className="px-6 py-4">
                             <span className="text-sm text-gray-700 capitalize">{taxReturn.filing_status.replaceAll('_', ' ')}</span>
                             {taxReturn.portal_visible && <p className="text-xs text-primary mt-1">Visible in portal</p>}
-                          </td>
-                          <td className="px-6 py-4">
-                            <select
-                              value={taxReturn.assigned_to?.id || ''}
-                              onChange={(e) => handleAssignmentChange(taxReturn.id, parseInt(e.target.value))}
-                              className="text-sm border border-secondary-dark rounded-lg px-3 py-1.5 bg-white hover:border-primary focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
-                              aria-label={`Assigned to for ${taxReturn.client.full_name}`}
-                            >
-                              <option value="">Unassigned</option>
-                              {users.map(user => (
-                                <option key={user.id} value={user.id}>{user.full_name}</option>
-                              ))}
-                            </select>
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-500">
                             {formatDateTime(taxReturn.created_at)}
