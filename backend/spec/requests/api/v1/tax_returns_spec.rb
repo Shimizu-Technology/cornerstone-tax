@@ -137,7 +137,7 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
   end
 
   describe "POST /api/v1/tax_returns" do
-    it "does not log the initial workflow stage as a status change" do
+    it "logs staff creation without treating the initial stage as a status change" do
       stub_clerk_for(staff_user)
 
       post "/api/v1/tax_returns",
@@ -152,8 +152,11 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
 
       expect(response).to have_http_status(:created)
       tax_return = TaxReturn.find(JSON.parse(response.body).dig("tax_return", "id"))
+      creation_event = tax_return.workflow_events.find_by!(event_type: "return_created")
       status_events = tax_return.workflow_events.where(event_type: "status_changed")
 
+      expect(creation_event.new_value).to eq("Intake Received")
+      expect(creation_event.user).to eq(staff_user)
       expect(status_events).to be_empty
     end
 

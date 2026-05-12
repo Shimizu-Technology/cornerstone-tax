@@ -121,6 +121,7 @@ module Api
               )
               tax_return.current_actor = current_user
               tax_return.save!
+              log_return_created_event(tax_return)
             end
 
             render json: { 
@@ -274,6 +275,15 @@ module Api
           p[:client_type] ||= 'individual'
           p[:has_tax_returns] = true if p[:has_tax_returns].nil?  # Default to tax client
         end
+      end
+
+      def log_return_created_event(tax_return)
+        tax_return.workflow_events.create!(
+          event_type: "return_created",
+          new_value: tax_return.workflow_stage&.name,
+          description: "Tax return created during client quick create",
+          user: current_user
+        )
       end
 
       def client_summary(client)

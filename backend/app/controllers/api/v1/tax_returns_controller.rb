@@ -95,6 +95,8 @@ module Api
         tax_return.received_at ||= Time.current
 
         if tax_return.save
+          log_return_created_event(tax_return)
+
           render json: { tax_return: tax_return_detail(tax_return_detail_scope.find(tax_return.id)) }, status: :created
         else
           render json: { errors: tax_return.errors.full_messages }, status: :unprocessable_entity
@@ -166,6 +168,15 @@ module Api
           permitted[:source] ||= "admin_created"
           permitted[:workflow_stage_id] ||= WorkflowStage.active.ordered.first&.id
         end
+      end
+
+      def log_return_created_event(tax_return)
+        tax_return.workflow_events.create!(
+          event_type: "return_created",
+          new_value: tax_return.workflow_stage&.name,
+          description: "Tax return created by staff",
+          user: current_user
+        )
       end
 
       def tax_return_summary(tr)

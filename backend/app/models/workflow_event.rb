@@ -19,6 +19,7 @@ class WorkflowEvent < ApplicationRecord
     income_source_added
     income_source_updated
     income_source_removed
+    return_created
     payment_updated
     filing_updated
     portal_updated

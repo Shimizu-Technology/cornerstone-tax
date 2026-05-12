@@ -18,7 +18,7 @@ RSpec.describe "Api::V1::Clients", type: :request do
   end
 
   describe "POST /api/v1/clients" do
-    it "does not log the quick-created tax return's initial stage as a status change" do
+    it "logs quick-created tax returns without treating the initial stage as a status change" do
       post "/api/v1/clients",
            params: {
              client: {
@@ -33,8 +33,11 @@ RSpec.describe "Api::V1::Clients", type: :request do
 
       expect(response).to have_http_status(:created)
       tax_return = Client.find_by!(email: "quick-client@example.com").tax_returns.sole
+      creation_event = tax_return.workflow_events.find_by!(event_type: "return_created")
       status_events = tax_return.workflow_events.where(event_type: "status_changed")
 
+      expect(creation_event.new_value).to eq(workflow_stage.name)
+      expect(creation_event.user).to eq(staff_user)
       expect(status_events).to be_empty
     end
   end
