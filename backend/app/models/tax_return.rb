@@ -109,6 +109,8 @@ class TaxReturn < ApplicationRecord
   end
 
   def log_assignment_change
+    return if previously_new_record?
+
     old_user = User.find_by(id: assigned_to_id_before_last_save)
     workflow_events.create!(
       event_type: "assigned",
@@ -120,6 +122,8 @@ class TaxReturn < ApplicationRecord
   end
 
   def log_notes_change
+    return if previously_new_record?
+
     workflow_events.create!(
       event_type: "note_added",
       old_value: notes_before_last_save,

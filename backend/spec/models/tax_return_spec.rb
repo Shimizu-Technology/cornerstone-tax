@@ -15,8 +15,25 @@ RSpec.describe TaxReturn, type: :model do
     tax_return = described_class.create!(client: client, tax_year: 2026)
 
     expect(tax_return.workflow_events.where(event_type: %w[
-      status_changed payment_updated filing_updated portal_updated
+      status_changed assigned note_added payment_updated filing_updated portal_updated
     ])).to be_empty
+  end
+
+  it "does not log assignment or notes audit events when those fields are set on creation" do
+    assignee = User.create!(
+      clerk_id: "tax-return-assignee",
+      email: "assignee@example.com",
+      role: "employee"
+    )
+
+    tax_return = described_class.create!(
+      client: client,
+      tax_year: 2026,
+      assigned_to: assignee,
+      notes: ""
+    )
+
+    expect(tax_return.workflow_events.where(event_type: %w[assigned note_added])).to be_empty
   end
 
   it "logs operational changes after creation" do
