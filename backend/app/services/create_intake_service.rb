@@ -89,7 +89,7 @@ class CreateIntakeService
     }
 
     if @client
-      @client.update!(attrs)
+      @client.update!(attrs.compact)
     else
       @client = Client.create!(attrs)
     end
