@@ -102,6 +102,10 @@ module Api
         render json: { tax_return: tax_return_detail(tax_return_detail_scope.find(tax_return.id)) }, status: :created
       rescue ActiveRecord::RecordInvalid => e
         render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+      rescue ActiveRecord::RecordNotUnique
+        render json: {
+          errors: ["A tax return with these client, year, return type, and form details already exists"]
+        }, status: :unprocessable_entity
       end
 
       # PATCH /api/v1/tax_returns/:id
