@@ -3,6 +3,34 @@
 # Service to process client intake form submissions
 # Creates: Client, Dependents, TaxReturn, IncomeSources, and IntakeSubmission snapshot
 class CreateIntakeService
+  INTAKE_SUBMISSION_PAYLOAD_KEYS = %i[
+    first_name
+    last_name
+    date_of_birth
+    email
+    phone
+    mailing_address
+    filing_status
+    is_new_client
+    has_prior_year_return
+    changes_from_prior_year
+    spouse_name
+    spouse_dob
+    denied_eic_actc
+    denied_eic_actc_year
+    has_crypto_transactions
+    wants_direct_deposit
+    bank_account_type
+    other_income
+    comments
+    tax_year
+    signature
+    signature_date
+    authorization_confirmed
+    dependents
+    income_sources
+  ].freeze
+
   Result = Struct.new(:success?, :client, :tax_return, :errors, keyword_init: true)
 
   def self.call(params)
@@ -130,7 +158,7 @@ class CreateIntakeService
     IntakeSubmission.create!(
       client: @client,
       tax_return: @tax_return,
-      payload: @params.except(:bank_routing_number, :bank_account_number).to_h,
+      payload: intake_submission_payload,
       source: "public_intake",
       status: "received",
       submitted_at: Time.current
@@ -142,5 +170,9 @@ class CreateIntakeService
     return nil if email.blank?
 
     Client.active.find_by("LOWER(email) = ?", email)
+  end
+
+  def intake_submission_payload
+    @params.slice(*INTAKE_SUBMISSION_PAYLOAD_KEYS).to_h
   end
 end

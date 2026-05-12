@@ -177,6 +177,29 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
       expect(response).to have_http_status(:created)
       expect(JSON.parse(response.body).dig("tax_return", "client", "has_portal_access")).to be(true)
     end
+
+    it "rolls back the return if the creation audit event cannot be written" do
+      invalid_event = WorkflowEvent.new
+      invalid_event.valid?
+      allow_any_instance_of(Api::V1::TaxReturnsController).to receive(:log_return_created_event).and_raise(
+        ActiveRecord::RecordInvalid.new(invalid_event)
+      )
+      stub_clerk_for(staff_user)
+
+      expect do
+        post "/api/v1/tax_returns",
+             params: {
+               tax_return: {
+                 client_id: client.id,
+                 tax_year: 2028,
+                 workflow_stage_id: workflow_stage.id
+               }
+             }.to_json,
+             headers: auth_headers_for(staff_user)
+      end.not_to change(TaxReturn, :count)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
   end
 
   describe "PATCH /api/v1/tax_returns/:id" do

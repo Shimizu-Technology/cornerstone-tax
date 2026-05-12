@@ -94,13 +94,14 @@ module Api
         tax_return.current_actor = current_user
         tax_return.received_at ||= Time.current
 
-        if tax_return.save
+        TaxReturn.transaction do
+          tax_return.save!
           log_return_created_event(tax_return)
-
-          render json: { tax_return: tax_return_detail(tax_return_detail_scope.find(tax_return.id)) }, status: :created
-        else
-          render json: { errors: tax_return.errors.full_messages }, status: :unprocessable_entity
         end
+
+        render json: { tax_return: tax_return_detail(tax_return_detail_scope.find(tax_return.id)) }, status: :created
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
       end
 
       # PATCH /api/v1/tax_returns/:id
