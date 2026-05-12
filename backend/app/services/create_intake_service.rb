@@ -31,6 +31,11 @@ class CreateIntakeService
     income_sources
   ].freeze
 
+  CLIENT_ATTRIBUTE_PARAM_KEYS = {
+    bank_routing_number_encrypted: :bank_routing_number,
+    bank_account_number_encrypted: :bank_account_number
+  }.freeze
+
   Result = Struct.new(:success?, :client, :tax_return, :errors, keyword_init: true)
 
   def self.call(params)
@@ -89,7 +94,7 @@ class CreateIntakeService
     }
 
     if @client
-      @client.update!(attrs.compact)
+      @client.update!(submitted_client_attrs(attrs))
     else
       @client = Client.create!(attrs)
     end
@@ -174,5 +179,11 @@ class CreateIntakeService
 
   def intake_submission_payload
     @params.slice(*INTAKE_SUBMISSION_PAYLOAD_KEYS).to_h
+  end
+
+  def submitted_client_attrs(attrs)
+    attrs.select do |attr, _value|
+      @params.key?(CLIENT_ATTRIBUTE_PARAM_KEYS.fetch(attr, attr))
+    end
   end
 end

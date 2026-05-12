@@ -64,6 +64,38 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       expect(client.bank_account_type).to eq("checking")
     end
 
+    it "clears explicitly submitted blank optional intake fields for returning clients" do
+      client = Client.create!(
+        first_name: "Intake",
+        last_name: "Client",
+        email: "intake-docs@example.com",
+        spouse_name: "Former Spouse",
+        spouse_dob: "1988-02-03",
+        changes_from_prior_year: "Moved",
+        bank_routing_number_encrypted: "123456789",
+        bank_account_number_encrypted: "987654321",
+        bank_account_type: "checking"
+      )
+
+      submit_intake(
+        spouse_name: nil,
+        spouse_dob: nil,
+        changes_from_prior_year: nil,
+        bank_routing_number: nil,
+        bank_account_number: nil,
+        bank_account_type: nil
+      )
+
+      expect(response).to have_http_status(:created)
+      client.reload
+      expect(client.spouse_name).to be_nil
+      expect(client.spouse_dob).to be_nil
+      expect(client.changes_from_prior_year).to be_nil
+      expect(client.bank_routing_number_encrypted).to be_nil
+      expect(client.bank_account_number_encrypted).to be_nil
+      expect(client.bank_account_type).to be_nil
+    end
+
     it "reuses the current public intake tax return instead of rolling back duplicate submissions" do
       client = Client.create!(
         first_name: "Intake",
