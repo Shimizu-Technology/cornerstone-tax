@@ -14,7 +14,9 @@ RSpec.describe TaxReturn, type: :model do
   it "does not log operational default changes when a return is created" do
     tax_return = described_class.create!(client: client, tax_year: 2026)
 
-    expect(tax_return.workflow_events.where(event_type: %w[payment_updated filing_updated portal_updated])).to be_empty
+    expect(tax_return.workflow_events.where(event_type: %w[
+      status_changed payment_updated filing_updated portal_updated
+    ])).to be_empty
   end
 
   it "logs operational changes after creation" do

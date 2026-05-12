@@ -137,7 +137,7 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
   end
 
   describe "POST /api/v1/tax_returns" do
-    it "creates one status audit event for the initial workflow stage" do
+    it "does not log the initial workflow stage as a status change" do
       stub_clerk_for(staff_user)
 
       post "/api/v1/tax_returns",
@@ -154,9 +154,7 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
       tax_return = TaxReturn.find(JSON.parse(response.body).dig("tax_return", "id"))
       status_events = tax_return.workflow_events.where(event_type: "status_changed")
 
-      expect(status_events.count).to eq(1)
-      expect(status_events.first.new_value).to eq("Intake Received")
-      expect(status_events.first.user).to eq(staff_user)
+      expect(status_events).to be_empty
     end
 
     it "serializes preloaded portal state after creating a return" do

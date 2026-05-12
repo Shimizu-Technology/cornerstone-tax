@@ -90,6 +90,8 @@ class TaxReturn < ApplicationRecord
   private
 
   def log_status_change
+    return if previously_new_record?
+
     old_stage = WorkflowStage.find_by(id: workflow_stage_id_before_last_save)
     workflow_events.create!(
       event_type: "status_changed",

@@ -36,8 +36,7 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       status_events = tax_return.workflow_events.where(event_type: "status_changed")
 
       expect(tax_return).to eq(TaxReturn.last)
-      expect(status_events.count).to eq(1)
-      expect(status_events.first.new_value).to eq("Intake Received")
+      expect(status_events).to be_empty
     end
 
     it "updates returning clients without retaining omitted optional intake fields" do
