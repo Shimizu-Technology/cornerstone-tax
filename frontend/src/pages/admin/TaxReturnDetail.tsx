@@ -196,6 +196,7 @@ export default function TaxReturnDetailPage() {
   const [showIncomeModal, setShowIncomeModal] = useState(false)
   const [editingIncomeSource, setEditingIncomeSource] = useState<IncomeSourceLocal | null>(null)
   const [incomeForm, setIncomeForm] = useState({ source_type: 'w2', payer_name: '', notes: '' })
+  const [incomeError, setIncomeError] = useState<string | null>(null)
 
   // Deduplicate users by full_name (CST-5: Leon appears twice)
   const deduplicatedUsers = (() => {
@@ -453,6 +454,7 @@ export default function TaxReturnDetailPage() {
   const openAddIncomeModal = () => {
     setEditingIncomeSource(null)
     setIncomeForm({ source_type: 'w2', payer_name: '', notes: '' })
+    setIncomeError(null)
     setShowIncomeModal(true)
   }
 
@@ -463,22 +465,31 @@ export default function TaxReturnDetailPage() {
       payer_name: src.payer_name,
       notes: src.notes || ''
     })
+    setIncomeError(null)
     setShowIncomeModal(true)
   }
 
   const handleSaveIncomeSource = async () => {
     if (!taxReturn || !incomeForm.payer_name.trim()) return
     setSaving(true)
+    setIncomeError(null)
     try {
+      const result = editingIncomeSource
+        ? await api.updateIncomeSource(taxReturn.id, editingIncomeSource.id, incomeForm)
+        : await api.createIncomeSource(taxReturn.id, incomeForm)
+
+      if (result.error || result.errors?.length) {
+        setIncomeError(apiErrorMessage(result, 'Failed to save income source'))
+        return
+      }
+
+      setShowIncomeModal(false)
       if (editingIncomeSource) {
-        await api.updateIncomeSource(taxReturn.id, editingIncomeSource.id, incomeForm)
-      } else {
-        await api.createIncomeSource(taxReturn.id, incomeForm)
+        setEditingIncomeSource(null)
       }
       await loadTaxReturn()
-      setShowIncomeModal(false)
     } catch (err) {
-      alert('Failed to save income source')
+      setIncomeError('Failed to save income source')
     } finally {
       setSaving(false)
     }
@@ -489,7 +500,11 @@ export default function TaxReturnDetailPage() {
     if (!confirm('Are you sure you want to delete this income source?')) return
     setSaving(true)
     try {
-      await api.deleteIncomeSource(taxReturn.id, srcId)
+      const result = await api.deleteIncomeSource(taxReturn.id, srcId)
+      if (result.error || result.errors?.length) {
+        alert(apiErrorMessage(result, 'Failed to delete income source'))
+        return
+      }
       await loadTaxReturn()
     } catch (err) {
       alert('Failed to delete income source')
@@ -1045,6 +1060,12 @@ export default function TaxReturnDetailPage() {
               </div>
 
               <div className="p-6 space-y-4">
+                {incomeError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {incomeError}
+                  </div>
+                )}
+
                 <div>
                   <label htmlFor="income-doc-type" className="block text-sm font-medium text-gray-700 mb-2">Type *</label>
                   <select
