@@ -43,6 +43,8 @@ const TAX_OUTCOMES = [
   { value: 'no_balance', label: 'No Refund / No Balance' },
 ]
 
+const SIGNATURE_REQUEST_STAGE_SLUGS = ['ready_to_sign', 'filing', 'ready_for_pickup', 'complete']
+
 const centsFromDollars = (value: string) => Math.round((parseFloat(value || '0') || 0) * 100)
 const dollarsFromCents = (value: number) => (value / 100).toFixed(2)
 
@@ -52,6 +54,13 @@ const newFeeLineItem = (): FeeLineItemForm => ({
   amount: '',
   notes: '',
 })
+
+const signatureStatusOptionsForStage = (requiresSignatureRequest: boolean) => [
+  { value: 'not_needed', label: 'Not needed yet' },
+  ...(requiresSignatureRequest ? [{ value: 'requested', label: 'Requested' }] : []),
+  { value: 'signed', label: 'Signed' },
+  { value: 'waived', label: 'Waived' },
+]
 
 const initialFormFor = (defaultClient?: NewTaxReturnModalProps['defaultClient']) => ({
   client_id: defaultClient?.id?.toString() || '',
@@ -149,6 +158,8 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
   }, [clientSearch, clientMode, hasDefaultClient, isOpen])
 
   const selectedClient = defaultClient || clients.find(c => c.id.toString() === form.client_id)
+  const selectedWorkflowStage = stages.find(stage => String(stage.id) === form.workflow_stage_id)
+  const signatureStageRequiresRequest = selectedWorkflowStage ? SIGNATURE_REQUEST_STAGE_SLUGS.includes(selectedWorkflowStage.slug) : false
   const addOnTotal = useMemo(
     () => feeLineItems.reduce((sum, item) => sum + centsFromDollars(item.amount), 0),
     [feeLineItems]
@@ -413,7 +424,19 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
             <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Workflow Status</label>
-                <select value={form.workflow_stage_id} onChange={e => setForm({ ...form, workflow_stage_id: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2">
+                <select
+                  value={form.workflow_stage_id}
+                  onChange={e => {
+                    const nextStage = stages.find(stage => String(stage.id) === e.target.value)
+                    const nextRequiresSignature = nextStage ? SIGNATURE_REQUEST_STAGE_SLUGS.includes(nextStage.slug) : false
+                    setForm({
+                      ...form,
+                      workflow_stage_id: e.target.value,
+                      signature_status: form.signature_status === 'requested' && !nextRequiresSignature ? 'not_needed' : form.signature_status,
+                    })
+                  }}
+                  className="w-full rounded-xl border border-secondary-dark px-3 py-2"
+                >
                   {stages.map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
                 </select>
               </div>
@@ -502,11 +525,14 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
               </label>
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Signature</label>
-                <select value={form.signature_status} onChange={e => setForm({ ...form, signature_status: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2">
-                  <option value="not_needed">Not needed yet</option>
-                  <option value="requested">Requested</option>
-                  <option value="signed">Signed</option>
-                  <option value="waived">Waived</option>
+                <select
+                  value={form.signature_status === 'requested' && !signatureStageRequiresRequest ? 'not_needed' : form.signature_status}
+                  onChange={e => setForm({ ...form, signature_status: e.target.value })}
+                  className="w-full rounded-xl border border-secondary-dark px-3 py-2"
+                >
+                  {signatureStatusOptionsForStage(signatureStageRequiresRequest).map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
                 </select>
               </div>
             </section>

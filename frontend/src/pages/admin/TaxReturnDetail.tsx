@@ -173,6 +173,13 @@ const getSignatureStatusLabel = (status: string) => {
   return labels[status] || labelize(status)
 }
 
+const signatureStatusOptionsForStage = (requiresSignatureRequest: boolean) => [
+  { value: 'not_needed', label: 'Not Needed' },
+  ...(requiresSignatureRequest ? [{ value: 'requested', label: 'Requested' }] : []),
+  { value: 'signed', label: 'Signed' },
+  { value: 'waived', label: 'Waived' },
+]
+
 export default function TaxReturnDetailPage() {
   useEffect(() => { document.title = 'Tax Return Details | Cornerstone Admin' }, [])
 
@@ -886,11 +893,14 @@ export default function TaxReturnDetailPage() {
                   </label>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Signature Status</label>
-                    <select value={portalForm.signature_status} onChange={e => setPortalForm({ ...portalForm, signature_status: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl">
-                      <option value="not_needed">Not Needed</option>
-                      <option value="requested">Requested</option>
-                      <option value="signed">Signed</option>
-                      <option value="waived">Waived</option>
+                    <select
+                      value={portalForm.signature_status === 'requested' && !signatureStageRequiresRequest ? 'not_needed' : portalForm.signature_status}
+                      onChange={e => setPortalForm({ ...portalForm, signature_status: e.target.value })}
+                      className="w-full px-3 py-2 border border-secondary-dark rounded-xl"
+                    >
+                      {signatureStatusOptionsForStage(signatureStageRequiresRequest).map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
                     </select>
                     <div className={`mt-2 rounded-xl border px-3 py-2 text-xs ${
                       signatureStageRequiresCompletion
