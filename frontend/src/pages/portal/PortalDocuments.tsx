@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { PortalTaxReturnSummary, PortalDocument } from '../../lib/api'
 import { formatFileSize } from '../../lib/formatUtils'
@@ -33,6 +34,8 @@ const uploadSourceLabel = (source?: 'client' | 'staff' | 'intake') => {
 export default function PortalDocuments() {
   useEffect(() => { document.title = 'Documents | Cornerstone Client Portal' }, [])
 
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedReturnId = Number(searchParams.get('return_id') || 0)
   const [taxReturns, setTaxReturns] = useState<PortalTaxReturnSummary[]>([])
   const [selectedReturnId, setSelectedReturnId] = useState<number | null>(null)
   const [documents, setDocuments] = useState<PortalDocument[]>([])
@@ -64,7 +67,10 @@ export default function PortalDocuments() {
         if (result.data) {
           const returns = result.data.tax_returns
           setTaxReturns(returns)
-          if (returns.length > 0) setSelectedReturnId(returns[0].id)
+          if (returns.length > 0) {
+            const requestedReturn = returns.find(tr => tr.id === requestedReturnId)
+            setSelectedReturnId((requestedReturn || returns[0]).id)
+          }
         } else if (result.error) {
           setLoadError(result.error)
         }
@@ -75,7 +81,7 @@ export default function PortalDocuments() {
       }
     }
     loadReturns()
-  }, [])
+  }, [requestedReturnId])
 
   const loadDocuments = useCallback(async ({ clearMessages = true } = {}) => {
     if (!selectedReturnId) return
@@ -289,7 +295,11 @@ export default function PortalDocuments() {
             <label className="text-sm font-medium text-gray-700">Tax Year:</label>
             <select
               value={selectedReturnId || ''}
-              onChange={e => setSelectedReturnId(parseInt(e.target.value, 10))}
+              onChange={e => {
+                const returnId = parseInt(e.target.value, 10)
+                setSelectedReturnId(returnId)
+                setSearchParams({ return_id: returnId.toString() })
+              }}
               className="px-3 py-2 border border-secondary-dark rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
             >
               {taxReturns.map(tr => <option key={tr.id} value={tr.id}>{tr.tax_year}</option>)}

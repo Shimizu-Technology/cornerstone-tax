@@ -250,7 +250,7 @@ export default function PortalReturnDetail() {
             <h2 className="font-semibold text-gray-900">Documents ({taxReturn.documents_count})</h2>
             {taxReturn.documents_enabled !== false ? (
               <Link
-                to="/portal/documents"
+                to={`/portal/documents?return_id=${taxReturn.id}`}
                 className="text-primary text-sm font-medium hover:underline inline-flex items-center gap-1"
               >
                 Upload
