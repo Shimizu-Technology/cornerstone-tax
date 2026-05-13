@@ -57,8 +57,13 @@ RSpec.describe "Api::V1::Portal::TaxReturns", type: :request do
   end
 
   describe "GET /api/v1/portal/tax_returns/:id" do
-    it "includes client-facing portal flags in the detail response" do
-      tax_return.update!(documents_enabled: false, signature_status: "requested")
+    it "includes client-facing return details and portal flags in the detail response" do
+      tax_return.update!(
+        documents_enabled: false,
+        signature_status: "requested",
+        return_type: "individual",
+        form_type: "1040"
+      )
       create_uploaded_document(0)
 
       get "/api/v1/portal/tax_returns/#{tax_return.id}",
@@ -67,6 +72,8 @@ RSpec.describe "Api::V1::Portal::TaxReturns", type: :request do
       expect(response).to have_http_status(:ok)
       payload = JSON.parse(response.body).fetch("tax_return")
       expect(payload).to include(
+        "return_type" => "individual",
+        "form_type" => "1040",
         "documents_enabled" => false,
         "signature_status" => "requested",
         "documents_count" => 1
