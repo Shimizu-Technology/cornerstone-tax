@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_11_091000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_13_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -408,6 +408,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_11_091000) do
     t.boolean "documents_enabled", default: true, null: false
     t.string "drt_confirmation"
     t.date "due_on"
+    t.jsonb "fee_line_items", default: [], null: false
     t.datetime "filed_at"
     t.string "filing_status", default: "not_filed", null: false
     t.string "form_type", default: "general", null: false
@@ -426,6 +427,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_11_091000) do
     t.string "signature_status", default: "not_needed", null: false
     t.datetime "signed_at"
     t.string "source", default: "admin_created", null: false
+    t.integer "tax_outcome_amount_cents", default: 0, null: false
+    t.text "tax_outcome_notes"
+    t.string "tax_outcome_status", default: "unknown", null: false
     t.integer "tax_year", null: false
     t.datetime "updated_at", null: false
     t.bigint "workflow_stage_id"
@@ -439,6 +443,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_11_091000) do
     t.index ["priority"], name: "index_tax_returns_on_priority"
     t.index ["return_type"], name: "index_tax_returns_on_return_type"
     t.index ["reviewed_by_id"], name: "index_tax_returns_on_reviewed_by_id"
+    t.index ["tax_outcome_status"], name: "index_tax_returns_on_tax_outcome_status"
     t.index ["workflow_stage_id"], name: "index_tax_returns_on_workflow_stage_id"
   end
 

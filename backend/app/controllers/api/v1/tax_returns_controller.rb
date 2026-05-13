@@ -95,6 +95,7 @@ module Api
         tax_return.received_at ||= Time.current
 
         TaxReturn.transaction do
+          tax_return.client ||= create_client_for_return!
           tax_return.save!
           log_return_created_event(tax_return)
         end
@@ -155,7 +156,20 @@ module Api
           :discount_reason, :amount_paid_cents, :paid_at, :payment_notes,
           :filing_status, :filed_at, :drt_confirmation, :irs_confirmation,
           :portal_visible, :documents_enabled, :signature_status,
-          :signature_requested_at, :signed_at
+          :signature_requested_at, :signed_at, :tax_outcome_status,
+          :tax_outcome_amount_cents, :tax_outcome_notes,
+          fee_line_items: [:label, :amount_cents, :notes]
+        ).tap do |permitted|
+          permitted[:fee_line_items] = sanitize_fee_line_items(permitted[:fee_line_items]) if permitted.key?(:fee_line_items)
+        end
+      end
+
+      def tax_return_client_params
+        raw_attrs = params.require(:tax_return)[:client_attributes]
+        attrs = raw_attrs.respond_to?(:permit) ? raw_attrs : ActionController::Parameters.new(raw_attrs || {})
+        attrs.permit(
+          :client_type, :business_name, :first_name, :last_name, :email, :phone,
+          :date_of_birth, :filing_status
         )
       end
 
@@ -168,10 +182,52 @@ module Api
           :amount_paid_cents, :paid_at, :payment_notes, :filing_status,
           :filed_at, :drt_confirmation, :irs_confirmation, :portal_visible,
           :documents_enabled, :signature_status, :signature_requested_at,
-          :signed_at
+          :signed_at, :tax_outcome_status, :tax_outcome_amount_cents,
+          :tax_outcome_notes, fee_line_items: [:label, :amount_cents, :notes]
         ).tap do |permitted|
           permitted[:source] ||= "admin_created"
+          permitted[:jurisdiction] ||= "both"
           permitted[:workflow_stage_id] ||= WorkflowStage.active.ordered.first&.id
+          permitted[:fee_line_items] = sanitize_fee_line_items(permitted[:fee_line_items]) if permitted.key?(:fee_line_items)
+        end
+      end
+
+      def create_client_for_return!
+        attrs = submitted_client_attrs
+        raise ActiveRecord::RecordInvalid.new(Client.new) if attrs.blank?
+
+        Client.create!(attrs)
+      end
+
+      def submitted_client_attrs
+        attrs = tax_return_client_params.to_h.symbolize_keys
+        return {} if attrs.blank?
+
+        attrs[:client_type] = attrs[:client_type].presence || "individual"
+        attrs[:has_tax_returns] = true
+        attrs[:is_new_client] = true
+        attrs[:notification_preference] = attrs[:email].present? ? "email" : "none"
+
+        if attrs[:client_type] == "business"
+          attrs[:first_name] = attrs[:first_name].presence || attrs[:business_name].presence || "Business"
+          attrs[:last_name] = attrs[:last_name].presence || "Contact"
+        end
+
+        attrs.compact_blank
+      end
+
+      def sanitize_fee_line_items(items)
+        Array(items).filter_map do |item|
+          label = item[:label].to_s.strip
+          amount_cents = item[:amount_cents].to_i
+          notes = item[:notes].to_s.strip
+          next if label.blank? && amount_cents.zero? && notes.blank?
+
+          {
+            label: label.presence || "Fee add-on",
+            amount_cents: [amount_cents, 0].max,
+            notes: notes
+          }
         end
       end
 
@@ -201,8 +257,13 @@ module Api
           base_fee_cents: tr.base_fee_cents,
           discount_amount_cents: tr.discount_amount_cents,
           amount_paid_cents: tr.amount_paid_cents,
+          fee_line_items: tr.fee_line_items,
+          fee_line_items_total_cents: tr.fee_line_items_total_cents,
           final_fee_cents: tr.final_fee_cents,
           balance_due_cents: tr.balance_due_cents,
+          tax_outcome_status: tr.tax_outcome_status,
+          tax_outcome_amount_cents: tr.tax_outcome_amount_cents,
+          tax_outcome_notes: tr.tax_outcome_notes,
           due_on: tr.due_on,
           client: {
             id: tr.client.id,
@@ -243,6 +304,8 @@ module Api
           discount_amount_cents: tr.discount_amount_cents,
           discount_reason: tr.discount_reason,
           amount_paid_cents: tr.amount_paid_cents,
+          fee_line_items: tr.fee_line_items,
+          fee_line_items_total_cents: tr.fee_line_items_total_cents,
           final_fee_cents: tr.final_fee_cents,
           balance_due_cents: tr.balance_due_cents,
           paid_at: tr.paid_at,
@@ -251,6 +314,9 @@ module Api
           filed_at: tr.filed_at,
           drt_confirmation: tr.drt_confirmation,
           irs_confirmation: tr.irs_confirmation,
+          tax_outcome_status: tr.tax_outcome_status,
+          tax_outcome_amount_cents: tr.tax_outcome_amount_cents,
+          tax_outcome_notes: tr.tax_outcome_notes,
           portal_visible: tr.portal_visible,
           documents_enabled: tr.documents_enabled,
           signature_status: tr.signature_status,

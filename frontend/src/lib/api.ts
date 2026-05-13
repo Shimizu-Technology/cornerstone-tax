@@ -298,8 +298,17 @@ export interface TaxReturnSummary {
   base_fee_cents: number;
   discount_amount_cents: number;
   amount_paid_cents: number;
+  fee_line_items: Array<{
+    label: string;
+    amount_cents: number;
+    notes?: string;
+  }>;
+  fee_line_items_total_cents: number;
   final_fee_cents: number;
   balance_due_cents: number;
+  tax_outcome_status: string;
+  tax_outcome_amount_cents: number;
+  tax_outcome_notes: string | null;
   due_on: string | null;
   client: {
     id: number;
@@ -354,6 +363,12 @@ export interface TaxReturnDetail {
   discount_amount_cents: number;
   discount_reason: string | null;
   amount_paid_cents: number;
+  fee_line_items: Array<{
+    label: string;
+    amount_cents: number;
+    notes?: string;
+  }>;
+  fee_line_items_total_cents: number;
   final_fee_cents: number;
   balance_due_cents: number;
   paid_at: string | null;
@@ -362,6 +377,9 @@ export interface TaxReturnDetail {
   filed_at: string | null;
   drt_confirmation: string | null;
   irs_confirmation: string | null;
+  tax_outcome_status: string;
+  tax_outcome_amount_cents: number;
+  tax_outcome_notes: string | null;
   portal_visible: boolean;
   documents_enabled: boolean;
   signature_status: string;

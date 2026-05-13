@@ -59,6 +59,24 @@ RSpec.describe TaxReturn, type: :model do
     expect(event.description).to include("base_fee_cents", "discount_reason")
   end
 
+  it "includes fee line items in the final fee and balance due" do
+    tax_return = described_class.create!(
+      client: client,
+      tax_year: 2026,
+      base_fee_cents: 8_500,
+      fee_line_items: [
+        { label: "Schedule C", amount_cents: 4_000, notes: "" },
+        { label: "Rental schedule", amount_cents: 3_000, notes: "" }
+      ],
+      discount_amount_cents: 2_000,
+      amount_paid_cents: 5_000
+    )
+
+    expect(tax_return.fee_line_items_total_cents).to eq(7_000)
+    expect(tax_return.final_fee_cents).to eq(13_500)
+    expect(tax_return.balance_due_cents).to eq(8_500)
+  end
+
   it "records changed filing fields in filing audit values" do
     tax_return = described_class.create!(client: client, tax_year: 2026)
 

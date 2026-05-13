@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { WorkflowStage, UserSummary, ClientSummary } from '../../lib/api'
@@ -8,6 +8,13 @@ interface NewTaxReturnModalProps {
   onClose: () => void
   defaultClient?: { id: number; full_name: string; email?: string; client_type?: string } | null
   onCreated?: () => void
+}
+
+interface FeeLineItemForm {
+  id: string
+  label: string
+  amount: string
+  notes: string
 }
 
 const currentYear = new Date().getFullYear()
@@ -29,33 +36,63 @@ const PAYMENT_STATUSES = [
   { value: 'waived', label: 'Waived' },
 ]
 
+const TAX_OUTCOMES = [
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'refund', label: 'Refund' },
+  { value: 'tax_due', label: 'Tax Due' },
+  { value: 'no_balance', label: 'No Refund / No Balance' },
+]
+
 const centsFromDollars = (value: string) => Math.round((parseFloat(value || '0') || 0) * 100)
+const dollarsFromCents = (value: number) => (value / 100).toFixed(2)
+
+const newFeeLineItem = (): FeeLineItemForm => ({
+  id: crypto.randomUUID(),
+  label: '',
+  amount: '',
+  notes: '',
+})
+
 const initialFormFor = (defaultClient?: NewTaxReturnModalProps['defaultClient']) => ({
   client_id: defaultClient?.id?.toString() || '',
   tax_year: currentYear.toString(),
   return_type: defaultClient?.client_type === 'business' ? 'business' : 'individual',
   form_type: defaultClient?.client_type === 'business' ? '1120S' : '1040',
-  jurisdiction: 'both',
   workflow_stage_id: '',
   assigned_to_id: '',
   reviewed_by_id: '',
   priority: 'normal',
   payment_status: 'unpaid',
-  base_fee: '',
+  base_fee: defaultClient?.client_type === 'business' ? '' : '85.00',
   discount_amount: '',
   discount_reason: '',
   amount_paid: '',
+  tax_outcome_status: 'unknown',
+  tax_outcome_amount: '',
+  tax_outcome_notes: '',
   portal_visible: false,
   documents_enabled: true,
   signature_status: 'not_needed',
   notes: '',
 })
 
+const initialClientForm = {
+  client_type: 'individual' as 'individual' | 'business',
+  business_name: '',
+  first_name: '',
+  last_name: '',
+  email: '',
+  phone: '',
+  date_of_birth: '',
+  filing_status: 'single',
+}
+
 export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCreated }: NewTaxReturnModalProps) {
   const navigate = useNavigate()
   const defaultClientId = defaultClient?.id
   const defaultClientType = defaultClient?.client_type
   const hasDefaultClient = Boolean(defaultClientId)
+  const [clientMode, setClientMode] = useState<'existing' | 'new'>('existing')
   const [clients, setClients] = useState<ClientSummary[]>([])
   const [clientSearch, setClientSearch] = useState('')
   const [stages, setStages] = useState<WorkflowStage[]>([])
@@ -63,13 +100,18 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState(() => initialFormFor(defaultClient))
+  const [clientForm, setClientForm] = useState(initialClientForm)
+  const [feeLineItems, setFeeLineItems] = useState<FeeLineItemForm[]>([])
 
   useEffect(() => {
     if (!isOpen) return
     setError(null)
     setClientSearch('')
     setClients([])
+    setClientMode(defaultClient ? 'existing' : 'new')
     setForm(initialFormFor(defaultClient))
+    setClientForm(initialClientForm)
+    setFeeLineItems([])
   }, [defaultClientId, defaultClientType, isOpen])
 
   useEffect(() => {
@@ -88,7 +130,7 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
   }, [isOpen])
 
   useEffect(() => {
-    if (!isOpen || hasDefaultClient) {
+    if (!isOpen || hasDefaultClient || clientMode === 'new') {
       setClients([])
       return
     }
@@ -104,42 +146,86 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
       cancelled = true
       window.clearTimeout(timeout)
     }
-  }, [clientSearch, hasDefaultClient, isOpen])
+  }, [clientSearch, clientMode, hasDefaultClient, isOpen])
 
   const selectedClient = defaultClient || clients.find(c => c.id.toString() === form.client_id)
-  const finalFee = Math.max(centsFromDollars(form.base_fee) - centsFromDollars(form.discount_amount), 0)
+  const addOnTotal = useMemo(
+    () => feeLineItems.reduce((sum, item) => sum + centsFromDollars(item.amount), 0),
+    [feeLineItems]
+  )
+  const finalFee = Math.max(centsFromDollars(form.base_fee) + addOnTotal - centsFromDollars(form.discount_amount), 0)
   const balanceDue = Math.max(finalFee - centsFromDollars(form.amount_paid), 0)
+
+  const clientNameIsReady = clientForm.client_type === 'business'
+    ? clientForm.business_name.trim().length > 0
+    : clientForm.first_name.trim().length > 0 && clientForm.last_name.trim().length > 0
+
+  const canSubmit = clientMode === 'new' ? clientNameIsReady : Boolean(selectedClient)
+
+  const updateFeeItem = (id: string, updates: Partial<FeeLineItemForm>) => {
+    setFeeLineItems(items => items.map(item => item.id === id ? { ...item, ...updates } : item))
+  }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setError(null)
-    if (!form.client_id) {
-      setError('Choose a client for this return.')
+
+    if (clientMode === 'existing' && !form.client_id) {
+      setError('Choose a client or create a new one.')
+      return
+    }
+
+    if (clientMode === 'new' && !clientNameIsReady) {
+      setError(clientForm.client_type === 'business' ? 'Enter a business name.' : 'Enter the client first and last name.')
       return
     }
 
     setSaving(true)
     try {
-      const result = await api.createTaxReturn({
-        client_id: Number(form.client_id),
+      const payload: Record<string, unknown> = {
         tax_year: Number(form.tax_year),
         return_type: form.return_type,
-        form_type: form.form_type.trim() || 'general',
-        jurisdiction: form.jurisdiction,
+        form_type: form.form_type.trim() || '1040',
+        jurisdiction: 'both',
         workflow_stage_id: form.workflow_stage_id ? Number(form.workflow_stage_id) : undefined,
         assigned_to_id: form.assigned_to_id ? Number(form.assigned_to_id) : undefined,
         reviewed_by_id: form.reviewed_by_id ? Number(form.reviewed_by_id) : undefined,
         priority: form.priority,
         payment_status: form.payment_status,
         base_fee_cents: centsFromDollars(form.base_fee),
+        fee_line_items: feeLineItems.map(item => ({
+          label: item.label.trim(),
+          amount_cents: centsFromDollars(item.amount),
+          notes: item.notes.trim(),
+        })),
         discount_amount_cents: centsFromDollars(form.discount_amount),
         discount_reason: form.discount_reason,
         amount_paid_cents: centsFromDollars(form.amount_paid),
+        tax_outcome_status: form.tax_outcome_status,
+        tax_outcome_amount_cents: centsFromDollars(form.tax_outcome_amount),
+        tax_outcome_notes: form.tax_outcome_notes,
         portal_visible: form.portal_visible,
         documents_enabled: form.documents_enabled,
         signature_status: form.signature_status,
         notes: form.notes,
-      })
+      }
+
+      if (clientMode === 'new') {
+        payload.client_attributes = {
+          client_type: clientForm.client_type,
+          business_name: clientForm.client_type === 'business' ? clientForm.business_name.trim() : undefined,
+          first_name: clientForm.first_name.trim(),
+          last_name: clientForm.last_name.trim(),
+          email: clientForm.email.trim(),
+          phone: clientForm.phone.trim(),
+          date_of_birth: clientForm.date_of_birth || undefined,
+          filing_status: clientForm.client_type === 'individual' ? clientForm.filing_status : undefined,
+        }
+      } else {
+        payload.client_id = Number(form.client_id)
+      }
+
+      const result = await api.createTaxReturn(payload)
 
       if (result.error || result.errors?.length) {
         setError(result.errors?.join(', ') || result.error || 'Could not create tax return.')
@@ -162,11 +248,11 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-3xl rounded-2xl bg-white shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-xl max-h-[92vh] overflow-y-auto">
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-secondary-dark bg-white px-6 py-4 rounded-t-2xl">
             <div>
               <h2 className="text-xl font-bold text-gray-900">New Tax Return</h2>
-              <p className="text-sm text-gray-500">Create a trackable return for intake, walk-ins, legacy work, or in-progress cases.</p>
+              <p className="text-sm text-gray-500">Create the client and return together, or add a return for an existing client.</p>
             </div>
             <button onClick={onClose} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -178,6 +264,28 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
           <form onSubmit={handleSubmit} className="space-y-6 p-6">
             {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
+            {!defaultClient && (
+              <div className="grid grid-cols-2 gap-2 rounded-xl bg-secondary/40 p-1">
+                <button
+                  type="button"
+                  onClick={() => setClientMode('existing')}
+                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${clientMode === 'existing' ? 'bg-primary text-white shadow-sm' : 'text-gray-600 hover:bg-white/70'}`}
+                >
+                  Existing Client
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientMode('new')
+                    setForm(prev => ({ ...prev, client_id: '' }))
+                  }}
+                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${clientMode === 'new' ? 'bg-primary text-white shadow-sm' : 'text-gray-600 hover:bg-white/70'}`}
+                >
+                  Create New Client
+                </button>
+              </div>
+            )}
+
             <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-gray-700">Client</label>
@@ -186,7 +294,7 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
                     <p className="font-medium text-gray-900">{defaultClient.full_name}</p>
                     {defaultClient.email && <p className="text-sm text-gray-500">{defaultClient.email}</p>}
                   </div>
-                ) : (
+                ) : clientMode === 'existing' ? (
                   <>
                     <input
                       value={clientSearch}
@@ -198,7 +306,6 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
                       value={form.client_id}
                       onChange={e => setForm({ ...form, client_id: e.target.value })}
                       className="w-full rounded-xl border border-secondary-dark px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      required
                     >
                       <option value="">Choose a client</option>
                       {clients.map(client => (
@@ -209,6 +316,73 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
                       ))}
                     </select>
                   </>
+                ) : (
+                  <div className="space-y-4 rounded-2xl border border-secondary-dark bg-gray-50 p-4">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientForm({ ...clientForm, client_type: 'individual' })
+                          setForm(prev => ({ ...prev, return_type: 'individual', form_type: prev.form_type === '1120S' ? '1040' : prev.form_type, base_fee: prev.base_fee || '85.00' }))
+                        }}
+                        className={`rounded-xl px-3 py-2 font-semibold ${clientForm.client_type === 'individual' ? 'bg-primary text-white' : 'bg-white text-gray-600'}`}
+                      >
+                        Individual
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientForm({ ...clientForm, client_type: 'business' })
+                          setForm(prev => ({ ...prev, return_type: 'business', form_type: prev.form_type === '1040' ? '1120S' : prev.form_type, base_fee: prev.base_fee === '85.00' ? '' : prev.base_fee }))
+                        }}
+                        className={`rounded-xl px-3 py-2 font-semibold ${clientForm.client_type === 'business' ? 'bg-primary text-white' : 'bg-white text-gray-600'}`}
+                      >
+                        Business
+                      </button>
+                    </div>
+                    {clientForm.client_type === 'business' && (
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Business Name *</label>
+                        <input value={clientForm.business_name} onChange={e => setClientForm({ ...clientForm, business_name: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2" />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">{clientForm.client_type === 'business' ? 'Contact First Name' : 'First Name *'}</label>
+                        <input value={clientForm.first_name} onChange={e => setClientForm({ ...clientForm, first_name: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">{clientForm.client_type === 'business' ? 'Contact Last Name' : 'Last Name *'}</label>
+                        <input value={clientForm.last_name} onChange={e => setClientForm({ ...clientForm, last_name: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" value={clientForm.email} onChange={e => setClientForm({ ...clientForm, email: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Phone</label>
+                        <input value={clientForm.phone} onChange={e => setClientForm({ ...clientForm, phone: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2" />
+                      </div>
+                      {clientForm.client_type === 'individual' && (
+                        <>
+                          <div>
+                            <label className="mb-1 block text-sm font-medium text-gray-700">Date of Birth</label>
+                            <input type="date" value={clientForm.date_of_birth} onChange={e => setClientForm({ ...clientForm, date_of_birth: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2" />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-sm font-medium text-gray-700">Filing Status</label>
+                            <select value={clientForm.filing_status} onChange={e => setClientForm({ ...clientForm, filing_status: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2">
+                              <option value="single">Single</option>
+                              <option value="married_filing_jointly">Married Filing Jointly</option>
+                              <option value="married_filing_separately">Married Filing Separately</option>
+                              <option value="head_of_household">Head of Household</option>
+                              <option value="qualifying_widow">Qualifying Widow(er)</option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -227,12 +401,11 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
                 <input value={form.form_type} onChange={e => setForm({ ...form, form_type: e.target.value })} placeholder="1040, 1120S, 1065..." className="w-full rounded-xl border border-secondary-dark px-3 py-2" />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Jurisdiction</label>
-                <select value={form.jurisdiction} onChange={e => setForm({ ...form, jurisdiction: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2">
-                  <option value="both">Guam + Federal</option>
-                  <option value="guam">Guam</option>
-                  <option value="federal">Federal</option>
-                  <option value="other">Other</option>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Priority</label>
+                <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2">
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
                 </select>
               </div>
             </section>
@@ -261,18 +434,60 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
             </section>
 
             <section className="rounded-2xl bg-secondary/40 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">Payment</h3>
-                <p className="text-sm text-gray-500">Balance: ${(balanceDue / 100).toFixed(2)}</p>
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="font-semibold text-gray-900">Cornerstone Fee</h3>
+                  <p className="text-sm text-gray-500">Base return plus schedules/add-ons, discounts, and payments.</p>
+                </div>
+                <div className="text-sm text-gray-600">
+                  Total ${dollarsFromCents(finalFee)} • Balance ${dollarsFromCents(balanceDue)}
+                </div>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                <input value={form.base_fee} onChange={e => setForm({ ...form, base_fee: e.target.value })} placeholder="Base fee" className="rounded-xl border border-secondary-dark px-3 py-2" inputMode="decimal" />
+                <input value={form.base_fee} onChange={e => setForm({ ...form, base_fee: e.target.value })} placeholder="Base 1040 fee" className="rounded-xl border border-secondary-dark px-3 py-2" inputMode="decimal" />
                 <input value={form.discount_amount} onChange={e => setForm({ ...form, discount_amount: e.target.value })} placeholder="Discount" className="rounded-xl border border-secondary-dark px-3 py-2" inputMode="decimal" />
                 <input value={form.amount_paid} onChange={e => setForm({ ...form, amount_paid: e.target.value })} placeholder="Amount paid" className="rounded-xl border border-secondary-dark px-3 py-2" inputMode="decimal" />
                 <select value={form.payment_status} onChange={e => setForm({ ...form, payment_status: e.target.value })} className="rounded-xl border border-secondary-dark px-3 py-2">
                   {PAYMENT_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
                 </select>
                 <input value={form.discount_reason} onChange={e => setForm({ ...form, discount_reason: e.target.value })} placeholder="Discount reason or approval note" className="md:col-span-4 rounded-xl border border-secondary-dark px-3 py-2" />
+              </div>
+
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-gray-900">Fee Add-ons</h4>
+                  <button type="button" onClick={() => setFeeLineItems(items => [...items, newFeeLineItem()])} className="text-sm font-medium text-primary hover:text-primary-dark">
+                    Add schedule or service
+                  </button>
+                </div>
+                {feeLineItems.length === 0 ? (
+                  <p className="text-sm text-gray-500">No add-ons yet.</p>
+                ) : (
+                  feeLineItems.map(item => (
+                    <div key={item.id} className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_120px_1fr_auto]">
+                      <input value={item.label} onChange={e => updateFeeItem(item.id, { label: e.target.value })} placeholder="Schedule C, rental, dividends..." className="rounded-xl border border-secondary-dark px-3 py-2" />
+                      <input value={item.amount} onChange={e => updateFeeItem(item.id, { amount: e.target.value })} placeholder="Amount" className="rounded-xl border border-secondary-dark px-3 py-2" inputMode="decimal" />
+                      <input value={item.notes} onChange={e => updateFeeItem(item.id, { notes: e.target.value })} placeholder="Optional note" className="rounded-xl border border-secondary-dark px-3 py-2" />
+                      <button type="button" onClick={() => setFeeLineItems(items => items.filter(existing => existing.id !== item.id))} className="rounded-xl px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                        Remove
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-secondary-dark p-4">
+              <div className="mb-3">
+                <h3 className="font-semibold text-gray-900">Tax Refund or Amount Owed</h3>
+                <p className="text-sm text-gray-500">Separate from Cornerstone's preparation fee.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <select value={form.tax_outcome_status} onChange={e => setForm({ ...form, tax_outcome_status: e.target.value })} className="rounded-xl border border-secondary-dark px-3 py-2">
+                  {TAX_OUTCOMES.map(outcome => <option key={outcome.value} value={outcome.value}>{outcome.label}</option>)}
+                </select>
+                <input value={form.tax_outcome_amount} onChange={e => setForm({ ...form, tax_outcome_amount: e.target.value })} placeholder="Refund/owed amount" className="rounded-xl border border-secondary-dark px-3 py-2" inputMode="decimal" />
+                <input value={form.tax_outcome_notes} onChange={e => setForm({ ...form, tax_outcome_notes: e.target.value })} placeholder="Cash/check note, filing instruction..." className="rounded-xl border border-secondary-dark px-3 py-2" />
               </div>
             </section>
 
@@ -300,8 +515,8 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
 
             <div className="flex justify-end gap-3 border-t border-secondary-dark pt-4">
               <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 font-medium text-gray-600 hover:bg-gray-100">Cancel</button>
-              <button type="submit" disabled={saving || !selectedClient} className="rounded-xl bg-primary px-5 py-2 font-semibold text-white hover:bg-primary-dark disabled:opacity-50">
-                {saving ? 'Creating...' : 'Create Tax Return'}
+              <button type="submit" disabled={saving || !canSubmit} className="rounded-xl bg-primary px-5 py-2 font-semibold text-white hover:bg-primary-dark disabled:opacity-50">
+                {saving ? 'Creating...' : clientMode === 'new' ? 'Create Client & Tax Return' : 'Create Tax Return'}
               </button>
             </div>
           </form>

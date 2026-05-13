@@ -17,6 +17,12 @@ interface IncomeSourceLocal {
   notes?: string | null
 }
 
+interface FeeLineItemLocal {
+  label: string
+  amount_cents: number
+  notes?: string | null
+}
+
 interface TaxReturnDetailLocal {
   id: number
   tax_year: number
@@ -33,6 +39,8 @@ interface TaxReturnDetailLocal {
   discount_amount_cents: number
   discount_reason: string | null
   amount_paid_cents: number
+  fee_line_items: FeeLineItemLocal[]
+  fee_line_items_total_cents: number
   final_fee_cents: number
   balance_due_cents: number
   paid_at: string | null
@@ -41,6 +49,9 @@ interface TaxReturnDetailLocal {
   filed_at: string | null
   drt_confirmation: string | null
   irs_confirmation: string | null
+  tax_outcome_status: string
+  tax_outcome_amount_cents: number
+  tax_outcome_notes: string | null
   portal_visible: boolean
   documents_enabled: boolean
   signature_status: string
@@ -168,10 +179,14 @@ export default function TaxReturnDetailPage() {
   const [paymentForm, setPaymentForm] = useState({
     payment_status: 'unpaid',
     base_fee: '0.00',
+    fee_line_items: [] as Array<{ id: string; label: string; amount: string; notes: string }>,
     discount_amount: '0.00',
     discount_reason: '',
     amount_paid: '0.00',
     payment_notes: '',
+    tax_outcome_status: 'unknown',
+    tax_outcome_amount: '0.00',
+    tax_outcome_notes: '',
   })
   const [filingForm, setFilingForm] = useState({
     filing_status: 'not_filed',
@@ -256,10 +271,19 @@ export default function TaxReturnDetailPage() {
     setPaymentForm({
       payment_status: tr.payment_status || 'unpaid',
       base_fee: dollarsFromCents(tr.base_fee_cents),
+      fee_line_items: (tr.fee_line_items || []).map((item, index) => ({
+        id: `${index}-${item.label}`,
+        label: item.label || '',
+        amount: dollarsFromCents(item.amount_cents),
+        notes: item.notes || '',
+      })),
       discount_amount: dollarsFromCents(tr.discount_amount_cents),
       discount_reason: tr.discount_reason || '',
       amount_paid: dollarsFromCents(tr.amount_paid_cents),
       payment_notes: tr.payment_notes || '',
+      tax_outcome_status: tr.tax_outcome_status || 'unknown',
+      tax_outcome_amount: dollarsFromCents(tr.tax_outcome_amount_cents),
+      tax_outcome_notes: tr.tax_outcome_notes || '',
     })
     setFilingForm({
       filing_status: tr.filing_status || 'not_filed',
@@ -395,10 +419,18 @@ export default function TaxReturnDetailPage() {
       const result = await api.updateTaxReturn(taxReturn.id, {
         payment_status: paymentForm.payment_status,
         base_fee_cents: centsFromDollars(paymentForm.base_fee),
+        fee_line_items: paymentForm.fee_line_items.map(item => ({
+          label: item.label,
+          amount_cents: centsFromDollars(item.amount),
+          notes: item.notes,
+        })),
         discount_amount_cents: centsFromDollars(paymentForm.discount_amount),
         discount_reason: paymentForm.discount_reason,
         amount_paid_cents: centsFromDollars(paymentForm.amount_paid),
         payment_notes: paymentForm.payment_notes,
+        tax_outcome_status: paymentForm.tax_outcome_status,
+        tax_outcome_amount_cents: centsFromDollars(paymentForm.tax_outcome_amount),
+        tax_outcome_notes: paymentForm.tax_outcome_notes,
       })
       if (result.error || result.errors?.length) {
         alert(apiErrorMessage(result, 'Failed to save payment details'))
@@ -410,6 +442,30 @@ export default function TaxReturnDetailPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const addPaymentFeeLine = () => {
+    setPaymentForm(prev => ({
+      ...prev,
+      fee_line_items: [
+        ...prev.fee_line_items,
+        { id: crypto.randomUUID(), label: '', amount: '', notes: '' },
+      ],
+    }))
+  }
+
+  const updatePaymentFeeLine = (id: string, updates: Partial<{ label: string; amount: string; notes: string }>) => {
+    setPaymentForm(prev => ({
+      ...prev,
+      fee_line_items: prev.fee_line_items.map(item => item.id === id ? { ...item, ...updates } : item),
+    }))
+  }
+
+  const removePaymentFeeLine = (id: string) => {
+    setPaymentForm(prev => ({
+      ...prev,
+      fee_line_items: prev.fee_line_items.filter(item => item.id !== id),
+    }))
   }
 
   const handleSaveFiling = async () => {
@@ -637,7 +693,7 @@ export default function TaxReturnDetailPage() {
                   Save
                 </button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
                   <select value={detailsForm.return_type} onChange={e => setDetailsForm({ ...detailsForm, return_type: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl">
@@ -653,15 +709,6 @@ export default function TaxReturnDetailPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Form</label>
                   <input value={detailsForm.form_type} onChange={e => setDetailsForm({ ...detailsForm, form_type: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" placeholder="1040" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Jurisdiction</label>
-                  <select value={detailsForm.jurisdiction} onChange={e => setDetailsForm({ ...detailsForm, jurisdiction: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl">
-                    <option value="both">Guam + Federal</option>
-                    <option value="guam">Guam</option>
-                    <option value="federal">Federal</option>
-                    <option value="other">Other</option>
-                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
@@ -719,6 +766,33 @@ export default function TaxReturnDetailPage() {
                   <p className="text-xs text-gray-500">Current Balance</p>
                   <p className="text-xl font-bold text-gray-900">${dollarsFromCents(taxReturn.balance_due_cents)}</p>
                 </div>
+                <div className="sm:col-span-5 space-y-3 rounded-xl border border-secondary-dark p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">Fee Add-ons</h3>
+                      <p className="text-xs text-gray-500">Schedules, rentals, business income, or other extra prep work.</p>
+                    </div>
+                    <button type="button" onClick={addPaymentFeeLine} className="text-sm font-medium text-primary hover:text-primary-dark">
+                      Add fee line
+                    </button>
+                  </div>
+                  {paymentForm.fee_line_items.length === 0 ? (
+                    <p className="text-sm text-gray-400 italic">No add-ons added.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {paymentForm.fee_line_items.map(item => (
+                        <div key={item.id} className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_120px_1fr_auto]">
+                          <input value={item.label} onChange={e => updatePaymentFeeLine(item.id, { label: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Schedule C, rental, dividends..." />
+                          <input value={item.amount} onChange={e => updatePaymentFeeLine(item.id, { amount: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Amount" inputMode="decimal" />
+                          <input value={item.notes} onChange={e => updatePaymentFeeLine(item.id, { notes: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Optional note" />
+                          <button type="button" onClick={() => removePaymentFeeLine(item.id)} className="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl">
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div className="sm:col-span-3">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Discount Reason</label>
                   <input value={paymentForm.discount_reason} onChange={e => setPaymentForm({ ...paymentForm, discount_reason: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" placeholder="CEO approved discount, courtesy adjustment..." />
@@ -726,6 +800,20 @@ export default function TaxReturnDetailPage() {
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Payment Notes</label>
                   <input value={paymentForm.payment_notes} onChange={e => setPaymentForm({ ...paymentForm, payment_notes: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Cash, check #, partial payment..." />
+                </div>
+                <div className="sm:col-span-5 rounded-xl border border-secondary-dark p-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Tax Refund or Amount Owed</h3>
+                  <p className="mb-3 text-xs text-gray-500">This is separate from Cornerstone's fee balance.</p>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <select value={paymentForm.tax_outcome_status} onChange={e => setPaymentForm({ ...paymentForm, tax_outcome_status: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl">
+                      <option value="unknown">Unknown</option>
+                      <option value="refund">Refund</option>
+                      <option value="tax_due">Tax Due</option>
+                      <option value="no_balance">No Refund / No Balance</option>
+                    </select>
+                    <input value={paymentForm.tax_outcome_amount} onChange={e => setPaymentForm({ ...paymentForm, tax_outcome_amount: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Refund/owed amount" inputMode="decimal" />
+                    <input value={paymentForm.tax_outcome_notes} onChange={e => setPaymentForm({ ...paymentForm, tax_outcome_notes: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Cash/check or filing note" />
+                  </div>
                 </div>
               </div>
             </div>

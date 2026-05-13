@@ -8,12 +8,14 @@ class TaxReturn < ApplicationRecord
   PAYMENT_STATUSES = %w[unpaid partially_paid paid waived].freeze
   FILING_STATUSES = %w[not_filed ready_to_file filed_drt filed_irs accepted rejected paper_filed].freeze
   SIGNATURE_STATUSES = %w[not_needed requested signed waived].freeze
+  TAX_OUTCOME_STATUSES = %w[unknown refund tax_due no_balance].freeze
   PAYMENT_AUDIT_FIELDS = %w[
     payment_status base_fee_cents discount_amount_cents discount_reason
-    amount_paid_cents paid_at payment_notes
+    amount_paid_cents paid_at payment_notes fee_line_items
   ].freeze
   FILING_AUDIT_FIELDS = %w[
     filing_status filed_at drt_confirmation irs_confirmation
+    tax_outcome_status tax_outcome_amount_cents tax_outcome_notes
   ].freeze
   PORTAL_AUDIT_FIELDS = %w[
     portal_visible documents_enabled signature_status signature_requested_at signed_at
@@ -44,8 +46,10 @@ class TaxReturn < ApplicationRecord
   validates :payment_status, inclusion: { in: PAYMENT_STATUSES }
   validates :filing_status, inclusion: { in: FILING_STATUSES }
   validates :signature_status, inclusion: { in: SIGNATURE_STATUSES }
+  validates :tax_outcome_status, inclusion: { in: TAX_OUTCOME_STATUSES }
   validates :base_fee_cents, :discount_amount_cents, :amount_paid_cents,
             numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :tax_outcome_amount_cents, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
 
   scope :for_year, ->(year) { where(tax_year: year) }
   scope :current_year, -> { for_year(Date.current.year) }
@@ -67,11 +71,15 @@ class TaxReturn < ApplicationRecord
   end
 
   def final_fee_cents
-    [base_fee_cents.to_i - discount_amount_cents.to_i, 0].max
+    [base_fee_cents.to_i + fee_line_items_total_cents - discount_amount_cents.to_i, 0].max
   end
 
   def balance_due_cents
     [final_fee_cents - amount_paid_cents.to_i, 0].max
+  end
+
+  def fee_line_items_total_cents
+    Array(fee_line_items).sum { |item| (item["amount_cents"] || item[:amount_cents]).to_i }
   end
 
   def sync_operational_timestamps
@@ -136,8 +144,9 @@ class TaxReturn < ApplicationRecord
   def saved_change_to_payment_fields?
     return false if previously_new_record?
 
-    saved_change_to_payment_status? ||
+      saved_change_to_payment_status? ||
       saved_change_to_base_fee_cents? ||
+      saved_change_to_fee_line_items? ||
       saved_change_to_discount_amount_cents? ||
       saved_change_to_discount_reason? ||
       saved_change_to_amount_paid_cents? ||
@@ -151,7 +160,10 @@ class TaxReturn < ApplicationRecord
     saved_change_to_filing_status? ||
       saved_change_to_filed_at? ||
       saved_change_to_drt_confirmation? ||
-      saved_change_to_irs_confirmation?
+      saved_change_to_irs_confirmation? ||
+      saved_change_to_tax_outcome_status? ||
+      saved_change_to_tax_outcome_amount_cents? ||
+      saved_change_to_tax_outcome_notes?
   end
 
   def saved_change_to_portal_fields?

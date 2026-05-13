@@ -178,6 +178,49 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
       expect(JSON.parse(response.body).dig("tax_return", "client", "has_portal_access")).to be(true)
     end
 
+    it "creates a new client and tax return together with fee add-ons and tax outcome tracking" do
+      stub_clerk_for(staff_user)
+
+      expect do
+        post "/api/v1/tax_returns",
+             params: {
+               tax_return: {
+                 tax_year: 2026,
+                 workflow_stage_id: workflow_stage.id,
+                 return_type: "individual",
+                 form_type: "1040",
+                 base_fee_cents: 8_500,
+                 fee_line_items: [
+                   { label: "Schedule C", amount_cents: 4_000, notes: "Small business" },
+                   { label: "Rental schedule", amount_cents: 3_000, notes: "" }
+                 ],
+                 discount_amount_cents: 2_000,
+                 amount_paid_cents: 5_000,
+                 tax_outcome_status: "tax_due",
+                 tax_outcome_amount_cents: 42_000,
+                 tax_outcome_notes: "Needs check before filing",
+                 client_attributes: {
+                   client_type: "individual",
+                   first_name: "Walk",
+                   last_name: "In",
+                   phone: "6715550101",
+                   filing_status: "single"
+                 }
+               }
+             }.to_json,
+             headers: auth_headers_for(staff_user)
+      end.to change(Client, :count).by(1).and change(TaxReturn, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+      payload = JSON.parse(response.body).fetch("tax_return")
+      expect(payload.dig("client", "full_name")).to eq("Walk In")
+      expect(payload.fetch("fee_line_items_total_cents")).to eq(7_000)
+      expect(payload.fetch("final_fee_cents")).to eq(13_500)
+      expect(payload.fetch("balance_due_cents")).to eq(8_500)
+      expect(payload.fetch("tax_outcome_status")).to eq("tax_due")
+      expect(payload.fetch("tax_outcome_amount_cents")).to eq(42_000)
+    end
+
     it "rolls back the return if the creation audit event cannot be written" do
       invalid_event = WorkflowEvent.new
       invalid_event.valid?
