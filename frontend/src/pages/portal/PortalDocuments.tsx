@@ -50,6 +50,7 @@ export default function PortalDocuments() {
   const [viewingDoc, setViewingDoc] = useState<PortalDocument | null>(null)
   const viewingReturnIdRef = useRef<number | null>(null)
   const activeReturnRef = useRef<number | null>(null)
+  const initialRequestedReturnIdRef = useRef(requestedReturnId)
 
   const openDocViewer = useCallback((doc: PortalDocument) => {
     viewingReturnIdRef.current = selectedReturnId
@@ -68,7 +69,7 @@ export default function PortalDocuments() {
           const returns = result.data.tax_returns
           setTaxReturns(returns)
           if (returns.length > 0) {
-            const requestedReturn = returns.find(tr => tr.id === requestedReturnId)
+            const requestedReturn = returns.find(tr => tr.id === initialRequestedReturnIdRef.current)
             setSelectedReturnId((requestedReturn || returns[0]).id)
           }
         } else if (result.error) {
@@ -81,7 +82,14 @@ export default function PortalDocuments() {
       }
     }
     loadReturns()
-  }, [requestedReturnId])
+  }, [])
+
+  useEffect(() => {
+    if (!requestedReturnId || taxReturns.length === 0 || selectedReturnId === requestedReturnId) return
+    if (taxReturns.some(tr => tr.id === requestedReturnId)) {
+      setSelectedReturnId(requestedReturnId)
+    }
+  }, [requestedReturnId, selectedReturnId, taxReturns])
 
   const loadDocuments = useCallback(async ({ clearMessages = true } = {}) => {
     if (!selectedReturnId) return
