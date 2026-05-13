@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, type ComponentType, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAuthContext } from '../../contexts/AuthContext'
 import { AnimatePresence } from 'framer-motion'
@@ -12,7 +13,7 @@ import { api } from '../../lib/api'
 interface NavItem {
   name: string
   href: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: ComponentType<{ className?: string }>
   adminOnly?: boolean
 }
 
@@ -28,6 +29,8 @@ const navigation: NavItem[] = [
   { name: 'Users', href: '/admin/users', icon: TeamIcon, adminOnly: true },
   { name: 'Settings', href: '/admin/settings', icon: SettingsIcon, adminOnly: true },
 ]
+
+const desktopSidebarStorageKey = 'cornerstone-admin-sidebar-collapsed'
 
 function HomeIcon({ className }: { className?: string }) {
   return (
@@ -127,24 +130,175 @@ function XIcon({ className }: { className?: string }) {
 }
 
 // Loading skeleton for nav items to prevent flash during permission check
-function NavSkeleton() {
+function NavSkeleton({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <>
       {[...Array(6)].map((_, i) => (
         <div
           key={i}
-          className="flex items-center gap-3 px-4 py-3 rounded-xl animate-pulse"
+          className={`flex items-center rounded-xl px-4 py-3 animate-pulse ${collapsed ? 'justify-center' : 'gap-3'}`}
         >
           <div className="w-5 h-5 bg-gray-200 rounded" />
-          <div className="h-4 bg-gray-200 rounded w-24" />
+          {!collapsed && <div className="h-4 bg-gray-200 rounded w-24" />}
         </div>
       ))}
     </>
   )
 }
 
+function FloatingTooltip({ anchorRef, label, visible }: { anchorRef: RefObject<HTMLElement | null>; label: string; visible: boolean }) {
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
+
+  useEffect(() => {
+    if (!visible) return
+
+    const updatePosition = () => {
+      const anchor = anchorRef.current
+      if (!anchor) return
+
+      const rect = anchor.getBoundingClientRect()
+      setPosition({
+        top: rect.top + rect.height / 2,
+        left: rect.right + 16,
+      })
+    }
+
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [anchorRef, visible])
+
+  if (!visible || !position || typeof document === 'undefined') return null
+
+  return createPortal(
+    <div
+      className="pointer-events-none fixed z-[100] flex -translate-y-1/2 items-center"
+      style={{ top: position.top, left: position.left }}
+      role="tooltip"
+    >
+      <span className="h-3 w-3 translate-x-[7px] rotate-45 rounded-[3px] bg-gray-950 shadow-lg" />
+      <span className="whitespace-nowrap rounded-xl bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white shadow-2xl">
+        {label}
+      </span>
+    </div>,
+    document.body
+  )
+}
+
+function DesktopNavLink({
+  item,
+  active,
+  collapsed,
+}: {
+  item: NavItem
+  active: boolean
+  collapsed: boolean
+}) {
+  const anchorRef = useRef<HTMLAnchorElement | null>(null)
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+
+  return (
+    <>
+      <Link
+        ref={anchorRef}
+        key={item.name}
+        to={item.href}
+        aria-label={collapsed ? item.name : undefined}
+        onMouseEnter={() => setTooltipVisible(true)}
+        onMouseLeave={() => setTooltipVisible(false)}
+        onFocus={() => setTooltipVisible(true)}
+        onBlur={() => setTooltipVisible(false)}
+        className={`group relative flex items-center rounded-xl text-sm font-medium transition-all duration-200 ${
+          collapsed ? 'justify-center px-2 py-3' : 'gap-3 px-4 py-3'
+        } ${
+          active
+            ? 'bg-primary text-white shadow-md'
+            : 'text-gray-700 hover:bg-secondary-dark hover:text-primary'
+        }`}
+      >
+        <item.icon className="h-5 w-5 shrink-0" />
+        {!collapsed && <span>{item.name}</span>}
+      </Link>
+      {collapsed && <FloatingTooltip anchorRef={anchorRef} label={item.name} visible={tooltipVisible} />}
+    </>
+  )
+}
+
+function DesktopBackLink({ collapsed }: { collapsed: boolean }) {
+  const anchorRef = useRef<HTMLAnchorElement | null>(null)
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+
+  return (
+    <>
+      <Link
+        ref={anchorRef}
+        to="/"
+        aria-label={collapsed ? 'Back to Website' : undefined}
+        onMouseEnter={() => setTooltipVisible(true)}
+        onMouseLeave={() => setTooltipVisible(false)}
+        onFocus={() => setTooltipVisible(true)}
+        onBlur={() => setTooltipVisible(false)}
+        className={`flex items-center rounded-xl text-sm font-medium text-gray-500 transition-colors hover:bg-secondary-dark hover:text-primary ${
+          collapsed ? 'justify-center px-2 py-3' : 'gap-2 px-3 py-2'
+        }`}
+      >
+        <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        </svg>
+        {!collapsed && <span>Back to Website</span>}
+      </Link>
+      {collapsed && <FloatingTooltip anchorRef={anchorRef} label="Back to Website" visible={tooltipVisible} />}
+    </>
+  )
+}
+
+function DesktopCollapseButton({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+  const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={onToggle}
+        onMouseEnter={() => setTooltipVisible(true)}
+        onMouseLeave={() => setTooltipVisible(false)}
+        onFocus={() => setTooltipVisible(true)}
+        onBlur={() => setTooltipVisible(false)}
+        className={
+          collapsed
+            ? 'inline-flex h-12 w-12 items-center justify-center rounded-xl border border-secondary-dark bg-white text-gray-600 shadow-sm transition-colors hover:bg-secondary hover:text-primary'
+            : 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-secondary hover:text-primary'
+        }
+        aria-label={label}
+      >
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d={collapsed ? 'M13 5l7 7-7 7M4 5h5v14H4z' : 'M11 19l-7-7 7-7M15 5h5v14h-5z'}
+          />
+        </svg>
+      </button>
+      <FloatingTooltip anchorRef={buttonRef} label={label} visible={tooltipVisible} />
+    </>
+  )
+}
+
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [desktopCollapsed, setDesktopCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem(desktopSidebarStorageKey) === 'true'
+  })
   const [isAdmin, setIsAdmin] = useState(false)
   const [isLoadingUser, setIsLoadingUser] = useState(true)
   const location = useLocation()
@@ -169,6 +323,11 @@ export default function AdminLayout() {
     }
     fetchCurrentUser()
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(desktopSidebarStorageKey, String(desktopCollapsed))
+  }, [desktopCollapsed])
 
   // Filter navigation based on admin status (CST-26: enforce adminOnly flag)
   const filteredNavigation = navigation.filter(item => !item.adminOnly || isAdmin)
@@ -253,53 +412,52 @@ export default function AdminLayout() {
       </div>
 
       {/* Desktop sidebar */}
-      <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-72 lg:flex-col">
-        <div className="flex flex-col grow bg-white border-r border-secondary-dark pt-4 pb-4 overflow-y-auto">
-          <div className="flex items-center justify-center shrink-0 px-4 pb-4 border-b border-secondary-dark mb-2">
-            <Link to="/" className="flex items-center justify-center">
+      <div className={`hidden transition-[width] duration-300 lg:fixed lg:inset-y-0 lg:flex lg:flex-col ${desktopCollapsed ? 'lg:w-24' : 'lg:w-72'}`}>
+        <div className="flex grow flex-col overflow-visible border-r border-secondary-dark bg-white pt-4 pb-4">
+          <div className={`mb-2 flex shrink-0 items-center border-b border-secondary-dark px-4 pb-4 ${desktopCollapsed ? 'justify-center' : 'justify-between gap-3'}`}>
+            <Link to="/" className="flex min-w-0 items-center justify-center">
               <img 
                 src="/logo.jpeg" 
                 alt="Cornerstone" 
-                className="h-16 w-auto object-contain"
+                className={`w-auto object-contain transition-all duration-300 ${desktopCollapsed ? 'h-10 max-w-12' : 'h-16'}`}
               />
             </Link>
+            {!desktopCollapsed && (
+              <DesktopCollapseButton collapsed={desktopCollapsed} onToggle={() => setDesktopCollapsed((value) => !value)} />
+            )}
           </div>
-          <nav className="mt-8 flex-1 px-3 space-y-1">
+          {desktopCollapsed && (
+            <div className="px-4 pb-4">
+              <DesktopCollapseButton collapsed={desktopCollapsed} onToggle={() => setDesktopCollapsed((value) => !value)} />
+            </div>
+          )}
+          <div className={`${desktopCollapsed ? 'px-3 pt-4' : 'px-5 pt-6'}`}>
+            <p className={`text-xs font-semibold uppercase tracking-[0.14em] text-gray-400 ${desktopCollapsed ? 'text-center' : ''}`}>
+              {desktopCollapsed ? 'Nav' : 'Admin Navigation'}
+            </p>
+          </div>
+          <nav className={`mt-5 flex-1 space-y-1 overflow-visible ${desktopCollapsed ? 'px-3' : 'px-3'}`}>
             {isLoadingUser ? (
-              <NavSkeleton />
+              <NavSkeleton collapsed={desktopCollapsed} />
             ) : (
               filteredNavigation.map((item) => (
-                <Link
+                <DesktopNavLink
                   key={item.name}
-                  to={item.href}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                    isActive(item.href)
-                      ? 'bg-primary text-white shadow-md'
-                      : 'text-gray-700 hover:bg-secondary-dark'
-                  }`}
-                >
-                  <item.icon className="w-5 h-5" />
-                  {item.name}
-                </Link>
+                  item={item}
+                  active={isActive(item.href)}
+                  collapsed={desktopCollapsed}
+                />
               ))
             )}
           </nav>
-          <div className="px-4 py-4 border-t border-secondary-dark mx-3">
-            <Link
-              to="/"
-              className="flex items-center gap-2 text-gray-500 hover:text-primary text-sm font-medium transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back to Website
-            </Link>
+          <div className={`mx-3 border-t border-secondary-dark py-4 ${desktopCollapsed ? 'px-0' : 'px-1'}`}>
+            <DesktopBackLink collapsed={desktopCollapsed} />
           </div>
         </div>
       </div>
 
       {/* Main content */}
-      <div className="lg:pl-72 flex flex-col min-h-screen">
+      <div className={`flex min-h-screen flex-col transition-[padding] duration-300 ${desktopCollapsed ? 'lg:pl-24' : 'lg:pl-72'}`}>
         {/* Top bar */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-secondary-dark">
           <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
