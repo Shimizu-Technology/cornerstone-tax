@@ -60,6 +60,9 @@ class CreateIntakeService
   rescue ActiveRecord::RecordInvalid => e
     @errors << e.message
     Result.new(success?: false, client: nil, tax_return: nil, errors: @errors)
+  rescue ActiveRecord::RecordNotUnique
+    @errors << "A tax return for this client and tax year is already being processed. Please contact Cornerstone if you need to update your submission."
+    Result.new(success?: false, client: nil, tax_return: nil, errors: @errors)
   rescue StandardError => e
     @errors << "Unexpected error: #{e.message}"
     Result.new(success?: false, client: nil, tax_return: nil, errors: @errors)

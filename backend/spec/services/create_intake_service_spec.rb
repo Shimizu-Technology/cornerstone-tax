@@ -49,4 +49,22 @@ RSpec.describe CreateIntakeService do
     expect(payload).not_to have_key("ssn")
     expect(payload).not_to have_key("itin")
   end
+
+  it "returns a friendly error when a concurrent duplicate return hits the database constraint" do
+    allow_any_instance_of(TaxReturn).to receive(:save!).and_raise(
+      ActiveRecord::RecordNotUnique.new("duplicate key value violates unique constraint")
+    )
+
+    result = described_class.call(
+      first_name: "Concurrent",
+      last_name: "Client",
+      email: "concurrent-client@example.com",
+      tax_year: 2026
+    )
+
+    expect(result).not_to be_success
+    expect(result.errors).to eq([
+      "A tax return for this client and tax year is already being processed. Please contact Cornerstone if you need to update your submission."
+    ])
+  end
 end
