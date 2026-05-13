@@ -273,9 +273,7 @@ function DesktopCollapseButton({ collapsed, onToggle }: { collapsed: boolean; on
         onFocus={() => setTooltipVisible(true)}
         onBlur={() => setTooltipVisible(false)}
         className={
-          collapsed
-            ? 'inline-flex h-12 w-12 items-center justify-center rounded-xl border border-secondary-dark bg-white text-gray-600 shadow-sm transition-colors hover:bg-secondary hover:text-primary'
-            : 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-secondary hover:text-primary'
+          'inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-secondary-dark bg-white text-gray-600 shadow-sm transition-colors hover:bg-secondary hover:text-primary'
         }
         aria-label={label}
       >
@@ -414,7 +412,7 @@ export default function AdminLayout() {
       {/* Desktop sidebar */}
       <div className={`hidden transition-[width] duration-300 lg:fixed lg:inset-y-0 lg:flex lg:flex-col ${desktopCollapsed ? 'lg:w-24' : 'lg:w-72'}`}>
         <div className="flex grow flex-col overflow-visible border-r border-secondary-dark bg-white pt-4 pb-4">
-          <div className={`mb-2 flex shrink-0 items-center border-b border-secondary-dark px-4 pb-4 ${desktopCollapsed ? 'justify-center' : 'justify-between gap-3'}`}>
+          <div className={`flex h-20 shrink-0 items-center border-b border-secondary-dark px-4 ${desktopCollapsed ? 'justify-center' : 'justify-start'}`}>
             <Link to="/" className="flex min-w-0 items-center justify-center">
               <img 
                 src="/logo.jpeg" 
@@ -422,21 +420,16 @@ export default function AdminLayout() {
                 className={`w-auto object-contain transition-all duration-300 ${desktopCollapsed ? 'h-10 max-w-12' : 'h-16'}`}
               />
             </Link>
-            {!desktopCollapsed && (
-              <DesktopCollapseButton collapsed={desktopCollapsed} onToggle={() => setDesktopCollapsed((value) => !value)} />
-            )}
           </div>
-          {desktopCollapsed && (
-            <div className="px-4 pb-4">
-              <DesktopCollapseButton collapsed={desktopCollapsed} onToggle={() => setDesktopCollapsed((value) => !value)} />
-            </div>
-          )}
-          <div className={`${desktopCollapsed ? 'px-3 pt-4' : 'px-5 pt-6'}`}>
+          <div className={`pt-4 ${desktopCollapsed ? 'flex justify-center px-0' : 'px-4'}`}>
+            <DesktopCollapseButton collapsed={desktopCollapsed} onToggle={() => setDesktopCollapsed((value) => !value)} />
+          </div>
+          <div className={`${desktopCollapsed ? 'px-3 pt-6' : 'px-5 pt-6'}`}>
             <p className={`text-xs font-semibold uppercase tracking-[0.14em] text-gray-400 ${desktopCollapsed ? 'text-center' : ''}`}>
               {desktopCollapsed ? 'Nav' : 'Admin Navigation'}
             </p>
           </div>
-          <nav className={`mt-5 flex-1 space-y-1 overflow-visible ${desktopCollapsed ? 'px-3' : 'px-3'}`}>
+          <nav className="mt-5 flex-1 space-y-1 overflow-visible px-3">
             {isLoadingUser ? (
               <NavSkeleton collapsed={desktopCollapsed} />
             ) : (
