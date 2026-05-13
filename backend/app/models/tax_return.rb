@@ -114,10 +114,13 @@ class TaxReturn < ApplicationRecord
   private
 
   def sync_signature_status_for_stage
+    @signature_status_synced_from_stage = false
     return unless workflow_stage
     return if signature_completed?
 
-    self.signature_status = signature_requested_by_stage? ? "requested" : "not_needed"
+    stage_signature_status = signature_requested_by_stage? ? "requested" : "not_needed"
+    @signature_status_synced_from_stage = signature_status != stage_signature_status
+    self.signature_status = stage_signature_status
   end
 
   def signature_completion_check_needed?
@@ -213,9 +216,15 @@ class TaxReturn < ApplicationRecord
 
     saved_change_to_portal_visible? ||
       saved_change_to_documents_enabled? ||
-      saved_change_to_signature_status? ||
-      saved_change_to_signature_requested_at? ||
+      saved_change_to_manual_signature_fields? ||
       saved_change_to_signed_at?
+  end
+
+  def saved_change_to_manual_signature_fields?
+    return false if @signature_status_synced_from_stage
+
+    saved_change_to_signature_status? ||
+      saved_change_to_signature_requested_at?
   end
 
   def log_payment_change

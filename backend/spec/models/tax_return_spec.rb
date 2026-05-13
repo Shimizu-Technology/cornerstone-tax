@@ -139,7 +139,7 @@ RSpec.describe TaxReturn, type: :model do
 
     expect(tax_return.signature_status).to eq("requested")
     expect(tax_return.signature_requested_at).to be_present
-    expect(tax_return.workflow_events.pluck(:event_type)).to include("status_changed", "portal_updated")
+    expect(tax_return.workflow_events.pluck(:event_type)).to contain_exactly("status_changed")
   end
 
   it "does not allow filing before the signature is signed or waived" do
