@@ -313,7 +313,7 @@ module Api
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color }
           end,
-          contacts: client.client_contacts.order(is_primary: :desc, created_at: :asc).map { |contact| contact_summary(contact) },
+          contacts: sorted_client_contacts(client).map { |contact| contact_summary(contact) },
           tax_return: latest_return ? {
             id: latest_return.id,
             tax_year: latest_return.tax_year,
@@ -372,7 +372,7 @@ module Api
               is_disabled: dep.is_disabled
             }
           end,
-          tax_returns: client.tax_returns.order(created_at: :desc).map do |tr|
+          tax_returns: sorted_tax_returns(client).map do |tr|
             {
               id: tr.id,
               tax_year: tr.tax_year,
@@ -408,7 +408,7 @@ module Api
               income_sources: tr.income_sources.map do |src|
                 { id: src.id, source_type: src.source_type, payer_name: src.payer_name }
               end,
-              workflow_events: tr.workflow_events.recent.limit(10).map do |event|
+              workflow_events: recent_workflow_events(tr).map do |event|
                 {
                   id: event.id,
                   event_type: event.event_type,
@@ -422,6 +422,18 @@ module Api
             }
           end
         }
+      end
+
+      def sorted_client_contacts(client)
+        client.client_contacts.sort_by { |contact| [contact.is_primary ? 0 : 1, contact.created_at.to_i] }
+      end
+
+      def sorted_tax_returns(client)
+        client.tax_returns.sort_by { |tax_return| tax_return.created_at.to_i }.reverse
+      end
+
+      def recent_workflow_events(tax_return)
+        tax_return.workflow_events.sort_by { |event| event.created_at.to_i }.reverse.first(10)
       end
 
       def create_contacts_for_client(client)

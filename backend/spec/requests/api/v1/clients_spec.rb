@@ -17,6 +17,56 @@ RSpec.describe "Api::V1::Clients", type: :request do
     )
   end
 
+  describe "GET /api/v1/clients/:id" do
+    it "uses preloaded tax return child associations in the detail response" do
+      client = Client.create!(
+        first_name: "Detail",
+        last_name: "Client",
+        email: "detail-client@example.com"
+      )
+
+      2.times do |index|
+        tax_return = client.tax_returns.create!(
+          tax_year: 2026 - index,
+          workflow_stage: workflow_stage,
+          created_at: index.days.ago
+        )
+        tax_return.income_sources.create!(
+          source_type: "w2",
+          payer_name: "Employer #{index}"
+        )
+        tax_return.workflow_events.create!(
+          event_type: "note_added",
+          description: "Event #{index}",
+          created_at: index.minutes.ago
+        )
+      end
+
+      child_selects = []
+      subscriber = lambda do |_name, _started, _finished, _id, payload|
+        sql = payload[:sql]
+        child_selects << sql if sql.match?(/SELECT .*FROM "(income_sources|workflow_events)"/)
+      end
+
+      ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+        get "/api/v1/clients/#{client.id}", headers: auth_headers_for(staff_user)
+      end
+
+      expect(response).to have_http_status(:ok)
+      returns = JSON.parse(response.body).dig("client", "tax_returns")
+      expect(returns.flat_map { |tax_return| tax_return.fetch("income_sources") }
+                    .map { |source| source.fetch("payer_name") }).to match_array(["Employer 0", "Employer 1"])
+      expect(returns.flat_map { |tax_return| tax_return.fetch("workflow_events") }
+                    .map { |event| event.fetch("description") }).to match_array(["Event 0", "Event 1"])
+
+      individual_child_lookups = child_selects.select do |sql|
+        sql.include?('"income_sources"."tax_return_id" =') ||
+          sql.include?('"workflow_events"."tax_return_id" =')
+      end
+      expect(individual_child_lookups).to be_empty
+    end
+  end
+
   describe "POST /api/v1/clients" do
     it "logs quick-created tax returns without treating the initial stage as a status change" do
       post "/api/v1/clients",
