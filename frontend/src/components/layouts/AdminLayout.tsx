@@ -309,7 +309,11 @@ export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [desktopCollapsed, setDesktopCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
-    return window.localStorage.getItem(desktopSidebarStorageKey) === 'true'
+    try {
+      return window.localStorage.getItem(desktopSidebarStorageKey) === 'true'
+    } catch {
+      return false
+    }
   })
   const [isAdmin, setIsAdmin] = useState(false)
   const [isLoadingUser, setIsLoadingUser] = useState(true)
@@ -338,7 +342,11 @@ export default function AdminLayout() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    window.localStorage.setItem(desktopSidebarStorageKey, String(desktopCollapsed))
+    try {
+      window.localStorage.setItem(desktopSidebarStorageKey, String(desktopCollapsed))
+    } catch {
+      // Storage can be unavailable in private or locked-down browser contexts.
+    }
   }, [desktopCollapsed])
 
   // Filter navigation based on admin status (CST-26: enforce adminOnly flag)
