@@ -5,7 +5,7 @@ require "rails_helper"
 RSpec.describe "Api::V1::IntakeDocuments", type: :request do
   let!(:stage) { WorkflowStage.create!(name: "Intake Received", slug: "intake_received", position: 1) }
 
-  def submit_intake
+  def submit_intake(overrides = {})
     post "/api/v1/intake",
          params: {
            intake: {
@@ -19,7 +19,7 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
              signature: "Intake Client",
              signature_date: Date.current.iso8601,
              authorization_confirmed: true
-           }
+           }.merge(overrides)
          }
   end
 
@@ -32,7 +32,173 @@ RSpec.describe "Api::V1::IntakeDocuments", type: :request do
       token = payload.dig("document_upload", "upload_token")
 
       expect(token).to be_present
-      expect(TaxReturn.find_signed!(token, purpose: :intake_document_upload)).to eq(TaxReturn.last)
+      tax_return = TaxReturn.find_signed!(token, purpose: :intake_document_upload)
+      status_events = tax_return.workflow_events.where(event_type: "status_changed")
+
+      expect(tax_return).to eq(TaxReturn.last)
+      expect(status_events).to be_empty
+    end
+
+    it "preserves omitted optional intake fields for returning clients" do
+      client = Client.create!(
+        first_name: "Intake",
+        last_name: "Client",
+        email: "intake-docs@example.com",
+        spouse_name: "Former Spouse",
+        spouse_dob: "1988-02-03",
+        changes_from_prior_year: "Moved",
+        bank_routing_number_encrypted: "123456789",
+        bank_account_number_encrypted: "987654321",
+        bank_account_type: "checking"
+      )
+
+      submit_intake
+
+      expect(response).to have_http_status(:created)
+      client.reload
+      expect(client.spouse_name).to eq("Former Spouse")
+      expect(client.spouse_dob).to eq(Date.parse("1988-02-03"))
+      expect(client.changes_from_prior_year).to eq("Moved")
+      expect(client.bank_routing_number_encrypted).to eq("123456789")
+      expect(client.bank_account_number_encrypted).to eq("987654321")
+      expect(client.bank_account_type).to eq("checking")
+    end
+
+    it "clears explicitly submitted blank optional intake fields for returning clients" do
+      client = Client.create!(
+        first_name: "Intake",
+        last_name: "Client",
+        email: "intake-docs@example.com",
+        spouse_name: "Former Spouse",
+        spouse_dob: "1988-02-03",
+        changes_from_prior_year: "Moved",
+        bank_routing_number_encrypted: "123456789",
+        bank_account_number_encrypted: "987654321",
+        bank_account_type: "checking"
+      )
+
+      submit_intake(
+        spouse_name: nil,
+        spouse_dob: nil,
+        changes_from_prior_year: nil,
+        bank_routing_number: nil,
+        bank_account_number: nil,
+        bank_account_type: nil
+      )
+
+      expect(response).to have_http_status(:created)
+      client.reload
+      expect(client.spouse_name).to be_nil
+      expect(client.spouse_dob).to be_nil
+      expect(client.changes_from_prior_year).to be_nil
+      expect(client.bank_routing_number_encrypted).to be_nil
+      expect(client.bank_account_number_encrypted).to be_nil
+      expect(client.bank_account_type).to be_nil
+    end
+
+    it "reuses the current public intake tax return instead of rolling back duplicate submissions" do
+      client = Client.create!(
+        first_name: "Intake",
+        last_name: "Client",
+        email: "intake-docs@example.com"
+      )
+      tax_return = client.tax_returns.create!(
+        tax_year: Date.current.year,
+        workflow_stage: stage,
+        return_type: "individual",
+        form_type: "general",
+        source: "admin_created",
+        jurisdiction: "federal",
+        portal_visible: false,
+        documents_enabled: false
+      )
+      status_event_count = tax_return.workflow_events.where(event_type: "status_changed").count
+
+      expect do
+        submit_intake
+      end.not_to change(TaxReturn, :count)
+
+      expect(response).to have_http_status(:created)
+      payload = JSON.parse(response.body)
+      tax_return.reload
+      expect(payload.dig("tax_return", "id")).to eq(tax_return.id)
+      expect(tax_return.source).to eq("admin_created")
+      expect(tax_return.jurisdiction).to eq("federal")
+      expect(tax_return.portal_visible).to be(false)
+      expect(tax_return.documents_enabled).to be(false)
+      expect(tax_return.intake_submissions.count).to eq(1)
+      expect(tax_return.workflow_events.where(event_type: "status_changed").count).to eq(status_event_count)
+    end
+
+    it "replaces submitted dependents and income sources on returning-client resubmission" do
+      client = Client.create!(
+        first_name: "Intake",
+        last_name: "Client",
+        email: "intake-docs@example.com"
+      )
+      tax_return = client.tax_returns.create!(
+        tax_year: Date.current.year,
+        workflow_stage: stage,
+        return_type: "individual",
+        form_type: "general",
+        source: "public_intake"
+      )
+      client.dependents.create!(name: "Old Dependent", relationship: "Child")
+      tax_return.income_sources.create!(source_type: "w2", payer_name: "Old Employer")
+
+      submitted_dependents = [
+        {
+          name: "New Dependent",
+          date_of_birth: "2015-05-01",
+          relationship: "Child",
+          months_lived_with_client: 12,
+          is_student: true,
+          is_disabled: false,
+          can_be_claimed_by_other: false
+        }
+      ]
+      submitted_income_sources = [
+        {
+          source_type: "1099",
+          payer_name: "New Payer",
+          notes: "Contract income"
+        }
+      ]
+
+      submit_intake(dependents: submitted_dependents, income_sources: submitted_income_sources)
+
+      expect(response).to have_http_status(:created)
+      expect(client.dependents.reload.pluck(:name)).to eq(["New Dependent"])
+      expect(tax_return.income_sources.reload.pluck(:payer_name)).to eq(["New Payer"])
+
+      submit_intake(dependents: submitted_dependents, income_sources: submitted_income_sources)
+
+      expect(response).to have_http_status(:created)
+      expect(client.dependents.reload.pluck(:name)).to eq(["New Dependent"])
+      expect(tax_return.income_sources.reload.pluck(:payer_name)).to eq(["New Payer"])
+    end
+
+    it "clears dependents and income sources when re-submitted as empty arrays" do
+      client = Client.create!(
+        first_name: "Intake",
+        last_name: "Client",
+        email: "intake-docs@example.com"
+      )
+      tax_return = client.tax_returns.create!(
+        tax_year: Date.current.year,
+        workflow_stage: stage,
+        return_type: "individual",
+        form_type: "general",
+        source: "public_intake"
+      )
+      client.dependents.create!(name: "Old Dependent", relationship: "Child")
+      tax_return.income_sources.create!(source_type: "w2", payer_name: "Old Employer")
+
+      submit_intake(dependents: [], income_sources: [])
+
+      expect(response).to have_http_status(:created)
+      expect(client.dependents.reload).to be_empty
+      expect(tax_return.income_sources.reload).to be_empty
     end
   end
 

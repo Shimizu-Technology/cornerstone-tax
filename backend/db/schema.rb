@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_04_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_13_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -180,6 +180,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_000000) do
     t.bigint "tax_return_id", null: false
     t.datetime "updated_at", null: false
     t.index ["tax_return_id"], name: "index_income_sources_on_tax_return_id"
+  end
+
+  create_table "intake_submissions", force: :cascade do |t|
+    t.bigint "client_id", null: false
+    t.datetime "created_at", null: false
+    t.jsonb "payload", default: {}, null: false
+    t.string "source", default: "public_intake", null: false
+    t.string "status", default: "received", null: false
+    t.datetime "submitted_at", null: false
+    t.bigint "tax_return_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["client_id"], name: "index_intake_submissions_on_client_id"
+    t.index ["source"], name: "index_intake_submissions_on_source"
+    t.index ["status"], name: "index_intake_submissions_on_status"
+    t.index ["submitted_at"], name: "index_intake_submissions_on_submitted_at"
+    t.index ["tax_return_id"], name: "index_intake_submissions_on_tax_return_id"
   end
 
   create_table "notifications", force: :cascade do |t|
@@ -381,19 +397,53 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_000000) do
   end
 
   create_table "tax_returns", force: :cascade do |t|
+    t.integer "amount_paid_cents", default: 0, null: false
     t.bigint "assigned_to_id"
+    t.integer "base_fee_cents", default: 0, null: false
     t.bigint "client_id", null: false
     t.datetime "completed_at"
     t.datetime "created_at", null: false
+    t.integer "discount_amount_cents", default: 0, null: false
+    t.text "discount_reason"
+    t.boolean "documents_enabled", default: true, null: false
+    t.string "drt_confirmation"
+    t.date "due_on"
+    t.jsonb "fee_line_items", default: [], null: false
+    t.datetime "filed_at"
+    t.string "filing_status", default: "not_filed", null: false
+    t.string "form_type", default: "general", null: false
+    t.string "irs_confirmation"
+    t.string "jurisdiction", default: "both", null: false
     t.text "notes"
+    t.datetime "paid_at"
+    t.text "payment_notes"
+    t.string "payment_status", default: "unpaid", null: false
+    t.boolean "portal_visible", default: false, null: false
+    t.string "priority", default: "normal", null: false
+    t.datetime "received_at"
+    t.string "return_type", default: "individual", null: false
     t.bigint "reviewed_by_id"
+    t.datetime "signature_requested_at"
+    t.string "signature_status", default: "not_needed", null: false
+    t.datetime "signed_at"
+    t.string "source", default: "admin_created", null: false
+    t.integer "tax_outcome_amount_cents", default: 0, null: false
+    t.text "tax_outcome_notes"
+    t.string "tax_outcome_status", default: "unknown", null: false
     t.integer "tax_year", null: false
     t.datetime "updated_at", null: false
     t.bigint "workflow_stage_id"
     t.index ["assigned_to_id"], name: "index_tax_returns_on_assigned_to_id"
-    t.index ["client_id", "tax_year"], name: "index_tax_returns_on_client_id_and_tax_year", unique: true
+    t.index ["client_id", "tax_year", "return_type", "form_type"], name: "index_tax_returns_unique_work_item", unique: true
     t.index ["client_id"], name: "index_tax_returns_on_client_id"
+    t.index ["due_on"], name: "index_tax_returns_on_due_on"
+    t.index ["filing_status"], name: "index_tax_returns_on_filing_status"
+    t.index ["payment_status"], name: "index_tax_returns_on_payment_status"
+    t.index ["portal_visible"], name: "index_tax_returns_on_portal_visible"
+    t.index ["priority"], name: "index_tax_returns_on_priority"
+    t.index ["return_type"], name: "index_tax_returns_on_return_type"
     t.index ["reviewed_by_id"], name: "index_tax_returns_on_reviewed_by_id"
+    t.index ["tax_outcome_status"], name: "index_tax_returns_on_tax_outcome_status"
     t.index ["workflow_stage_id"], name: "index_tax_returns_on_workflow_stage_id"
   end
 
@@ -449,7 +499,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_000000) do
     t.index ["tax_return_id"], name: "index_time_entries_on_tax_return_id"
     t.index ["time_category_id"], name: "index_time_entries_on_time_category_id"
     t.index ["user_id"], name: "index_time_entries_on_user_id"
-    t.index ["user_id"], name: "index_time_entries_one_active_per_user", unique: true, where: "((status)::text = ANY (ARRAY[('clocked_in'::character varying)::text, ('on_break'::character varying)::text]))"
+    t.index ["user_id"], name: "index_time_entries_one_active_per_user", unique: true, where: "((status)::text = ANY ((ARRAY['clocked_in'::character varying, 'on_break'::character varying])::text[]))"
     t.index ["work_date"], name: "index_time_entries_on_work_date"
   end
 
@@ -506,7 +556,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_000000) do
     t.index ["client_id"], name: "index_users_on_client_id_unique", unique: true, where: "(client_id IS NOT NULL)"
     t.index ["email"], name: "index_users_on_email"
     t.index ["role"], name: "index_users_on_role"
-    t.check_constraint "role::text = ANY (ARRAY['admin'::character varying::text, 'employee'::character varying::text, 'client'::character varying::text])", name: "check_valid_role"
+    t.check_constraint "role::text = ANY (ARRAY['admin'::character varying, 'employee'::character varying, 'client'::character varying]::text[])", name: "check_valid_role"
   end
 
   create_table "workflow_events", force: :cascade do |t|
@@ -555,6 +605,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_000000) do
   add_foreign_key "documents", "tax_returns"
   add_foreign_key "documents", "users", column: "uploaded_by_id"
   add_foreign_key "income_sources", "tax_returns"
+  add_foreign_key "intake_submissions", "clients"
+  add_foreign_key "intake_submissions", "tax_returns"
   add_foreign_key "notifications", "clients"
   add_foreign_key "notifications", "tax_returns"
   add_foreign_key "operation_cycles", "client_operation_assignments"

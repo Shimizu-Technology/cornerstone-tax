@@ -109,18 +109,22 @@ module Api
               initial_stage = WorkflowStage.find_by(slug: "intake_received") ||
                               WorkflowStage.active.ordered.first
               tax_year = (params.dig(:client, :tax_year) || Date.current.year).to_i
-              
-              tax_return = client.tax_returns.create!(
-                tax_year: tax_year,
-                workflow_stage: initial_stage
-              )
 
-              # Log workflow event
-              tax_return.workflow_events.create!(
-                event_type: "status_changed",
-                new_value: initial_stage&.name,
-                description: "Client created via quick create"
+              tax_return = client.tax_returns.build(
+                tax_year: tax_year,
+                workflow_stage: initial_stage,
+                source: "admin_created",
+                return_type: client.client_type == "business" ? "business" : "individual",
+                portal_visible: false,
+                documents_enabled: true,
+                received_at: Time.current
               )
+              tax_return.current_actor = current_user
+
+              TaxReturn.transaction do
+                tax_return.save!
+                log_return_created_event(tax_return)
+              end
             end
 
             render json: { 
@@ -133,6 +137,10 @@ module Api
         end
       rescue ActiveRecord::RecordInvalid => e
         render json: { errors: [e.message] }, status: :unprocessable_entity
+      rescue ActiveRecord::RecordNotUnique
+        render json: {
+          errors: ["A tax return with these client, year, return type, and form details already exists"]
+        }, status: :unprocessable_entity
       end
 
       # PATCH /api/v1/clients/:id
@@ -276,6 +284,15 @@ module Api
         end
       end
 
+      def log_return_created_event(tax_return)
+        tax_return.workflow_events.create!(
+          event_type: "return_created",
+          new_value: tax_return.workflow_stage&.name,
+          description: "Tax return created during client quick create",
+          user: current_user
+        )
+      end
+
       def client_summary(client)
         latest_return = client.tax_returns.max_by(&:created_at)
 
@@ -296,7 +313,7 @@ module Api
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color }
           end,
-          contacts: client.client_contacts.order(is_primary: :desc, created_at: :asc).map { |contact| contact_summary(contact) },
+          contacts: sorted_client_contacts(client).map { |contact| contact_summary(contact) },
           tax_return: latest_return ? {
             id: latest_return.id,
             tax_year: latest_return.tax_year,
@@ -355,11 +372,31 @@ module Api
               is_disabled: dep.is_disabled
             }
           end,
-          tax_returns: client.tax_returns.order(created_at: :desc).map do |tr|
+          tax_returns: sorted_tax_returns(client).map do |tr|
             {
               id: tr.id,
               tax_year: tr.tax_year,
+              return_type: tr.return_type,
+              form_type: tr.form_type,
+              jurisdiction: tr.jurisdiction,
+              source: tr.source,
+              priority: tr.priority,
               notes: tr.notes,
+              payment_status: tr.payment_status,
+              base_fee_cents: tr.base_fee_cents,
+              discount_amount_cents: tr.discount_amount_cents,
+              amount_paid_cents: tr.amount_paid_cents,
+              fee_line_items: tr.fee_line_items,
+              fee_line_items_total_cents: tr.fee_line_items_total_cents,
+              final_fee_cents: tr.final_fee_cents,
+              balance_due_cents: tr.balance_due_cents,
+              tax_outcome_status: tr.tax_outcome_status,
+              tax_outcome_amount_cents: tr.tax_outcome_amount_cents,
+              tax_outcome_notes: tr.tax_outcome_notes,
+              filing_status: tr.filing_status,
+              portal_visible: tr.portal_visible,
+              documents_enabled: tr.documents_enabled,
+              signature_status: tr.signature_status,
               status: tr.workflow_stage&.name,
               status_slug: tr.workflow_stage&.slug,
               status_color: tr.workflow_stage&.color,
@@ -371,7 +408,7 @@ module Api
               income_sources: tr.income_sources.map do |src|
                 { id: src.id, source_type: src.source_type, payer_name: src.payer_name }
               end,
-              workflow_events: tr.workflow_events.recent.limit(10).map do |event|
+              workflow_events: recent_workflow_events(tr).map do |event|
                 {
                   id: event.id,
                   event_type: event.event_type,
@@ -385,6 +422,18 @@ module Api
             }
           end
         }
+      end
+
+      def sorted_client_contacts(client)
+        client.client_contacts.sort_by { |contact| [contact.is_primary ? 0 : 1, contact.created_at.to_i] }
+      end
+
+      def sorted_tax_returns(client)
+        client.tax_returns.sort_by { |tax_return| tax_return.created_at.to_i }.reverse
+      end
+
+      def recent_workflow_events(tax_return)
+        tax_return.workflow_events.sort_by { |event| event.created_at.to_i }.reverse.first(10)
       end
 
       def create_contacts_for_client(client)

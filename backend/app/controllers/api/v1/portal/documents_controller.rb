@@ -12,7 +12,7 @@ module Api
 
         # GET /api/v1/portal/tax_returns/:tax_return_id/documents
         def index
-          documents = @tax_return.documents.order(created_at: :desc)
+          documents = @tax_return.documents.includes(:uploaded_by).order(created_at: :desc)
           render json: {
             documents: documents.map { |doc| serialize_document(doc) }
           }
@@ -20,6 +20,10 @@ module Api
 
         # POST /api/v1/portal/tax_returns/:tax_return_id/documents/presign
         def presign
+          unless @tax_return.documents_enabled?
+            return render json: { error: "Document uploads are not enabled for this return" }, status: :forbidden
+          end
+
           unless S3Service.configured?
             return render json: { error: "File uploads are not available at this time" }, status: :service_unavailable
           end
@@ -72,6 +76,10 @@ module Api
 
         # POST /api/v1/portal/tax_returns/:tax_return_id/documents
         def create
+          unless @tax_return.documents_enabled?
+            return render json: { error: "Document uploads are not enabled for this return" }, status: :forbidden
+          end
+
           s3_key = document_params[:s3_key]
           expected_prefix = "tax_returns/#{@tax_return.id}/"
           unless s3_key.present? && s3_key.start_with?(expected_prefix)
@@ -137,7 +145,7 @@ module Api
         private
 
         def set_tax_return
-          @tax_return = current_client.tax_returns.find(params[:tax_return_id])
+          @tax_return = current_client.tax_returns.where(portal_visible: true).find(params[:tax_return_id])
         end
 
         def set_document

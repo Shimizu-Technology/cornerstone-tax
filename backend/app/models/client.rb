@@ -3,6 +3,7 @@
 class Client < ApplicationRecord
   has_many :dependents, dependent: :destroy
   has_many :tax_returns, dependent: :destroy
+  has_many :intake_submissions, dependent: :destroy
   has_many :time_entries, dependent: :nullify
   has_many :transmittals, dependent: :destroy
   has_many :notifications, dependent: :destroy

@@ -68,7 +68,7 @@ Rails.application.routes.draw do
           post :reopen
         end
       end
-      resources :tax_returns, only: [:index, :show, :update] do
+      resources :tax_returns, only: [:index, :show, :create, :update] do
         member do
           post :assign
         end

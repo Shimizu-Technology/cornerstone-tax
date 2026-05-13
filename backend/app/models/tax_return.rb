@@ -1,12 +1,38 @@
 # frozen_string_literal: true
 
 class TaxReturn < ApplicationRecord
+  RETURN_TYPES = %w[individual business amended prior_year extension notice other].freeze
+  JURISDICTIONS = %w[federal guam both other].freeze
+  SOURCES = %w[public_intake admin_created spreadsheet_import portal legacy_import].freeze
+  PRIORITIES = %w[normal high urgent].freeze
+  PAYMENT_STATUSES = %w[unpaid partially_paid paid waived].freeze
+  FILING_STATUSES = %w[not_filed ready_to_file filed_drt filed_irs accepted rejected paper_filed].freeze
+  SIGNATURE_STATUSES = %w[not_needed requested signed waived].freeze
+  SIGNATURE_REQUEST_STAGE_SLUGS = %w[ready_to_sign filing ready_for_pickup complete].freeze
+  SIGNATURE_COMPLETE_STAGE_SLUGS = %w[filing ready_for_pickup complete].freeze
+  SIGNATURE_COMPLETE_STATUSES = %w[signed waived].freeze
+  TAX_OUTCOME_STATUSES = %w[unknown refund tax_due no_balance].freeze
+  PAYMENT_AUDIT_FIELDS = %w[
+    payment_status base_fee_cents discount_amount_cents discount_reason
+    amount_paid_cents paid_at payment_notes fee_line_items
+  ].freeze
+  FILING_AUDIT_FIELDS = %w[
+    filing_status filed_at drt_confirmation irs_confirmation
+  ].freeze
+  TAX_OUTCOME_AUDIT_FIELDS = %w[
+    tax_outcome_status tax_outcome_amount_cents tax_outcome_notes
+  ].freeze
+  PORTAL_AUDIT_FIELDS = %w[
+    portal_visible documents_enabled signature_status signature_requested_at signed_at
+  ].freeze
+
   belongs_to :client
   belongs_to :workflow_stage, optional: true
   belongs_to :assigned_to, class_name: "User", optional: true
   belongs_to :reviewed_by, class_name: "User", optional: true
 
   has_many :income_sources, dependent: :destroy
+  has_many :intake_submissions, dependent: :destroy
   has_many :workflow_events, dependent: :destroy
   has_many :documents, dependent: :destroy
   has_many :time_entries, dependent: :nullify
@@ -14,7 +40,22 @@ class TaxReturn < ApplicationRecord
   has_many :notifications, dependent: :destroy
 
   validates :tax_year, presence: true, numericality: { only_integer: true }
-  validates :client_id, uniqueness: { scope: :tax_year, message: "already has a return for this tax year" }
+  validates :client_id, uniqueness: {
+    scope: [:tax_year, :return_type, :form_type],
+    message: "already has this return type/form for this tax year"
+  }
+  validates :return_type, inclusion: { in: RETURN_TYPES }
+  validates :jurisdiction, inclusion: { in: JURISDICTIONS }
+  validates :source, inclusion: { in: SOURCES }
+  validates :priority, inclusion: { in: PRIORITIES }
+  validates :payment_status, inclusion: { in: PAYMENT_STATUSES }
+  validates :filing_status, inclusion: { in: FILING_STATUSES }
+  validates :signature_status, inclusion: { in: SIGNATURE_STATUSES }
+  validates :tax_outcome_status, inclusion: { in: TAX_OUTCOME_STATUSES }
+  validates :base_fee_cents, :discount_amount_cents, :amount_paid_cents,
+            numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :tax_outcome_amount_cents, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validate :signature_complete_before_filing, if: :signature_completion_check_needed?
 
   scope :for_year, ->(year) { where(tax_year: year) }
   scope :current_year, -> { for_year(Date.current.year) }
@@ -25,15 +66,80 @@ class TaxReturn < ApplicationRecord
   after_save :log_status_change, if: :saved_change_to_workflow_stage_id?
   after_save :log_assignment_change, if: :saved_change_to_assigned_to_id?
   after_save :log_notes_change, if: :saved_change_to_notes?
+  after_save :log_payment_change, if: :saved_change_to_payment_fields?
+  after_save :log_filing_change, if: :saved_change_to_filing_fields?
+  after_save :log_tax_outcome_change, if: :saved_change_to_tax_outcome_fields?
+  after_save :log_portal_change, if: :saved_change_to_portal_fields?
+  before_validation :sync_operational_timestamps
   after_commit :send_status_notification, on: :update, if: :saved_change_to_workflow_stage_id?
 
   def status_name
     workflow_stage&.name || "Unknown"
   end
 
+  def final_fee_cents
+    [base_fee_cents.to_i + fee_line_items_total_cents - discount_amount_cents.to_i, 0].max
+  end
+
+  def balance_due_cents
+    [final_fee_cents - amount_paid_cents.to_i, 0].max
+  end
+
+  def fee_line_items_total_cents
+    Array(fee_line_items).sum { |item| (item["amount_cents"] || item[:amount_cents]).to_i }
+  end
+
+  def sync_operational_timestamps
+    self.form_type = "general" if form_type.blank?
+    self.received_at ||= Time.current
+    sync_signature_status_for_stage
+    self.paid_at = Time.current if payment_status == "paid" && paid_at.blank?
+    self.filed_at = Time.current if filed_status? && filed_at.blank?
+    self.signature_requested_at = Time.current if signature_status == "requested" && signature_requested_at.blank?
+    self.signed_at = Time.current if signature_status == "signed" && signed_at.blank?
+  end
+
+  def filed_status?
+    filing_status.in?(%w[filed_drt filed_irs paper_filed])
+  end
+
+  def signature_requested_by_stage?
+    workflow_stage&.slug.in?(SIGNATURE_REQUEST_STAGE_SLUGS)
+  end
+
+  def signature_completed?
+    signature_status.in?(SIGNATURE_COMPLETE_STATUSES)
+  end
+
   private
 
+  def sync_signature_status_for_stage
+    @signature_status_synced_from_stage = false
+    return unless workflow_stage
+    return if signature_completed?
+
+    stage_signature_status = signature_requested_by_stage? ? "requested" : "not_needed"
+    @signature_status_synced_from_stage = signature_status != stage_signature_status
+    self.signature_status = stage_signature_status
+  end
+
+  def signature_completion_check_needed?
+    will_save_change_to_workflow_stage_id? ||
+      will_save_change_to_filing_status? ||
+      will_save_change_to_signature_status?
+  end
+
+  def signature_complete_before_filing
+    return if signature_completed?
+
+    if workflow_stage&.slug.in?(SIGNATURE_COMPLETE_STAGE_SLUGS) || filed_status?
+      errors.add(:signature_status, "must be signed or waived before filing")
+    end
+  end
+
   def log_status_change
+    return if previously_new_record?
+
     old_stage = WorkflowStage.find_by(id: workflow_stage_id_before_last_save)
     workflow_events.create!(
       event_type: "status_changed",
@@ -51,6 +157,8 @@ class TaxReturn < ApplicationRecord
   end
 
   def log_assignment_change
+    return if previously_new_record?
+
     old_user = User.find_by(id: assigned_to_id_before_last_save)
     workflow_events.create!(
       event_type: "assigned",
@@ -62,6 +170,8 @@ class TaxReturn < ApplicationRecord
   end
 
   def log_notes_change
+    return if previously_new_record?
+
     workflow_events.create!(
       event_type: "note_added",
       old_value: notes_before_last_save,
@@ -69,5 +179,120 @@ class TaxReturn < ApplicationRecord
       description: "Notes updated",
       user: current_actor
     )
+  end
+
+  def saved_change_to_payment_fields?
+    return false if previously_new_record?
+
+    saved_change_to_payment_status? ||
+      saved_change_to_base_fee_cents? ||
+      saved_change_to_fee_line_items? ||
+      saved_change_to_discount_amount_cents? ||
+      saved_change_to_discount_reason? ||
+      saved_change_to_amount_paid_cents? ||
+      saved_change_to_paid_at? ||
+      saved_change_to_payment_notes?
+  end
+
+  def saved_change_to_filing_fields?
+    return false if previously_new_record?
+
+    saved_change_to_filing_status? ||
+      saved_change_to_filed_at? ||
+      saved_change_to_drt_confirmation? ||
+      saved_change_to_irs_confirmation?
+  end
+
+  def saved_change_to_tax_outcome_fields?
+    return false if previously_new_record?
+
+    saved_change_to_tax_outcome_status? ||
+      saved_change_to_tax_outcome_amount_cents? ||
+      saved_change_to_tax_outcome_notes?
+  end
+
+  def saved_change_to_portal_fields?
+    return false if previously_new_record?
+
+    saved_change_to_portal_visible? ||
+      saved_change_to_documents_enabled? ||
+      saved_change_to_manual_signature_fields? ||
+      saved_change_to_signed_at?
+  end
+
+  def saved_change_to_manual_signature_fields?
+    return false if @signature_status_synced_from_stage
+
+    saved_change_to_signature_status? ||
+      saved_change_to_signature_requested_at?
+  end
+
+  def log_payment_change
+    workflow_events.create!(
+      event_type: "payment_updated",
+      old_value: audit_values_before(PAYMENT_AUDIT_FIELDS),
+      new_value: audit_values_after(PAYMENT_AUDIT_FIELDS),
+      description: "Payment details updated: #{audit_field_names(PAYMENT_AUDIT_FIELDS)}",
+      user: current_actor
+    )
+  end
+
+  def log_filing_change
+    workflow_events.create!(
+      event_type: "filing_updated",
+      old_value: audit_values_before(FILING_AUDIT_FIELDS),
+      new_value: audit_values_after(FILING_AUDIT_FIELDS),
+      description: "Filing details updated: #{audit_field_names(FILING_AUDIT_FIELDS)}",
+      user: current_actor
+    )
+  end
+
+  def log_tax_outcome_change
+    workflow_events.create!(
+      event_type: "tax_outcome_updated",
+      old_value: audit_values_before(TAX_OUTCOME_AUDIT_FIELDS),
+      new_value: audit_values_after(TAX_OUTCOME_AUDIT_FIELDS),
+      description: "Tax outcome updated: #{audit_field_names(TAX_OUTCOME_AUDIT_FIELDS)}",
+      user: current_actor
+    )
+  end
+
+  def log_portal_change
+    workflow_events.create!(
+      event_type: "portal_updated",
+      old_value: audit_values_before(PORTAL_AUDIT_FIELDS),
+      new_value: audit_values_after(PORTAL_AUDIT_FIELDS),
+      description: "Client portal settings updated: #{audit_field_names(PORTAL_AUDIT_FIELDS)}",
+      user: current_actor
+    )
+  end
+
+  def audit_values_before(fields)
+    audit_values_for(fields, 0)
+  end
+
+  def audit_values_after(fields)
+    audit_values_for(fields, 1)
+  end
+
+  def audit_values_for(fields, value_index)
+    changed_audit_fields(fields).map do |field, values|
+      "#{field}: #{format_audit_value(values[value_index])}"
+    end.join("; ").truncate(255)
+  end
+
+  def audit_field_names(fields)
+    changed_audit_fields(fields).keys.join(", ").truncate(255)
+  end
+
+  def changed_audit_fields(fields)
+    saved_changes.slice(*fields)
+  end
+
+  def format_audit_value(value)
+    return "none" if value.nil?
+    return value.iso8601 if value.respond_to?(:iso8601)
+
+    value.to_s
   end
 end

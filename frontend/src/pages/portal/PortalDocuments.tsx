@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { PortalTaxReturnSummary, PortalDocument } from '../../lib/api'
 import { formatFileSize } from '../../lib/formatUtils'
@@ -33,6 +34,8 @@ const uploadSourceLabel = (source?: 'client' | 'staff' | 'intake') => {
 export default function PortalDocuments() {
   useEffect(() => { document.title = 'Documents | Cornerstone Client Portal' }, [])
 
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedReturnId = Number(searchParams.get('return_id') || 0)
   const [taxReturns, setTaxReturns] = useState<PortalTaxReturnSummary[]>([])
   const [selectedReturnId, setSelectedReturnId] = useState<number | null>(null)
   const [documents, setDocuments] = useState<PortalDocument[]>([])
@@ -47,6 +50,7 @@ export default function PortalDocuments() {
   const [viewingDoc, setViewingDoc] = useState<PortalDocument | null>(null)
   const viewingReturnIdRef = useRef<number | null>(null)
   const activeReturnRef = useRef<number | null>(null)
+  const initialRequestedReturnIdRef = useRef(requestedReturnId)
 
   const openDocViewer = useCallback((doc: PortalDocument) => {
     viewingReturnIdRef.current = selectedReturnId
@@ -54,6 +58,8 @@ export default function PortalDocuments() {
   }, [selectedReturnId])
 
   const closeViewer = useCallback(() => setViewingDoc(null), [])
+  const selectedReturn = taxReturns.find(tr => tr.id === selectedReturnId)
+  const uploadsEnabled = selectedReturn?.documents_enabled !== false
 
   useEffect(() => {
     async function loadReturns() {
@@ -62,7 +68,10 @@ export default function PortalDocuments() {
         if (result.data) {
           const returns = result.data.tax_returns
           setTaxReturns(returns)
-          if (returns.length > 0) setSelectedReturnId(returns[0].id)
+          if (returns.length > 0) {
+            const requestedReturn = returns.find(tr => tr.id === initialRequestedReturnIdRef.current)
+            setSelectedReturnId((requestedReturn || returns[0]).id)
+          }
         } else if (result.error) {
           setLoadError(result.error)
         }
@@ -74,6 +83,13 @@ export default function PortalDocuments() {
     }
     loadReturns()
   }, [])
+
+  useEffect(() => {
+    if (!requestedReturnId || taxReturns.length === 0 || selectedReturnId === requestedReturnId) return
+    if (taxReturns.some(tr => tr.id === requestedReturnId)) {
+      setSelectedReturnId(requestedReturnId)
+    }
+  }, [requestedReturnId, selectedReturnId, taxReturns])
 
   const loadDocuments = useCallback(async ({ clearMessages = true } = {}) => {
     if (!selectedReturnId) return
@@ -111,6 +127,11 @@ export default function PortalDocuments() {
     setUploadError(null)
     setUploadSuccess(null)
 
+    if (!uploadsEnabled) {
+      setUploadError('Document uploads are not enabled for this return right now.')
+      return
+    }
+
     const invalidSize = files.find(file => file.size > MAX_FILE_SIZE)
     if (invalidSize) {
       setUploadError(`${invalidSize.name} is too large. Maximum file size is 50MB.`)
@@ -131,7 +152,7 @@ export default function PortalDocuments() {
         documentType: inferDocumentType(file.name),
       })),
     ])
-  }, [])
+  }, [uploadsEnabled])
 
   const updateQueuedType = (id: string, documentType: string) => {
     setQueuedDocuments(prev => prev.map(doc => doc.id === id ? { ...doc, documentType } : doc))
@@ -142,7 +163,7 @@ export default function PortalDocuments() {
   }
 
   const uploadQueuedDocuments = async () => {
-    if (!selectedReturnId || queuedDocuments.length === 0 || uploading) return
+    if (!selectedReturnId || queuedDocuments.length === 0 || uploading || !uploadsEnabled) return
     const returnId = selectedReturnId
 
     setUploading(true)
@@ -282,7 +303,11 @@ export default function PortalDocuments() {
             <label className="text-sm font-medium text-gray-700">Tax Year:</label>
             <select
               value={selectedReturnId || ''}
-              onChange={e => setSelectedReturnId(parseInt(e.target.value, 10))}
+              onChange={e => {
+                const returnId = parseInt(e.target.value, 10)
+                setSelectedReturnId(returnId)
+                setSearchParams({ return_id: returnId.toString() })
+              }}
               className="px-3 py-2 border border-secondary-dark rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
             >
               {taxReturns.map(tr => <option key={tr.id} value={tr.id}>{tr.tax_year}</option>)}
@@ -294,9 +319,11 @@ export default function PortalDocuments() {
 
       <div className="bg-white rounded-xl border border-secondary-dark p-5">
         <h2 className="font-semibold text-gray-900 mb-1">Upload Documents</h2>
-        <p className="text-sm text-gray-500 mb-4">Select one or more files first. Nothing uploads until you confirm.</p>
+        <p className="text-sm text-gray-500 mb-4">
+          {uploadsEnabled ? 'Select one or more files first. Nothing uploads until you confirm.' : 'Cornerstone has disabled uploads for this return. You can still preview and download existing documents.'}
+        </p>
 
-        <div
+        {uploadsEnabled && <div
           className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
             dragActive ? 'border-primary bg-primary/5' : uploading ? 'border-gray-200 bg-gray-50' : 'border-gray-300 hover:border-primary/50 hover:bg-secondary/50'
           }`}
@@ -323,7 +350,7 @@ export default function PortalDocuments() {
               <p className="text-xs text-gray-400 mt-1">PDF, images, Word, Excel, PowerPoint, CSV, or text up to 50MB each</p>
             </div>
           </div>
-        </div>
+        </div>}
 
         {queuedDocuments.length > 0 && (
           <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">

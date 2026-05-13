@@ -15,6 +15,7 @@ import { getFilingStatusLabel } from '../../lib/constants'
 import NotFound from '../../components/common/NotFound'
 import PrintableIntakeForm from '../../components/admin/PrintableIntakeForm'
 import { FadeUp } from '../../components/ui/MotionComponents'
+import NewTaxReturnModal from '../../components/admin/NewTaxReturnModal'
 
 interface Dependent {
   id: number
@@ -50,6 +51,12 @@ interface ClientContact {
 interface TaxReturn {
   id: number
   tax_year: number
+  return_type?: string
+  form_type?: string | null
+  payment_status?: string
+  filing_status?: string
+  portal_visible?: boolean
+  balance_due_cents?: number
   notes?: string | null
   status: string
   status_slug: string
@@ -145,6 +152,7 @@ export default function ClientDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [archiving, setArchiving] = useState(false)
   const [invitingToPortal, setInvitingToPortal] = useState(false)
+  const [showTaxReturnModal, setShowTaxReturnModal] = useState(false)
   
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false)
@@ -803,6 +811,15 @@ export default function ClientDetailPage() {
             </span>
           )}
           <button
+            onClick={() => setShowTaxReturnModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-medium hover:bg-primary-dark transition-colors"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Tax Return
+          </button>
+          <button
             onClick={() => window.print()}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-secondary-dark rounded-xl text-gray-600 font-medium hover:bg-secondary transition-colors"
           >
@@ -853,6 +870,18 @@ export default function ClientDetailPage() {
           )}
         </div>
       </div>
+
+      <NewTaxReturnModal
+        isOpen={showTaxReturnModal}
+        onClose={() => setShowTaxReturnModal(false)}
+        defaultClient={client ? {
+          id: client.id,
+          full_name: client.client_type === 'business' && client.business_name ? client.business_name : client.full_name,
+          email: client.email,
+          client_type: client.client_type,
+        } : null}
+        onCreated={loadClient}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Info */}
@@ -934,7 +963,15 @@ export default function ClientDetailPage() {
           <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Tax Returns</h2>
             {client.tax_returns.length === 0 ? (
-              <p className="text-gray-500">No tax returns yet</p>
+              <div className="rounded-xl border border-dashed border-secondary-dark p-6 text-center">
+                <p className="text-gray-500 mb-3">No tax returns yet</p>
+                <button
+                  onClick={() => setShowTaxReturnModal(true)}
+                  className="text-primary hover:text-primary-dark font-medium"
+                >
+                  Add this client's first return →
+                </button>
+              </div>
             ) : (
               <div className="space-y-4">
                 {client.tax_returns.map((tr) => (
@@ -948,6 +985,9 @@ export default function ClientDetailPage() {
                         >
                           {tr.tax_year}
                         </Link>
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {tr.form_type || 'General'} • {(tr.return_type || 'individual').replaceAll('_', ' ')}
                       </span>
                       <span
                         className="px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
@@ -967,6 +1007,20 @@ export default function ClientDetailPage() {
                         Assigned to: {tr.assigned_to.name}
                       </p>
                     )}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3 text-sm">
+                      <div className="rounded-lg bg-secondary/50 p-3">
+                        <p className="text-gray-500">Payment</p>
+                        <p className="font-medium capitalize">{(tr.payment_status || 'unpaid').replaceAll('_', ' ')}</p>
+                      </div>
+                      <div className="rounded-lg bg-secondary/50 p-3">
+                        <p className="text-gray-500">Filing</p>
+                        <p className="font-medium capitalize">{(tr.filing_status || 'not_filed').replaceAll('_', ' ')}</p>
+                      </div>
+                      <div className="rounded-lg bg-secondary/50 p-3">
+                        <p className="text-gray-500">Portal</p>
+                        <p className="font-medium">{tr.portal_visible ? 'Visible' : 'Hidden'}</p>
+                      </div>
+                    </div>
                     {tr.income_sources.length > 0 && (
                       <div className="mb-3">
                         <p className="text-sm text-gray-500 mb-1">Income Sources:</p>
