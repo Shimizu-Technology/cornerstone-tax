@@ -267,6 +267,24 @@ RSpec.describe "Api::V1::TaxReturns", type: :request do
         "A tax return with these client, year, return type, and form details already exists"
       )
     end
+
+    it "returns a useful validation error when neither client nor new client details are submitted" do
+      stub_clerk_for(staff_user)
+
+      post "/api/v1/tax_returns",
+           params: {
+             tax_return: {
+               tax_year: 2030,
+               workflow_stage_id: workflow_stage.id
+             }
+           }.to_json,
+           headers: auth_headers_for(staff_user)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(JSON.parse(response.body).fetch("errors")).to include(
+        "Choose an existing client or enter new client details"
+      )
+    end
   end
 
   describe "PATCH /api/v1/tax_returns/:id" do

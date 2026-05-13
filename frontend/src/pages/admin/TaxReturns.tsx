@@ -116,6 +116,8 @@ export default function TaxReturns() {
       setReturns(prev => prev.map(r => 
         r.id === returnId ? response.data!.tax_return : r
       ))
+    } else {
+      alert(response.errors?.join(', ') || response.error || 'Failed to update tax return status')
     }
   }
 
@@ -127,6 +129,8 @@ export default function TaxReturns() {
       setReturns(prev => prev.map(r => 
         r.id === returnId ? response.data!.tax_return : r
       ))
+    } else {
+      alert(response.errors?.join(', ') || response.error || 'Failed to update assignment')
     }
   }
 

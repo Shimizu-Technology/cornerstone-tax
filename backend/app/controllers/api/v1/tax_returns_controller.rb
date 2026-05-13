@@ -194,7 +194,11 @@ module Api
 
       def create_client_for_return!
         attrs = submitted_client_attrs
-        raise ActiveRecord::RecordInvalid.new(Client.new) if attrs.blank?
+        if attrs.blank?
+          client = Client.new
+          client.errors.add(:base, "Choose an existing client or enter new client details")
+          raise ActiveRecord::RecordInvalid.new(client)
+        end
 
         Client.create!(attrs)
       end

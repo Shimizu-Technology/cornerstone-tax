@@ -8,6 +8,9 @@ class TaxReturn < ApplicationRecord
   PAYMENT_STATUSES = %w[unpaid partially_paid paid waived].freeze
   FILING_STATUSES = %w[not_filed ready_to_file filed_drt filed_irs accepted rejected paper_filed].freeze
   SIGNATURE_STATUSES = %w[not_needed requested signed waived].freeze
+  SIGNATURE_REQUEST_STAGE_SLUGS = %w[ready_to_sign filing ready_for_pickup complete].freeze
+  SIGNATURE_COMPLETE_STAGE_SLUGS = %w[filing ready_for_pickup complete].freeze
+  SIGNATURE_COMPLETE_STATUSES = %w[signed waived].freeze
   TAX_OUTCOME_STATUSES = %w[unknown refund tax_due no_balance].freeze
   PAYMENT_AUDIT_FIELDS = %w[
     payment_status base_fee_cents discount_amount_cents discount_reason
@@ -50,6 +53,7 @@ class TaxReturn < ApplicationRecord
   validates :base_fee_cents, :discount_amount_cents, :amount_paid_cents,
             numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :tax_outcome_amount_cents, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validate :signature_complete_before_filing, if: :signature_completion_check_needed?
 
   scope :for_year, ->(year) { where(tax_year: year) }
   scope :current_year, -> { for_year(Date.current.year) }
@@ -85,6 +89,7 @@ class TaxReturn < ApplicationRecord
   def sync_operational_timestamps
     self.form_type = "general" if form_type.blank?
     self.received_at ||= Time.current
+    sync_signature_status_for_stage
     self.paid_at = Time.current if payment_status == "paid" && paid_at.blank?
     self.filed_at = Time.current if filed_status? && filed_at.blank?
     self.signature_requested_at = Time.current if signature_status == "requested" && signature_requested_at.blank?
@@ -95,7 +100,36 @@ class TaxReturn < ApplicationRecord
     filing_status.in?(%w[filed_drt filed_irs paper_filed])
   end
 
+  def signature_requested_by_stage?
+    workflow_stage&.slug.in?(SIGNATURE_REQUEST_STAGE_SLUGS)
+  end
+
+  def signature_completed?
+    signature_status.in?(SIGNATURE_COMPLETE_STATUSES)
+  end
+
   private
+
+  def sync_signature_status_for_stage
+    return unless workflow_stage
+    return if signature_completed?
+
+    self.signature_status = signature_requested_by_stage? ? "requested" : "not_needed"
+  end
+
+  def signature_completion_check_needed?
+    will_save_change_to_workflow_stage_id? ||
+      will_save_change_to_filing_status? ||
+      will_save_change_to_signature_status?
+  end
+
+  def signature_complete_before_filing
+    return if signature_completed?
+
+    if workflow_stage&.slug.in?(SIGNATURE_COMPLETE_STAGE_SLUGS) || filed_status?
+      errors.add(:signature_status, "must be signed or waived before filing")
+    end
+  end
 
   def log_status_change
     return if previously_new_record?
@@ -144,7 +178,7 @@ class TaxReturn < ApplicationRecord
   def saved_change_to_payment_fields?
     return false if previously_new_record?
 
-      saved_change_to_payment_status? ||
+    saved_change_to_payment_status? ||
       saved_change_to_base_fee_cents? ||
       saved_change_to_fee_line_items? ||
       saved_change_to_discount_amount_cents? ||

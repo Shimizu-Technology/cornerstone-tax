@@ -39,7 +39,12 @@ RSpec.describe TaxReturn, type: :model do
   it "logs operational changes after creation" do
     tax_return = described_class.create!(client: client, tax_year: 2026)
 
-    tax_return.update!(payment_status: "paid", filing_status: "filed_irs", portal_visible: true)
+    tax_return.update!(
+      payment_status: "paid",
+      filing_status: "filed_irs",
+      portal_visible: true,
+      signature_status: "signed"
+    )
 
     expect(tax_return.workflow_events.pluck(:event_type)).to include(
       "payment_updated",
@@ -107,8 +112,30 @@ RSpec.describe TaxReturn, type: :model do
   it "sets filed_at when a return is marked paper filed" do
     tax_return = described_class.create!(client: client, tax_year: 2026)
 
-    tax_return.update!(filing_status: "paper_filed")
+    tax_return.update!(filing_status: "paper_filed", signature_status: "signed")
 
     expect(tax_return.filed_at).to be_present
+  end
+
+  it "requests a signature automatically when moved to ready to sign" do
+    intake_stage = WorkflowStage.create!(name: "Intake Received", slug: "intake_received", position: 1)
+    ready_to_sign_stage = WorkflowStage.create!(name: "Ready to Sign", slug: "ready_to_sign", position: 2)
+    tax_return = described_class.create!(client: client, tax_year: 2026, workflow_stage: intake_stage)
+
+    tax_return.update!(workflow_stage: ready_to_sign_stage)
+
+    expect(tax_return.signature_status).to eq("requested")
+    expect(tax_return.signature_requested_at).to be_present
+    expect(tax_return.workflow_events.pluck(:event_type)).to include("status_changed", "portal_updated")
+  end
+
+  it "does not allow filing before the signature is signed or waived" do
+    filing_stage = WorkflowStage.create!(name: "Filing", slug: "filing", position: 1)
+    tax_return = described_class.create!(client: client, tax_year: 2026)
+
+    expect(tax_return.update(workflow_stage: filing_stage)).to be(false)
+    expect(tax_return.errors[:signature_status]).to include("must be signed or waived before filing")
+
+    expect(tax_return.update(signature_status: "signed", workflow_stage: filing_stage)).to be(true)
   end
 end

@@ -456,19 +456,19 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
               <div className="mt-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-semibold text-gray-900">Fee Add-ons</h4>
-                  <button type="button" onClick={() => setFeeLineItems(items => [...items, newFeeLineItem()])} className="text-sm font-medium text-primary hover:text-primary-dark">
-                    Add schedule or service
-                  </button>
+                      <button type="button" onClick={() => setFeeLineItems(items => [...items, newFeeLineItem()])} className="shrink-0 text-sm font-medium text-primary hover:text-primary-dark">
+                        Add schedule or service
+                      </button>
                 </div>
                 {feeLineItems.length === 0 ? (
                   <p className="text-sm text-gray-500">No add-ons yet.</p>
                 ) : (
                   feeLineItems.map(item => (
-                    <div key={item.id} className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_120px_1fr_auto]">
-                      <input value={item.label} onChange={e => updateFeeItem(item.id, { label: e.target.value })} placeholder="Schedule C, rental, dividends..." className="rounded-xl border border-secondary-dark px-3 py-2" />
-                      <input value={item.amount} onChange={e => updateFeeItem(item.id, { amount: e.target.value })} placeholder="Amount" className="rounded-xl border border-secondary-dark px-3 py-2" inputMode="decimal" />
-                      <input value={item.notes} onChange={e => updateFeeItem(item.id, { notes: e.target.value })} placeholder="Optional note" className="rounded-xl border border-secondary-dark px-3 py-2" />
-                      <button type="button" onClick={() => setFeeLineItems(items => items.filter(existing => existing.id !== item.id))} className="rounded-xl px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                    <div key={item.id} className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_120px_minmax(0,1fr)_auto]">
+                      <input value={item.label} onChange={e => updateFeeItem(item.id, { label: e.target.value })} placeholder="Schedule C, rental, dividends..." className="min-w-0 rounded-xl border border-secondary-dark px-3 py-2" />
+                      <input value={item.amount} onChange={e => updateFeeItem(item.id, { amount: e.target.value })} placeholder="Amount" className="min-w-0 rounded-xl border border-secondary-dark px-3 py-2" inputMode="decimal" />
+                      <input value={item.notes} onChange={e => updateFeeItem(item.id, { notes: e.target.value })} placeholder="Optional note" className="min-w-0 rounded-xl border border-secondary-dark px-3 py-2 md:col-span-2 xl:col-span-1" />
+                      <button type="button" onClick={() => setFeeLineItems(items => items.filter(existing => existing.id !== item.id))} className="justify-self-start rounded-xl px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 xl:justify-self-auto">
                         Remove
                       </button>
                     </div>
@@ -503,7 +503,7 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Signature</label>
                 <select value={form.signature_status} onChange={e => setForm({ ...form, signature_status: e.target.value })} className="w-full rounded-xl border border-secondary-dark px-3 py-2">
-                  <option value="not_needed">Not needed</option>
+                  <option value="not_needed">Not needed yet</option>
                   <option value="requested">Requested</option>
                   <option value="signed">Signed</option>
                   <option value="waived">Waived</option>

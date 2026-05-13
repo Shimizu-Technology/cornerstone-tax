@@ -160,6 +160,19 @@ const apiErrorMessage = (result: { error?: string; errors?: string[] }, fallback
   return result.error || fallback
 }
 
+const SIGNATURE_REQUEST_STAGE_SLUGS = ['ready_to_sign', 'filing', 'ready_for_pickup', 'complete']
+const SIGNATURE_COMPLETE_STAGE_SLUGS = ['filing', 'ready_for_pickup', 'complete']
+
+const getSignatureStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    not_needed: 'Not needed yet',
+    requested: 'Signature requested',
+    signed: 'Signed',
+    waived: 'Waived',
+  }
+  return labels[status] || labelize(status)
+}
+
 export default function TaxReturnDetailPage() {
   useEffect(() => { document.title = 'Tax Return Details | Cornerstone Admin' }, [])
 
@@ -588,6 +601,9 @@ export default function TaxReturnDetailPage() {
     )
   }
 
+  const signatureStageRequiresRequest = taxReturn.workflow_stage ? SIGNATURE_REQUEST_STAGE_SLUGS.includes(taxReturn.workflow_stage.slug) : false
+  const signatureStageRequiresCompletion = taxReturn.workflow_stage ? SIGNATURE_COMPLETE_STAGE_SLUGS.includes(taxReturn.workflow_stage.slug) : false
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -622,9 +638,9 @@ export default function TaxReturnDetailPage() {
         </div>
       </FadeUp>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="xl:col-span-2 space-y-6 min-w-0">
           {/* Workflow Card */}
           <FadeUp delay={0.05}>
             <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
@@ -693,7 +709,7 @@ export default function TaxReturnDetailPage() {
                   Save
                 </button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
                   <select value={detailsForm.return_type} onChange={e => setDetailsForm({ ...detailsForm, return_type: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl">
@@ -740,7 +756,7 @@ export default function TaxReturnDetailPage() {
                   Save Payment
                 </button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Base Fee</label>
                   <input value={paymentForm.base_fee} onChange={e => setPaymentForm({ ...paymentForm, base_fee: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" inputMode="decimal" />
@@ -766,13 +782,13 @@ export default function TaxReturnDetailPage() {
                   <p className="text-xs text-gray-500">Current Balance</p>
                   <p className="text-xl font-bold text-gray-900">${dollarsFromCents(taxReturn.balance_due_cents)}</p>
                 </div>
-                <div className="sm:col-span-5 space-y-3 rounded-xl border border-secondary-dark p-4">
-                  <div className="flex items-center justify-between">
+                <div className="md:col-span-2 xl:col-span-5 space-y-3 rounded-xl border border-secondary-dark p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h3 className="text-sm font-semibold text-gray-900">Fee Add-ons</h3>
                       <p className="text-xs text-gray-500">Schedules, rentals, business income, or other extra prep work.</p>
                     </div>
-                    <button type="button" onClick={addPaymentFeeLine} className="text-sm font-medium text-primary hover:text-primary-dark">
+                    <button type="button" onClick={addPaymentFeeLine} className="self-start text-sm font-medium text-primary hover:text-primary-dark sm:self-auto">
                       Add fee line
                     </button>
                   </div>
@@ -781,11 +797,11 @@ export default function TaxReturnDetailPage() {
                   ) : (
                     <div className="space-y-2">
                       {paymentForm.fee_line_items.map(item => (
-                        <div key={item.id} className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_120px_1fr_auto]">
-                          <input value={item.label} onChange={e => updatePaymentFeeLine(item.id, { label: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Schedule C, rental, dividends..." />
-                          <input value={item.amount} onChange={e => updatePaymentFeeLine(item.id, { amount: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Amount" inputMode="decimal" />
-                          <input value={item.notes} onChange={e => updatePaymentFeeLine(item.id, { notes: e.target.value })} className="px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Optional note" />
-                          <button type="button" onClick={() => removePaymentFeeLine(item.id)} className="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl">
+                        <div key={item.id} className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_120px_minmax(0,1fr)_auto]">
+                          <input value={item.label} onChange={e => updatePaymentFeeLine(item.id, { label: e.target.value })} className="min-w-0 px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Schedule C, rental, dividends..." />
+                          <input value={item.amount} onChange={e => updatePaymentFeeLine(item.id, { amount: e.target.value })} className="min-w-0 px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Amount" inputMode="decimal" />
+                          <input value={item.notes} onChange={e => updatePaymentFeeLine(item.id, { notes: e.target.value })} className="min-w-0 px-3 py-2 border border-secondary-dark rounded-xl md:col-span-2 2xl:col-span-1" placeholder="Optional note" />
+                          <button type="button" onClick={() => removePaymentFeeLine(item.id)} className="justify-self-start px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl 2xl:justify-self-auto">
                             Remove
                           </button>
                         </div>
@@ -793,15 +809,15 @@ export default function TaxReturnDetailPage() {
                     </div>
                   )}
                 </div>
-                <div className="sm:col-span-3">
+                <div className="md:col-span-1 xl:col-span-3">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Discount Reason</label>
                   <input value={paymentForm.discount_reason} onChange={e => setPaymentForm({ ...paymentForm, discount_reason: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" placeholder="CEO approved discount, courtesy adjustment..." />
                 </div>
-                <div className="sm:col-span-2">
+                <div className="md:col-span-1 xl:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Payment Notes</label>
                   <input value={paymentForm.payment_notes} onChange={e => setPaymentForm({ ...paymentForm, payment_notes: e.target.value })} className="w-full px-3 py-2 border border-secondary-dark rounded-xl" placeholder="Cash, check #, partial payment..." />
                 </div>
-                <div className="sm:col-span-5 rounded-xl border border-secondary-dark p-4">
+                <div className="md:col-span-2 xl:col-span-5 rounded-xl border border-secondary-dark p-4">
                   <h3 className="text-sm font-semibold text-gray-900">Tax Refund or Amount Owed</h3>
                   <p className="mb-3 text-xs text-gray-500">This is separate from Cornerstone's fee balance.</p>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -876,6 +892,19 @@ export default function TaxReturnDetailPage() {
                       <option value="signed">Signed</option>
                       <option value="waived">Waived</option>
                     </select>
+                    <div className={`mt-2 rounded-xl border px-3 py-2 text-xs ${
+                      signatureStageRequiresCompletion
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : signatureStageRequiresRequest
+                          ? 'border-green-200 bg-green-50 text-green-800'
+                          : 'border-gray-200 bg-gray-50 text-gray-600'
+                    }`}>
+                      {signatureStageRequiresCompletion
+                        ? 'Signature must be signed or waived before filing continues.'
+                        : signatureStageRequiresRequest
+                          ? 'This workflow stage requests the client signature automatically.'
+                          : `Current status: ${getSignatureStatusLabel(portalForm.signature_status)}.`}
+                    </div>
                   </div>
                 </div>
               </div>
