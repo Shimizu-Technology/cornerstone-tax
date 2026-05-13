@@ -74,6 +74,10 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   document_deleted: 'Document Deleted',
   client_notified: 'Client Notified',
   reviewed: 'Reviewed',
+  payment_updated: 'Payment Updated',
+  filing_updated: 'Filing Updated',
+  tax_outcome_updated: 'Tax Outcome Updated',
+  portal_updated: 'Portal Updated',
 }
 
 const EVENT_TYPE_ICONS: Record<string, string> = {
@@ -84,6 +88,10 @@ const EVENT_TYPE_ICONS: Record<string, string> = {
   document_deleted: '🗑️',
   client_notified: '📧',
   reviewed: '✅',
+  payment_updated: '💳',
+  filing_updated: '📬',
+  tax_outcome_updated: '🧾',
+  portal_updated: '🔐',
 }
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
@@ -94,6 +102,10 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   document_deleted: 'bg-red-100 text-red-800 border-red-200',
   client_notified: 'bg-teal-100 text-teal-800 border-teal-200',
   reviewed: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  payment_updated: 'bg-green-100 text-green-800 border-green-200',
+  filing_updated: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+  tax_outcome_updated: 'bg-orange-100 text-orange-800 border-orange-200',
+  portal_updated: 'bg-slate-100 text-slate-800 border-slate-200',
 }
 
 // Audit log styling

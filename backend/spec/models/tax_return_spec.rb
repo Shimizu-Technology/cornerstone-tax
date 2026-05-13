@@ -15,7 +15,7 @@ RSpec.describe TaxReturn, type: :model do
     tax_return = described_class.create!(client: client, tax_year: 2026)
 
     expect(tax_return.workflow_events.where(event_type: %w[
-      status_changed assigned note_added payment_updated filing_updated portal_updated
+      status_changed assigned note_added payment_updated filing_updated tax_outcome_updated portal_updated
     ])).to be_empty
   end
 
@@ -42,6 +42,7 @@ RSpec.describe TaxReturn, type: :model do
     tax_return.update!(
       payment_status: "paid",
       filing_status: "filed_irs",
+      tax_outcome_status: "refund",
       portal_visible: true,
       signature_status: "signed"
     )
@@ -49,6 +50,7 @@ RSpec.describe TaxReturn, type: :model do
     expect(tax_return.workflow_events.pluck(:event_type)).to include(
       "payment_updated",
       "filing_updated",
+      "tax_outcome_updated",
       "portal_updated"
     )
   end
@@ -90,6 +92,17 @@ RSpec.describe TaxReturn, type: :model do
     event = tax_return.workflow_events.find_by!(event_type: "filing_updated")
     expect(event.old_value).to eq("drt_confirmation: none")
     expect(event.new_value).to eq("drt_confirmation: DRT-123")
+  end
+
+  it "records changed tax outcome fields separately from filing audit values" do
+    tax_return = described_class.create!(client: client, tax_year: 2026)
+
+    tax_return.update!(tax_outcome_status: "tax_due", tax_outcome_amount_cents: 42_000)
+
+    event = tax_return.workflow_events.find_by!(event_type: "tax_outcome_updated")
+    expect(event.old_value).to eq("tax_outcome_status: unknown; tax_outcome_amount_cents: 0")
+    expect(event.new_value).to eq("tax_outcome_status: tax_due; tax_outcome_amount_cents: 42000")
+    expect(tax_return.workflow_events.where(event_type: "filing_updated")).to be_empty
   end
 
   it "records changed portal fields in portal audit values" do

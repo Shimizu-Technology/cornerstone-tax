@@ -18,6 +18,8 @@ class TaxReturn < ApplicationRecord
   ].freeze
   FILING_AUDIT_FIELDS = %w[
     filing_status filed_at drt_confirmation irs_confirmation
+  ].freeze
+  TAX_OUTCOME_AUDIT_FIELDS = %w[
     tax_outcome_status tax_outcome_amount_cents tax_outcome_notes
   ].freeze
   PORTAL_AUDIT_FIELDS = %w[
@@ -66,6 +68,7 @@ class TaxReturn < ApplicationRecord
   after_save :log_notes_change, if: :saved_change_to_notes?
   after_save :log_payment_change, if: :saved_change_to_payment_fields?
   after_save :log_filing_change, if: :saved_change_to_filing_fields?
+  after_save :log_tax_outcome_change, if: :saved_change_to_tax_outcome_fields?
   after_save :log_portal_change, if: :saved_change_to_portal_fields?
   before_validation :sync_operational_timestamps
   after_commit :send_status_notification, on: :update, if: :saved_change_to_workflow_stage_id?
@@ -194,8 +197,13 @@ class TaxReturn < ApplicationRecord
     saved_change_to_filing_status? ||
       saved_change_to_filed_at? ||
       saved_change_to_drt_confirmation? ||
-      saved_change_to_irs_confirmation? ||
-      saved_change_to_tax_outcome_status? ||
+      saved_change_to_irs_confirmation?
+  end
+
+  def saved_change_to_tax_outcome_fields?
+    return false if previously_new_record?
+
+    saved_change_to_tax_outcome_status? ||
       saved_change_to_tax_outcome_amount_cents? ||
       saved_change_to_tax_outcome_notes?
   end
@@ -226,6 +234,16 @@ class TaxReturn < ApplicationRecord
       old_value: audit_values_before(FILING_AUDIT_FIELDS),
       new_value: audit_values_after(FILING_AUDIT_FIELDS),
       description: "Filing details updated: #{audit_field_names(FILING_AUDIT_FIELDS)}",
+      user: current_actor
+    )
+  end
+
+  def log_tax_outcome_change
+    workflow_events.create!(
+      event_type: "tax_outcome_updated",
+      old_value: audit_values_before(TAX_OUTCOME_AUDIT_FIELDS),
+      new_value: audit_values_after(TAX_OUTCOME_AUDIT_FIELDS),
+      description: "Tax outcome updated: #{audit_field_names(TAX_OUTCOME_AUDIT_FIELDS)}",
       user: current_actor
     )
   end

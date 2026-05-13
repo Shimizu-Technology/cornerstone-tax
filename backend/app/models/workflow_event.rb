@@ -22,6 +22,7 @@ class WorkflowEvent < ApplicationRecord
     return_created
     payment_updated
     filing_updated
+    tax_outcome_updated
     portal_updated
   ].freeze
 
