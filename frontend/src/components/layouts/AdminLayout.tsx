@@ -213,16 +213,23 @@ function DesktopNavLink({
         onMouseLeave={() => setTooltipVisible(false)}
         onFocus={() => setTooltipVisible(true)}
         onBlur={() => setTooltipVisible(false)}
-        className={`group relative flex items-center rounded-xl text-sm font-medium transition-all duration-200 ${
-          collapsed ? 'justify-center px-2 py-3' : 'gap-3 px-4 py-3'
-        } ${
+        className={`group relative grid min-h-11 grid-cols-[4.5rem_minmax(0,1fr)] items-center overflow-hidden rounded-xl text-sm font-medium transition-colors duration-200 ${
           active
             ? 'bg-primary text-white shadow-md'
             : 'text-gray-700 hover:bg-secondary-dark hover:text-primary'
         }`}
       >
-        <item.icon className="h-5 w-5 shrink-0" />
-        {!collapsed && <span>{item.name}</span>}
+        <span className="flex items-center justify-center">
+          <item.icon className="h-5 w-5 shrink-0" />
+        </span>
+        <span
+          aria-hidden={collapsed}
+          className={`min-w-0 whitespace-nowrap transition-[opacity,transform] duration-200 ${
+            collapsed ? '-translate-x-2 opacity-0' : 'translate-x-0 opacity-100'
+          }`}
+        >
+          {item.name}
+        </span>
       </Link>
       {collapsed && <FloatingTooltip anchorRef={anchorRef} label={item.name} visible={tooltipVisible} />}
     </>
@@ -243,14 +250,21 @@ function DesktopBackLink({ collapsed }: { collapsed: boolean }) {
         onMouseLeave={() => setTooltipVisible(false)}
         onFocus={() => setTooltipVisible(true)}
         onBlur={() => setTooltipVisible(false)}
-        className={`flex items-center rounded-xl text-sm font-medium text-gray-500 transition-colors hover:bg-secondary-dark hover:text-primary ${
-          collapsed ? 'justify-center px-2 py-3' : 'gap-2 px-3 py-2'
-        }`}
+        className="grid min-h-11 grid-cols-[4.5rem_minmax(0,1fr)] items-center overflow-hidden rounded-xl text-sm font-medium text-gray-500 transition-colors hover:bg-secondary-dark hover:text-primary"
       >
-        <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-        </svg>
-        {!collapsed && <span>Back to Website</span>}
+        <span className="flex items-center justify-center">
+          <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+        </span>
+        <span
+          aria-hidden={collapsed}
+          className={`min-w-0 whitespace-nowrap transition-[opacity,transform] duration-200 ${
+            collapsed ? '-translate-x-2 opacity-0' : 'translate-x-0 opacity-100'
+          }`}
+        >
+          Back to Website
+        </span>
       </Link>
       {collapsed && <FloatingTooltip anchorRef={anchorRef} label="Back to Website" visible={tooltipVisible} />}
     </>
@@ -411,22 +425,35 @@ export default function AdminLayout() {
 
       {/* Desktop sidebar */}
       <div className={`hidden transition-[width] duration-300 lg:fixed lg:inset-y-0 lg:flex lg:flex-col ${desktopCollapsed ? 'lg:w-24' : 'lg:w-72'}`}>
-        <div className="flex grow flex-col overflow-visible border-r border-secondary-dark bg-white pt-4 pb-4">
-          <div className={`flex h-20 shrink-0 items-center border-b border-secondary-dark px-4 ${desktopCollapsed ? 'justify-center' : 'justify-start'}`}>
+        <div className="flex grow flex-col overflow-y-auto overflow-x-hidden border-r border-secondary-dark bg-white pt-4 pb-4">
+          <div className="flex h-20 shrink-0 items-center border-b border-secondary-dark px-3">
             <Link to="/" className="flex min-w-0 items-center justify-center">
               <img 
                 src="/logo.jpeg" 
                 alt="Cornerstone" 
-                className={`w-auto object-contain transition-all duration-300 ${desktopCollapsed ? 'h-10 max-w-12' : 'h-16'}`}
+                className={`w-auto object-contain transition-[height,max-width] duration-300 ${desktopCollapsed ? 'h-10 max-w-18' : 'h-16 max-w-48'}`}
               />
             </Link>
           </div>
-          <div className={`pt-4 ${desktopCollapsed ? 'flex justify-center px-0' : 'px-4'}`}>
+          <div className="flex h-16 shrink-0 items-center px-6">
             <DesktopCollapseButton collapsed={desktopCollapsed} onToggle={() => setDesktopCollapsed((value) => !value)} />
           </div>
-          <div className={`${desktopCollapsed ? 'px-3 pt-6' : 'px-5 pt-6'}`}>
-            <p className={`text-xs font-semibold uppercase tracking-[0.14em] text-gray-400 ${desktopCollapsed ? 'text-center' : ''}`}>
-              {desktopCollapsed ? 'Nav' : 'Admin Navigation'}
+          <div className="relative h-4 px-3 pt-4">
+            <p
+              aria-hidden={!desktopCollapsed}
+              className={`absolute left-3 top-4 w-18 text-center text-xs font-semibold uppercase tracking-[0.14em] text-gray-400 transition-opacity duration-200 ${
+                desktopCollapsed ? 'opacity-100' : 'opacity-0'
+              }`}
+            >
+              Nav
+            </p>
+            <p
+              aria-hidden={desktopCollapsed}
+              className={`absolute left-5 top-4 text-xs font-semibold uppercase tracking-[0.14em] text-gray-400 transition-[opacity,transform] duration-200 ${
+                desktopCollapsed ? '-translate-x-2 opacity-0' : 'translate-x-0 opacity-100'
+              }`}
+            >
+              Admin Navigation
             </p>
           </div>
           <nav className="mt-5 flex-1 space-y-1 overflow-visible px-3">
