@@ -129,11 +129,7 @@ class CreateIntakeService
 
     tax_year = @params[:tax_year] || Date.current.year
 
-    @tax_return = @client.tax_returns.find_or_initialize_by(
-      tax_year: tax_year,
-      return_type: "individual",
-      form_type: "general"
-    )
+    @tax_return = find_or_initialize_tax_return(tax_year)
 
     @tax_return.assign_attributes(
       workflow_stage: @tax_return.workflow_stage || initial_stage,
@@ -178,6 +174,18 @@ class CreateIntakeService
     return nil if email.blank?
 
     Client.active.find_by("LOWER(email) = ?", email)
+  end
+
+  def find_or_initialize_tax_return(tax_year)
+    @client.tax_returns
+      .where(tax_year: tax_year, return_type: "individual", form_type: %w[1040 general])
+      .order(Arel.sql("CASE form_type WHEN '1040' THEN 0 WHEN 'general' THEN 1 ELSE 2 END"))
+      .first ||
+      @client.tax_returns.build(
+        tax_year: tax_year,
+        return_type: "individual",
+        form_type: "1040"
+      )
   end
 
   def intake_submission_payload
