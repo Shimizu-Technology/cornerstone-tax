@@ -322,6 +322,18 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
       expect(second_entry.overtime_approved_by).to eq(admin)
     end
 
+    it "returns validation errors without leaking a 500" do
+      pending_entry.update_column(:end_time, nil)
+
+      post "/api/v1/time_entries/bulk_approve",
+           params: { entry_ids: [ pending_entry.id ] },
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("End time")
+      expect(pending_entry.reload.approval_status).to eq("pending")
+    end
+
     it "rejects non-pending selections" do
       approved_entry = create(:time_entry, user: employee, approval_status: "approved", overtime_status: "none")
 

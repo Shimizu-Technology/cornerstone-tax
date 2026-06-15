@@ -422,8 +422,15 @@ module Api
               raise ActiveRecord::Rollback
             end
 
-            approve_bulk_time_entry!(entry, note, overtime_context) if entry.approval_status == "pending"
-            approve_bulk_overtime!(entry, note) if entry.overtime_status == "pending"
+            if entry.approval_status == "pending"
+              error_message = approve_bulk_time_entry(entry, note, overtime_context)
+              raise ActiveRecord::Rollback if error_message
+            end
+
+            if entry.overtime_status == "pending"
+              error_message = approve_bulk_overtime(entry, note)
+              raise ActiveRecord::Rollback if error_message
+            end
 
             updated_entry_ids << entry.id
           end
@@ -469,7 +476,7 @@ module Api
                           :linked_operation_tasks)
       end
 
-      def approve_bulk_time_entry!(entry, note, overtime_context)
+      def approve_bulk_time_entry(entry, note, overtime_context)
         overtime_check_required = bulk_overtime_check_required?(entry)
         attrs = {
           approval_status: "approved",
@@ -480,17 +487,29 @@ module Api
 
         attrs[:overtime_status] = projected_overtime_status(entry, overtime_context) if overtime_check_required
 
-        entry.update!(attrs)
+        unless entry.update(attrs)
+          return bulk_approval_validation_error(entry)
+        end
+
         add_entry_to_bulk_overtime_context(entry, overtime_context) if overtime_check_required
+        nil
       end
 
-      def approve_bulk_overtime!(entry, note)
-        entry.update!(
+      def approve_bulk_overtime(entry, note)
+        unless entry.update(
           overtime_status: "approved",
           overtime_approved_by: current_user,
           overtime_approved_at: Time.current,
           overtime_note: note
         )
+          return bulk_approval_validation_error(entry)
+        end
+
+        nil
+      end
+
+      def bulk_approval_validation_error(entry)
+        entry.errors.full_messages.to_sentence.presence || "One or more selected entries could not be approved"
       end
 
       def build_bulk_overtime_context(entries)
