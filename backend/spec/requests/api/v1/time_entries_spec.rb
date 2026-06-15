@@ -68,6 +68,86 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
         expect(response).to have_http_status(:ok)
         expect(json.dig(:time_entry, :description)).to eq("updated")
       end
+
+      it "resets stale approval metadata and queues the edit for review" do
+        entry.update!(approval_status: "approved", approved_by: admin, approved_at: 1.day.ago, approval_note: "Looks good")
+
+        patch "/api/v1/time_entries/#{entry.id}",
+              params: { time_entry: { description: "employee correction" } },
+              headers: auth_headers_for[employee]
+
+        expect(response).to have_http_status(:ok)
+        expect(entry.reload.approval_status).to eq("pending")
+        expect(entry.approved_by).to be_nil
+        expect(entry.approved_at).to be_nil
+        expect(entry.approval_note).to include("Employee edited time entry")
+      end
+    end
+
+    it "syncs corrected clock times back to clock timestamps" do
+      work_date = Date.yesterday
+      tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
+      clock_in = tz.parse("#{work_date.iso8601} 08:00")
+      clock_out = tz.parse("#{work_date.iso8601} 17:00")
+      entry.update!(work_date: work_date, entry_method: "clock", clock_in_at: clock_in, clock_out_at: clock_out, start_time: clock_in, end_time: clock_out, approval_status: nil)
+
+      patch "/api/v1/time_entries/#{entry.id}",
+            params: { time_entry: { start_time: "08:30", end_time: "17:30" } },
+            headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(entry.reload.clock_in_at.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")).to eq("08:30")
+      expect(entry.clock_out_at.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")).to eq("17:30")
+      expect(entry.start_time.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")).to eq("08:30")
+      expect(entry.end_time.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")).to eq("17:30")
+    end
+
+    it "allows clock-in and break corrections in the same request" do
+      work_date = Date.yesterday
+      tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
+      clock_in = tz.parse("#{work_date.iso8601} 08:00")
+      clock_out = tz.parse("#{work_date.iso8601} 17:00")
+      entry.update!(work_date: work_date, entry_method: "clock", clock_in_at: clock_in, clock_out_at: clock_out, start_time: clock_in, end_time: clock_out, approval_status: nil)
+      entry.time_entry_breaks.create!(start_time: tz.parse("#{work_date.iso8601} 09:00"), end_time: tz.parse("#{work_date.iso8601} 09:15"))
+
+      patch "/api/v1/time_entries/#{entry.id}",
+            params: {
+              time_entry: {
+                start_time: "09:30",
+                end_time: "17:30",
+                breaks: [ { start_time: "10:00", end_time: "10:15" } ]
+              }
+            },
+            headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(entry.reload.clock_in_at.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")).to eq("09:30")
+      expect(entry.time_entry_breaks.count).to eq(1)
+      expect(entry.time_entry_breaks.first.start_time.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")).to eq("10:00")
+    end
+
+    it "does not send active employee clock entries to pending approvals" do
+      tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
+      clock_in = tz.parse("#{Date.current.iso8601} 08:00")
+      active_entry = create(:time_entry,
+                            user: employee,
+                            work_date: Date.current,
+                            entry_method: "clock",
+                            status: "clocked_in",
+                            clock_in_at: clock_in,
+                            start_time: clock_in,
+                            end_time: nil,
+                            hours: 0,
+                            approval_status: nil)
+
+      patch "/api/v1/time_entries/#{active_entry.id}",
+            params: { time_entry: { description: "updated while clocked in" } },
+            headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:ok)
+      expect(active_entry.reload.approval_status).to be_nil
+      expect(active_entry.approved_by).to be_nil
+      expect(active_entry.approved_at).to be_nil
     end
 
     context "admin edits another user's entry" do
@@ -165,6 +245,143 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
         expect(response).to have_http_status(:forbidden)
         expect(json[:error]).to eq("This time entry is locked and cannot be deleted")
       end
+    end
+  end
+
+  describe "GET /api/v1/time_entries/pending_approvals" do
+    let!(:category) { TimeCategory.create!(name: "Tax Prep") }
+    let!(:older_entry) do
+      create(:time_entry,
+             user: employee,
+             work_date: Date.current - 2.days,
+             time_category: category,
+             approval_status: "pending",
+             entry_method: "manual")
+    end
+    let!(:newer_overtime_entry) do
+      create(:time_entry,
+             user: other_employee,
+             work_date: Date.current,
+             approval_status: "approved",
+             overtime_status: "pending")
+    end
+
+    it "returns filtered pending entries with summary metadata oldest first" do
+      get "/api/v1/time_entries/pending_approvals",
+          params: { time_category_id: category.id, sort: "work_date", direction: "asc" },
+          headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(json[:count]).to eq(1)
+      expect(json[:pending_entries].map { |entry| entry[:id] }).to eq([ older_entry.id ])
+      expect(json.dig(:summary, :entry_count)).to eq(1)
+      expect(json.dig(:summary, :pending_time_entry_count)).to eq(1)
+      expect(json.dig(:summary, :oldest_work_date)).to eq(older_entry.work_date.iso8601)
+      expect(json.dig(:pending_entries, 0, :approval_reasons).map { |reason| reason[:key] }).to include("manual_entry")
+    end
+
+    it "blocks non-admin users" do
+      get "/api/v1/time_entries/pending_approvals", headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe "GET /api/v1/time_entries/whos_working" do
+    it "includes countable manual entries in today's completed hours and day entries" do
+      manual_entry = create(:time_entry, user: employee, work_date: Date.current, approval_status: "approved")
+
+      get "/api/v1/time_entries/whos_working", headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      worker = json[:workers].find { |row| row.dig(:user, :id) == employee.id }
+      expect(worker[:completed_hours]).to eq(manual_entry.hours.to_f)
+      expect(worker[:day_entries].map { |entry| entry[:id] }).to include(manual_entry.id)
+      expect(worker[:day_entries].find { |entry| entry[:id] == manual_entry.id }[:entry_method]).to eq("manual")
+    end
+  end
+
+  describe "POST /api/v1/time_entries/bulk_approve" do
+    let!(:pending_entry) { create(:time_entry, user: employee, approval_status: "pending") }
+    let!(:pending_overtime_entry) { create(:time_entry, user: other_employee, approval_status: "approved", overtime_status: "pending") }
+
+    it "approves selected pending time and overtime entries" do
+      post "/api/v1/time_entries/bulk_approve",
+           params: { entry_ids: [ pending_entry.id, pending_overtime_entry.id ], note: "Reviewed in batch" },
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(json[:count]).to eq(2)
+      expect(pending_entry.reload.approval_status).to eq("approved")
+      expect(pending_entry.approved_by).to eq(admin)
+      expect(pending_overtime_entry.reload.overtime_status).to eq("approved")
+      expect(pending_overtime_entry.overtime_approved_by).to eq(admin)
+    end
+
+    it "calculates overtime cumulatively for pending entries in the batch" do
+      work_date = Date.yesterday
+      tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
+      first_entry = create(:time_entry,
+                           user: employee,
+                           work_date: work_date,
+                           start_time: tz.parse("#{work_date.iso8601} 08:00"),
+                           end_time: tz.parse("#{work_date.iso8601} 13:00"),
+                           approval_status: "pending",
+                           overtime_status: "none")
+      second_entry = create(:time_entry,
+                            user: employee,
+                            work_date: work_date,
+                            start_time: tz.parse("#{work_date.iso8601} 13:00"),
+                            end_time: tz.parse("#{work_date.iso8601} 18:00"),
+                            approval_status: "pending",
+                            overtime_status: "none")
+
+      post "/api/v1/time_entries/bulk_approve",
+           params: { entry_ids: [ first_entry.id, second_entry.id ] },
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(first_entry.reload.overtime_status).to eq("none")
+      expect(second_entry.reload.overtime_status).to eq("approved")
+      expect(second_entry.overtime_approved_by).to eq(admin)
+    end
+
+    it "treats zero overtime thresholds as disabled during projection" do
+      Setting.set("overtime_daily_threshold_hours", "0")
+      Setting.set("overtime_weekly_threshold_hours", "0")
+
+      entry = create(:time_entry, user: employee, approval_status: "pending", overtime_status: "none")
+
+      post "/api/v1/time_entries/bulk_approve",
+           params: { entry_ids: [ entry.id ] },
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(entry.reload.approval_status).to eq("approved")
+      expect(entry.overtime_status).to eq("none")
+    end
+
+    it "returns validation errors without leaking a 500" do
+      pending_entry.update_column(:end_time, nil)
+
+      post "/api/v1/time_entries/bulk_approve",
+           params: { entry_ids: [ pending_entry.id ] },
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("End time")
+      expect(pending_entry.reload.approval_status).to eq("pending")
+    end
+
+    it "rejects non-pending selections" do
+      approved_entry = create(:time_entry, user: employee, approval_status: "approved", overtime_status: "none")
+
+      post "/api/v1/time_entries/bulk_approve",
+           params: { entry_ids: [ approved_entry.id ] },
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("no longer pending")
     end
   end
 

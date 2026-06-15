@@ -41,7 +41,7 @@ class TimeEntry < ApplicationRecord
   scope :recent, -> { order(work_date: :desc, created_at: :desc) }
   scope :clocked_in, -> { where(status: %w[clocked_in on_break]) }
   scope :pending_approval, -> { where(approval_status: "pending") }
-  scope :approved, -> { where(approval_status: ["approved", nil]) }
+  scope :approved, -> { where(approval_status: [ "approved", nil ]) }
   scope :denied, -> { where(approval_status: "denied") }
   scope :clock_entries, -> { where(entry_method: "clock") }
   scope :manual_entries, -> { where(entry_method: "manual") }
@@ -120,7 +120,7 @@ class TimeEntry < ApplicationRecord
       duration_hours -= (break_minutes / 60.0)
     end
 
-    self.hours = [duration_hours, 0].max.round(2)
+    self.hours = [ duration_hours, 0 ].max.round(2)
   end
 
   def formatted_start_time
@@ -140,13 +140,18 @@ class TimeEntry < ApplicationRecord
   def end_time_after_start_time
     return unless start_time.present? && end_time.present?
 
+    if clock_entry? && clock_in_at.present? && clock_out_at.present?
+      errors.add(:end_time, "must be after start time") if clock_out_at <= clock_in_at
+      return
+    end
+
     tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
     start_local = start_time.in_time_zone(tz).seconds_since_midnight
     end_local = end_time.in_time_zone(tz).seconds_since_midnight
 
-    if end_local <= start_local
-      errors.add(:end_time, "must be after start time")
-    end
+    # End times earlier than start times are valid overnight entries; equal
+    # start/end times are still invalid because they calculate to zero hours.
+    errors.add(:end_time, "must be after start time") if end_local == start_local
   end
 
   def service_task_matches_service_type

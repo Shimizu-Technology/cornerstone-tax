@@ -178,7 +178,7 @@ class TimeClockService
           approval_note: combined_note
         }
 
-        if entry.status == "completed" && entry.overtime_status.in?([nil, "none"])
+        if entry.status == "completed" && entry.overtime_status.in?([ nil, "none" ])
           attrs[:overtime_status] = check_overtime_status(entry.user, entry)
         end
 
@@ -334,14 +334,19 @@ class TimeClockService
     end
 
     def build_approval_note(existing_note, new_note)
-      parts = [existing_note, new_note].select(&:present?)
-      parts.any? ? parts.join(" | ") : nil
+      [ existing_note.presence, new_note.presence ]
+        .compact
+        .flat_map { |note| note.split(" | ").map(&:strip) }
+        .reject(&:blank?)
+        .uniq
+        .join(" | ")
+        .presence
     end
 
     def validate_clock_in_time(now, schedule)
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
 
-      earliest_allowed = [schedule.start_time.utc.seconds_since_midnight - (buffer * 60), 0].max
+      earliest_allowed = [ schedule.start_time.utc.seconds_since_midnight - (buffer * 60), 0 ].max
       latest_allowed = schedule.end_time.utc.seconds_since_midnight
       current_seconds = now.in_time_zone(business_timezone).seconds_since_midnight
 
@@ -377,7 +382,7 @@ class TimeClockService
       return { allowed: true, reason: "no_schedule" } unless schedule
 
       buffer = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i
-      earliest_allowed = [schedule.start_time.utc.seconds_since_midnight - (buffer * 60), 0].max
+      earliest_allowed = [ schedule.start_time.utc.seconds_since_midnight - (buffer * 60), 0 ].max
       latest_allowed = schedule.end_time.utc.seconds_since_midnight
       current_seconds = local_seconds_since_midnight
 
