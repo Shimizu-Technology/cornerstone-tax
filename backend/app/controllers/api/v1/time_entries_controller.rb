@@ -16,7 +16,9 @@ module Api
       # GET /api/v1/time_entries
       def index
         @time_entries = current_user.admin? ? TimeEntry.all : TimeEntry.for_user(current_user)
-        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by, :overtime_approved_by, :time_entry_breaks, :service_type, :service_task)
+        @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by,
+                                               :overtime_approved_by, :time_entry_breaks, :service_type, :service_task,
+                                               :linked_operation_tasks)
 
         if params[:user_id].present? && current_user.admin?
           @time_entries = @time_entries.where(user_id: params[:user_id])
@@ -149,7 +151,7 @@ module Api
         return if performed?
         update_params[:break_minutes] = break_update[:total_minutes] if break_update
 
-        unless current_user.admin?
+        if !current_user.admin? && @time_entry.status == "completed"
           update_params[:approval_status] = "pending"
           update_params[:approved_by_id] = nil
           update_params[:approved_at] = nil
@@ -401,7 +403,7 @@ module Api
 
         note = params[:note].presence
 
-        updated_entries = []
+        updated_entry_ids = []
         error_message = nil
         ActiveRecord::Base.transaction do
           entries_by_id = TimeEntry.where(id: entry_ids).lock.index_by(&:id)
@@ -421,13 +423,15 @@ module Api
             entry = TimeClockService.approve_entry(entry: entry, approved_by: current_user, note: note) if entry.approval_status == "pending"
             entry = TimeClockService.approve_overtime(entry: entry, approved_by: current_user, note: note) if entry.overtime_status == "pending"
 
-            updated_entries << eager_reload(entry)
+            updated_entry_ids << entry.id
           end
         end
 
         if error_message
           return render json: { error: error_message }, status: :unprocessable_entity
         end
+
+        updated_entries = eager_load_time_entries(updated_entry_ids)
 
         render json: {
           time_entries: updated_entries.map { |entry| serialize_time_entry(entry) },
@@ -449,8 +453,18 @@ module Api
       private
 
       def eager_reload(entry)
+        time_entry_serializer_scope.find(entry.id)
+      end
+
+      def eager_load_time_entries(entry_ids)
+        entries_by_id = time_entry_serializer_scope.where(id: entry_ids).index_by(&:id)
+        entry_ids.filter_map { |entry_id| entries_by_id[entry_id] }
+      end
+
+      def time_entry_serializer_scope
         TimeEntry.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by,
-                          :overtime_approved_by, :time_entry_breaks, :service_type, :service_task).find(entry.id)
+                          :overtime_approved_by, :time_entry_breaks, :service_type, :service_task,
+                          :linked_operation_tasks)
       end
 
       def resolve_clock_target_user
@@ -462,8 +476,7 @@ module Api
       end
 
       def set_time_entry
-        @time_entry = TimeEntry.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by,
-                                         :overtime_approved_by, :time_entry_breaks, :service_type, :service_task).find(params[:id])
+        @time_entry = time_entry_serializer_scope.find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Time entry not found" }, status: :not_found
       end
@@ -665,6 +678,8 @@ module Api
       def serialize_time_entry(entry)
         tz = TimeClockService::BUSINESS_TIMEZONE
         entry_user = entry.user
+        linked_operation_task = entry.linked_operation_tasks.first
+
         {
           id: entry.id,
           work_date: entry.work_date.iso8601,
@@ -737,9 +752,9 @@ module Api
             id: entry.service_task.id,
             name: entry.service_task.name
           } : nil,
-          linked_operation_task: entry.linked_operation_tasks.first ? {
-            id: entry.linked_operation_tasks.first.id,
-            title: entry.linked_operation_tasks.first.title
+          linked_operation_task: linked_operation_task ? {
+            id: linked_operation_task.id,
+            title: linked_operation_task.title
           } : nil,
           locked_at: entry.locked_at&.iso8601,
           created_at: entry.created_at.iso8601,
@@ -1034,7 +1049,8 @@ module Api
       def pending_approval_entries_scope
         TimeEntry
           .preload(:user, :schedule, :approved_by, :overtime_approved_by, :time_entry_breaks,
-                   :time_category, :client, :tax_return, :service_type, :service_task)
+                   :time_category, :client, :tax_return, :service_type, :service_task,
+                   :linked_operation_tasks)
           .where("time_entries.approval_status = ? OR time_entries.overtime_status = ?", "pending", "pending")
       end
 

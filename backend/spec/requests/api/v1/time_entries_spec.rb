@@ -102,6 +102,30 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
       expect(entry.end_time.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")).to eq("17:30")
     end
 
+    it "does not send active employee clock entries to pending approvals" do
+      tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
+      clock_in = tz.parse("#{Date.current.iso8601} 08:00")
+      active_entry = create(:time_entry,
+                            user: employee,
+                            work_date: Date.current,
+                            entry_method: "clock",
+                            status: "clocked_in",
+                            clock_in_at: clock_in,
+                            start_time: clock_in,
+                            end_time: nil,
+                            hours: 0,
+                            approval_status: nil)
+
+      patch "/api/v1/time_entries/#{active_entry.id}",
+            params: { time_entry: { description: "updated while clocked in" } },
+            headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:ok)
+      expect(active_entry.reload.approval_status).to be_nil
+      expect(active_entry.approved_by).to be_nil
+      expect(active_entry.approved_at).to be_nil
+    end
+
     context "admin edits another user's entry" do
       it "succeeds" do
         patch "/api/v1/time_entries/#{entry.id}",
