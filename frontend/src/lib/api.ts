@@ -672,6 +672,7 @@ export interface WorkerBreak {
 export interface WorkerDayEntry {
   id: number;
   status: string;
+  entry_method?: 'clock' | 'manual';
   clock_in_at: string | null;
   clock_out_at: string | null;
   hours: number;

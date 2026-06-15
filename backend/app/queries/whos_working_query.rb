@@ -12,15 +12,15 @@ class WhosWorkingQuery
       today_schedules = Schedule.where(user_id: staff_ids, work_date: today).index_by(&:user_id)
 
       all_today_entries = TimeEntry.where(user_id: staff_ids, work_date: today)
-                                   .where(entry_method: "clock")
                                    .eager_load(:time_entry_breaks, :time_category)
-                                   .order(clock_in_at: :asc)
+                                   .order(:start_time, :created_at, :id)
                                    .to_a
+      clock_entries = all_today_entries.select(&:clock_entry?)
 
       entries_by_user = all_today_entries.group_by(&:user_id)
-      clocked_out_user_ids = all_today_entries.select { |entry| entry.status == "completed" }.map(&:user_id).to_set
-      active_entries_by_user = all_today_entries.select { |entry| %w[clocked_in on_break].include?(entry.status) }
-                                                .index_by(&:user_id)
+      clocked_out_user_ids = clock_entries.select { |entry| entry.status == "completed" }.map(&:user_id).to_set
+      active_entries_by_user = clock_entries.select { |entry| %w[clocked_in on_break].include?(entry.status) }
+                                            .index_by(&:user_id)
 
       buffer_seconds = (Setting.get("early_clock_in_buffer_minutes") || "5").to_i * 60
 
@@ -28,7 +28,9 @@ class WhosWorkingQuery
         schedule = today_schedules[user.id]
         active_entry = active_entries_by_user[user.id]
         user_entries = entries_by_user[user.id] || []
-        hours = user_entries.select { |entry| entry.status == "completed" }.sum { |entry| entry.hours.to_f }.round(2)
+        countable_entries = user_entries.select(&:counts_toward_hours?)
+        clock_user_entries = user_entries.select(&:clock_entry?)
+        hours = countable_entries.sum { |entry| entry.hours.to_f }.round(2)
 
         active_break_record = active_entry&.active_break
         elapsed_hours = calculate_elapsed(active_entry, active_break_record)
@@ -49,8 +51,8 @@ class WhosWorkingQuery
             hours: schedule.hours
           } : nil,
           status: resolve_status(active_entry, clocked_out_user_ids, user, schedule, buffer_seconds),
-          clock_in_at: user_entries.first&.clock_in_at&.iso8601,
-          clock_out_at: (active_entry&.clock_out_at || user_entries.select { |entry| entry.status == "completed" }.last&.clock_out_at)&.iso8601,
+          clock_in_at: clock_user_entries.first&.clock_in_at&.iso8601,
+          clock_out_at: (active_entry&.clock_out_at || clock_user_entries.select { |entry| entry.status == "completed" }.last&.clock_out_at)&.iso8601,
           completed_hours: (hours + elapsed_hours).round(2),
           active_break: active_break_record.present?,
           break_started_at: active_break_record&.start_time&.iso8601,
@@ -129,6 +131,7 @@ class WhosWorkingQuery
         status: entry.status,
         clock_in_at: entry.clock_in_at&.iso8601,
         clock_out_at: entry.clock_out_at&.iso8601,
+        entry_method: entry.entry_method,
         hours: entry.hours.to_f.round(2),
         time_category: serialize_time_category(entry),
         breaks: serialize_breaks(entry)

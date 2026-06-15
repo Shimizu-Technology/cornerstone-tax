@@ -263,6 +263,20 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
     end
   end
 
+  describe "GET /api/v1/time_entries/whos_working" do
+    it "includes countable manual entries in today's completed hours and day entries" do
+      manual_entry = create(:time_entry, user: employee, work_date: Date.current, approval_status: "approved")
+
+      get "/api/v1/time_entries/whos_working", headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      worker = json[:workers].find { |row| row.dig(:user, :id) == employee.id }
+      expect(worker[:completed_hours]).to eq(manual_entry.hours.to_f)
+      expect(worker[:day_entries].map { |entry| entry[:id] }).to include(manual_entry.id)
+      expect(worker[:day_entries].find { |entry| entry[:id] == manual_entry.id }[:entry_method]).to eq("manual")
+    end
+  end
+
   describe "POST /api/v1/time_entries/bulk_approve" do
     let!(:pending_entry) { create(:time_entry, user: employee, approval_status: "pending") }
     let!(:pending_overtime_entry) { create(:time_entry, user: other_employee, approval_status: "approved", overtime_status: "pending") }
