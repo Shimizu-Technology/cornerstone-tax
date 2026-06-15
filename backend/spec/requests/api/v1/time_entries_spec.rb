@@ -280,6 +280,34 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
       expect(pending_overtime_entry.overtime_approved_by).to eq(admin)
     end
 
+    it "calculates overtime cumulatively for pending entries in the batch" do
+      work_date = Date.yesterday
+      tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
+      first_entry = create(:time_entry,
+                           user: employee,
+                           work_date: work_date,
+                           start_time: tz.parse("#{work_date.iso8601} 08:00"),
+                           end_time: tz.parse("#{work_date.iso8601} 13:00"),
+                           approval_status: "pending",
+                           overtime_status: "none")
+      second_entry = create(:time_entry,
+                            user: employee,
+                            work_date: work_date,
+                            start_time: tz.parse("#{work_date.iso8601} 13:00"),
+                            end_time: tz.parse("#{work_date.iso8601} 18:00"),
+                            approval_status: "pending",
+                            overtime_status: "none")
+
+      post "/api/v1/time_entries/bulk_approve",
+           params: { entry_ids: [ first_entry.id, second_entry.id ] },
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(first_entry.reload.overtime_status).to eq("none")
+      expect(second_entry.reload.overtime_status).to eq("approved")
+      expect(second_entry.overtime_approved_by).to eq(admin)
+    end
+
     it "rejects non-pending selections" do
       approved_entry = create(:time_entry, user: employee, approval_status: "approved", overtime_status: "none")
 

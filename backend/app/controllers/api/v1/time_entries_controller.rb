@@ -413,6 +413,8 @@ module Api
             raise ActiveRecord::Rollback
           end
 
+          overtime_context = build_bulk_overtime_context(entries_by_id.values)
+
           entry_ids.each do |entry_id|
             entry = entries_by_id.fetch(entry_id)
             unless entry.approval_status == "pending" || entry.overtime_status == "pending"
@@ -420,8 +422,8 @@ module Api
               raise ActiveRecord::Rollback
             end
 
-            entry = TimeClockService.approve_entry(entry: entry, approved_by: current_user, note: note) if entry.approval_status == "pending"
-            entry = TimeClockService.approve_overtime(entry: entry, approved_by: current_user, note: note) if entry.overtime_status == "pending"
+            approve_bulk_time_entry!(entry, note, overtime_context) if entry.approval_status == "pending"
+            approve_bulk_overtime!(entry, note) if entry.overtime_status == "pending"
 
             updated_entry_ids << entry.id
           end
@@ -465,6 +467,84 @@ module Api
         TimeEntry.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by,
                           :overtime_approved_by, :time_entry_breaks, :service_type, :service_task,
                           :linked_operation_tasks)
+      end
+
+      def approve_bulk_time_entry!(entry, note, overtime_context)
+        overtime_check_required = bulk_overtime_check_required?(entry)
+        attrs = {
+          approval_status: "approved",
+          approved_by: current_user,
+          approved_at: Time.current,
+          approval_note: combine_approval_note(entry.approval_note, note)
+        }
+
+        attrs[:overtime_status] = projected_overtime_status(entry, overtime_context) if overtime_check_required
+
+        entry.update!(attrs)
+        add_entry_to_bulk_overtime_context(entry, overtime_context) if overtime_check_required
+      end
+
+      def approve_bulk_overtime!(entry, note)
+        entry.update!(
+          overtime_status: "approved",
+          overtime_approved_by: current_user,
+          overtime_approved_at: Time.current,
+          overtime_note: note
+        )
+      end
+
+      def build_bulk_overtime_context(entries)
+        entries_requiring_check = entries.select { |entry| bulk_overtime_check_required?(entry) }
+        daily_hours = Hash.new(0.0)
+        weekly_hours = Hash.new(0.0)
+
+        if entries_requiring_check.any?
+          user_ids = entries_requiring_check.map(&:user_id).compact.uniq
+          dates = entries_requiring_check.map(&:work_date).uniq
+          week_start = dates.min.beginning_of_week(:sunday)
+          week_end = dates.max.end_of_week(:sunday)
+
+          TimeEntry.countable.where(user_id: user_ids, work_date: dates).group(:user_id, :work_date).sum(:hours).each do |(user_id, work_date), hours|
+            daily_hours[[ user_id, work_date ]] = hours.to_f
+          end
+
+          TimeEntry.countable.where(user_id: user_ids, work_date: week_start..week_end).pluck(:user_id, :work_date, :hours).each do |user_id, work_date, hours|
+            weekly_hours[[ user_id, work_date.beginning_of_week(:sunday) ]] += hours.to_f
+          end
+        end
+
+        {
+          daily_hours: daily_hours,
+          weekly_hours: weekly_hours,
+          daily_threshold: (Setting.get("overtime_daily_threshold_hours") || "8").to_f,
+          weekly_threshold: (Setting.get("overtime_weekly_threshold_hours") || "40").to_f
+        }
+      end
+
+      def bulk_overtime_check_required?(entry)
+        entry.status == "completed" && entry.overtime_status.in?([ nil, "none" ])
+      end
+
+      def projected_overtime_status(entry, overtime_context)
+        daily_hours = overtime_context[:daily_hours][[ entry.user_id, entry.work_date ]] + entry.hours.to_f
+        weekly_hours = overtime_context[:weekly_hours][[ entry.user_id, entry.work_date.beginning_of_week(:sunday) ]] + entry.hours.to_f
+
+        daily_hours > overtime_context[:daily_threshold] || weekly_hours > overtime_context[:weekly_threshold] ? "pending" : "none"
+      end
+
+      def add_entry_to_bulk_overtime_context(entry, overtime_context)
+        overtime_context[:daily_hours][[ entry.user_id, entry.work_date ]] += entry.hours.to_f
+        overtime_context[:weekly_hours][[ entry.user_id, entry.work_date.beginning_of_week(:sunday) ]] += entry.hours.to_f
+      end
+
+      def combine_approval_note(existing_note, new_note)
+        [ existing_note.presence, new_note.presence ]
+          .compact
+          .flat_map { |note_part| note_part.split(" | ").map(&:strip) }
+          .reject(&:blank?)
+          .uniq
+          .join(" | ")
+          .presence
       end
 
       def resolve_clock_target_user
