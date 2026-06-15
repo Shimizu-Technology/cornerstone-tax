@@ -102,6 +102,30 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
       expect(entry.end_time.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")).to eq("17:30")
     end
 
+    it "allows clock-in and break corrections in the same request" do
+      work_date = Date.yesterday
+      tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
+      clock_in = tz.parse("#{work_date.iso8601} 08:00")
+      clock_out = tz.parse("#{work_date.iso8601} 17:00")
+      entry.update!(work_date: work_date, entry_method: "clock", clock_in_at: clock_in, clock_out_at: clock_out, start_time: clock_in, end_time: clock_out, approval_status: nil)
+      entry.time_entry_breaks.create!(start_time: tz.parse("#{work_date.iso8601} 09:00"), end_time: tz.parse("#{work_date.iso8601} 09:15"))
+
+      patch "/api/v1/time_entries/#{entry.id}",
+            params: {
+              time_entry: {
+                start_time: "09:30",
+                end_time: "17:30",
+                breaks: [ { start_time: "10:00", end_time: "10:15" } ]
+              }
+            },
+            headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(entry.reload.clock_in_at.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")).to eq("09:30")
+      expect(entry.time_entry_breaks.count).to eq(1)
+      expect(entry.time_entry_breaks.first.start_time.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")).to eq("10:00")
+    end
+
     it "does not send active employee clock entries to pending approvals" do
       tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
       clock_in = tz.parse("#{Date.current.iso8601} 08:00")

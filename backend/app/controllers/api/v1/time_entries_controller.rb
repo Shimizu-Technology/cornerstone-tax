@@ -631,9 +631,11 @@ module Api
             return render json: { error: "Clock-in time cannot be in the future for an active entry" }, status: :unprocessable_entity
           end
 
-          first_break = entry.time_entry_breaks.order(:start_time).first
-          if first_break && corrected_start >= first_break.start_time
-            return render json: { error: "Clock-in time must be before the first break" }, status: :unprocessable_entity
+          unless replacing_breaks?
+            first_break = entry.time_entry_breaks.order(:start_time).first
+            if first_break && corrected_start >= first_break.start_time
+              return render json: { error: "Clock-in time must be before the first break" }, status: :unprocessable_entity
+            end
           end
 
           params_hash[:start_time] = corrected_start
@@ -663,6 +665,13 @@ module Api
 
       def raw_time_entry_params
         params.require(:time_entry).permit(:work_date, :start_time, :end_time).to_h.symbolize_keys
+      end
+
+      def replacing_breaks?
+        payload = params[:time_entry]
+        return false unless payload.respond_to?(:key?)
+
+        payload.key?(:breaks) || payload.key?("breaks")
       end
 
       def build_break_update(entry, update_params)
