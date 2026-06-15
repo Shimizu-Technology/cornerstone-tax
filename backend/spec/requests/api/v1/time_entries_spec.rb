@@ -346,6 +346,21 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
       expect(second_entry.overtime_approved_by).to eq(admin)
     end
 
+    it "treats zero overtime thresholds as disabled during projection" do
+      Setting.set("overtime_daily_threshold_hours", "0")
+      Setting.set("overtime_weekly_threshold_hours", "0")
+
+      entry = create(:time_entry, user: employee, approval_status: "pending", overtime_status: "none")
+
+      post "/api/v1/time_entries/bulk_approve",
+           params: { entry_ids: [ entry.id ] },
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(entry.reload.approval_status).to eq("approved")
+      expect(entry.overtime_status).to eq("none")
+    end
+
     it "returns validation errors without leaking a 500" do
       pending_entry.update_column(:end_time, nil)
 

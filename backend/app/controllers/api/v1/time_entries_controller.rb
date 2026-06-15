@@ -548,7 +548,10 @@ module Api
         daily_hours = overtime_context[:daily_hours][[ entry.user_id, entry.work_date ]] + entry.hours.to_f
         weekly_hours = overtime_context[:weekly_hours][[ entry.user_id, entry.work_date.beginning_of_week(:sunday) ]] + entry.hours.to_f
 
-        daily_hours > overtime_context[:daily_threshold] || weekly_hours > overtime_context[:weekly_threshold] ? "pending" : "none"
+        daily_overtime = overtime_context[:daily_threshold].positive? && daily_hours > overtime_context[:daily_threshold]
+        weekly_overtime = overtime_context[:weekly_threshold].positive? && weekly_hours > overtime_context[:weekly_threshold]
+
+        daily_overtime || weekly_overtime ? "pending" : "none"
       end
 
       def add_entry_to_bulk_overtime_context(entry, overtime_context)

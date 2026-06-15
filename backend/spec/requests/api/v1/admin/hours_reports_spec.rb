@@ -71,6 +71,32 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       expect(json.dig(:summary, :total_hours)).to eq(10.0)
     end
 
+    it "keeps boundary-week context hours out of period weekly breakdown totals" do
+      period_date = work_date + 2.days
+      create_entry(user: employee, work_date: period_date, start_time: "09:00", end_time: "13:00", time_category: category, client: client)
+
+      get "/api/v1/admin/hours_report",
+          params: {
+            start_date: period_date.iso8601,
+            end_date: period_date.iso8601,
+            user_id: employee.id,
+            client_id: client.id,
+            approval_status: "approved_or_standard"
+          },
+          headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:summary, :total_hours)).to eq(4.0)
+
+      employee_report = json[:employees].find { |row| row[:id] == employee.id }
+      week = employee_report[:weeks].first
+      expect(week[:period_hours]).to eq(4.0)
+      expect(week[:regular_hours]).to eq(4.0)
+      expect(week[:overtime_hours]).to eq(0.0)
+      expect(week[:context_hours]).to eq(10.0)
+      expect(week[:context_note]).to include("outside this filtered report selection")
+    end
+
     it "blocks employees" do
       get "/api/v1/admin/hours_report",
           params: { start_date: work_date.iso8601, end_date: work_date.iso8601 },
