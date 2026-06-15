@@ -101,6 +101,7 @@ Rails.application.routes.draw do
           post :clock_out
           post :start_break
           post :end_break
+          post :bulk_approve
           get :current_status
           get :pending_approvals
           get :whos_working
@@ -211,6 +212,9 @@ Rails.application.routes.draw do
             end
           end
         end
+
+        # Payroll-style hours reporting
+        resource :hours_report, only: [:show], controller: "hours_reports"
 
         # Payroll import batches (read-only admin visibility)
         resources :payroll_import_batches, only: [:index, :show]

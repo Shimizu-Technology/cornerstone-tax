@@ -75,6 +75,7 @@ interface ClientOption {
   id: number
   first_name: string
   last_name: string
+  name?: string
 }
 
 interface UserOption {
@@ -177,8 +178,8 @@ export default function TimeTracking() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // Tab: 'entries' or 'reports'
-  const [activeTab, setActiveTab] = useState<'entries' | 'reports'>('entries')
+  // Tab: entries, approvals, or reports
+  const [activeTab, setActiveTab] = useState<'entries' | 'approvals' | 'reports'>('entries')
   
   // View mode: 'day' or 'week'
   const [viewMode, setViewMode] = useState<'day' | 'week'>('week')
@@ -198,10 +199,20 @@ export default function TimeTracking() {
     end_date: formatDateISO(new Date()),
     user_id: '',
     time_category_id: '',
+    client_id: '',
   })
   const [reportData, setReportData] = useState<TimeEntryItem[]>([])
   const [reportLoading, setReportLoading] = useState(false)
-  const [reportSummary, setReportSummary] = useState({ total_hours: 0, total_break_hours: 0, entry_count: 0 })
+  const [reportSummary, setReportSummary] = useState({
+    total_hours: 0,
+    total_break_hours: 0,
+    entry_count: 0,
+    regular_hours: 0,
+    overtime_hours: 0,
+    pending_count: 0,
+    denied_count: 0,
+    open_clock_count: 0,
+  })
   const [reportTruncated, setReportTruncated] = useState(false)
   
   // Period lock state (CST-43)
@@ -327,7 +338,8 @@ export default function TimeTracking() {
         setClients(clientResponse.data.clients.map(c => ({
           id: c.id,
           first_name: c.first_name,
-          last_name: c.last_name
+          last_name: c.last_name,
+          name: `${c.first_name} ${c.last_name}`.trim()
         })))
       }
 
@@ -402,30 +414,65 @@ export default function TimeTracking() {
   const loadReport = useCallback(async () => {
     setReportLoading(true)
     try {
-      const params: Parameters<typeof api.getTimeEntries>[0] = {
+      const params: Parameters<typeof api.getHoursReport>[0] = {
         start_date: reportFilters.start_date,
         end_date: reportFilters.end_date,
-        per_page: 500,
-        exclude_approval_statuses: ['denied', 'pending'],
-      }
-      
-      if (reportFilters.user_id) {
-        params.user_id = parseInt(reportFilters.user_id)
-      }
-      if (reportFilters.time_category_id) {
-        params.time_category_id = parseInt(reportFilters.time_category_id)
+        approval_status: 'approved_or_standard',
       }
 
-      const response = await api.getTimeEntries(params)
-      
+      if (reportFilters.user_id) params.user_id = parseInt(reportFilters.user_id)
+      if (reportFilters.time_category_id) params.time_category_id = parseInt(reportFilters.time_category_id)
+      if (reportFilters.client_id) params.client_id = parseInt(reportFilters.client_id)
+
+      const response = await api.getHoursReport(params)
+
       if (response.data) {
-        setReportData(response.data.time_entries as unknown as TimeEntryItem[])
+        const rows = response.data.employees.flatMap(employee =>
+          employee.days.flatMap(day =>
+            day.entries.map(entry => ({
+              id: entry.id,
+              work_date: entry.work_date,
+              start_time: entry.start_time,
+              end_time: entry.end_time,
+              formatted_start_time: entry.formatted_start_time,
+              formatted_end_time: entry.formatted_end_time,
+              hours: entry.total_hours,
+              break_minutes: entry.break_minutes,
+              description: entry.description,
+              entry_method: entry.entry_method as 'clock' | 'manual',
+              status: 'completed' as const,
+              approval_status: entry.approval_status,
+              overtime_status: entry.overtime_status,
+              user: {
+                id: employee.id,
+                email: employee.email || '',
+                display_name: employee.display_name,
+                full_name: employee.full_name,
+              },
+              time_category: entry.time_category,
+              client: entry.client,
+              tax_return: entry.tax_return,
+              locked_at: entry.locked_at,
+              created_at: '',
+              updated_at: '',
+            }))
+          )
+        )
+
+        setReportData(rows as unknown as TimeEntryItem[])
         setReportSummary({
           total_hours: response.data.summary.total_hours,
-          total_break_hours: response.data.summary.total_break_hours || 0,
-          entry_count: response.data.summary.entry_count
+          total_break_hours: response.data.summary.break_hours,
+          entry_count: response.data.summary.entries_count,
+          regular_hours: response.data.summary.regular_hours,
+          overtime_hours: response.data.summary.overtime_hours,
+          pending_count: response.data.summary.pending_count + response.data.summary.pending_overtime_count,
+          denied_count: response.data.summary.denied_count + response.data.summary.denied_overtime_count,
+          open_clock_count: response.data.summary.open_clock_count,
         })
-        setReportTruncated(response.data.pagination?.truncated === true)
+        setReportTruncated(false)
+      } else if (response.error) {
+        setError(response.error)
       }
     } catch {
       console.error('Failed to load report')
@@ -693,12 +740,9 @@ export default function TimeTracking() {
       {/* Clock In/Out Card - full width, horizontal on desktop */}
       <ClockInOutCard onStatusChange={() => loadEntries()} />
 
-      {/* Admin Panels */}
-      {isAdmin && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <ApprovalQueue onUpdate={() => loadEntries()} />
-          <WhosWorking />
-        </div>
+      {/* Admin live status */}
+      {isAdmin && activeTab !== 'approvals' && (
+        <WhosWorking />
       )}
       
       {/* Tab Navigation */}
@@ -715,6 +759,19 @@ export default function TimeTracking() {
             <ClockIcon />
             Time Entries
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('approvals')}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === 'approvals'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-muted hover:text-primary-dark'
+              }`}
+            >
+              <ClockIcon />
+              Approvals
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={() => setActiveTab('reports')}
@@ -1497,6 +1554,21 @@ export default function TimeTracking() {
       </>
       )}
 
+      {/* Approvals Tab */}
+      {activeTab === 'approvals' && isAdmin && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-bold text-primary-dark">Approval Review</h2>
+            <p className="mt-1 text-sm text-text-muted">Filter pending time, edit exceptions inline, and approve entries in batches.</p>
+          </div>
+          <ApprovalQueue
+            onUpdate={() => loadEntries()}
+            canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry as unknown as TimeEntryItem) : false}
+            clients={clients}
+          />
+        </div>
+      )}
+
       {/* Reports Tab */}
       {activeTab === 'reports' && isAdmin && (
         <div className="space-y-6">
@@ -1550,6 +1622,19 @@ export default function TimeTracking() {
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="block text-sm text-text-muted mb-1">Client</label>
+                <select
+                  value={reportFilters.client_id}
+                  onChange={(e) => setReportFilters({ ...reportFilters, client_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">All Clients</option>
+                  {clients.map(client => (
+                    <option key={client.id} value={client.id}>{client.name || `${client.first_name} ${client.last_name}`}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -1560,6 +1645,22 @@ export default function TimeTracking() {
                 <div className="text-sm text-text-muted">Work Hours</div>
                 <div className="text-3xl font-bold text-primary mt-1">
                   {reportLoading ? '...' : reportSummary.total_hours.toFixed(1)}
+                </div>
+              </div>
+            </StaggerItem>
+            <StaggerItem>
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
+                <div className="text-sm text-text-muted">Regular Hours</div>
+                <div className="text-3xl font-bold text-primary-dark mt-1">
+                  {reportLoading ? '...' : reportSummary.regular_hours.toFixed(1)}
+                </div>
+              </div>
+            </StaggerItem>
+            <StaggerItem>
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
+                <div className="text-sm text-text-muted">Overtime</div>
+                <div className="text-3xl font-bold text-orange-600 mt-1">
+                  {reportLoading ? '...' : reportSummary.overtime_hours.toFixed(1)}
                 </div>
               </div>
             </StaggerItem>
@@ -1576,14 +1677,6 @@ export default function TimeTracking() {
                 <div className="text-sm text-text-muted">Total Entries</div>
                 <div className="text-3xl font-bold text-primary-dark mt-1">
                   {reportLoading ? '...' : reportSummary.entry_count}
-                </div>
-              </div>
-            </StaggerItem>
-            <StaggerItem>
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-                <div className="text-sm text-text-muted">Avg Hours/Entry</div>
-                <div className="text-3xl font-bold text-text-muted mt-1">
-                  {reportLoading ? '...' : (reportSummary.entry_count > 0 ? (reportSummary.total_hours / reportSummary.entry_count).toFixed(1) : '0')}
                 </div>
               </div>
             </StaggerItem>

@@ -549,6 +549,11 @@ export interface AdminTimeCategory extends TimeCategory {
   updated_at: string;
 }
 
+export interface ApprovalReason {
+  key: string;
+  label: string;
+}
+
 export interface TimeEntry {
   id: number;
   work_date: string;
@@ -557,6 +562,8 @@ export interface TimeEntry {
   formatted_start_time: string | null;
   formatted_end_time: string | null;
   hours: number;
+  regular_hours?: number;
+  overtime_hours?: number;
   break_minutes: number | null;
   description: string | null;
   entry_method: 'clock' | 'manual';
@@ -565,6 +572,7 @@ export interface TimeEntry {
   attendance_status: 'early' | 'on_time' | 'late' | null;
   approval_status: 'pending' | 'approved' | 'denied' | null;
   overtime_status: 'none' | 'pending' | 'approved' | 'denied' | null;
+  approval_reasons?: ApprovalReason[];
   clock_in_at: string | null;
   clock_out_at: string | null;
   approved_by: {
@@ -654,6 +662,26 @@ export interface ClockStatus {
   is_admin?: boolean;
 }
 
+export interface WorkerBreak {
+  start_time: string;
+  end_time: string | null;
+  duration_minutes: number | null;
+  active: boolean;
+}
+
+export interface WorkerDayEntry {
+  id: number;
+  status: string;
+  clock_in_at: string | null;
+  clock_out_at: string | null;
+  hours: number;
+  time_category?: {
+    id: number;
+    name: string;
+  } | null;
+  breaks: WorkerBreak[];
+}
+
 export interface WorkerStatus {
   user: {
     id: number;
@@ -673,6 +701,12 @@ export interface WorkerStatus {
   active_break: boolean;
   break_started_at: string | null;
   total_break_minutes: number;
+  breaks?: WorkerBreak[];
+  time_category?: {
+    id: number;
+    name: string;
+  } | null;
+  day_entries?: WorkerDayEntry[];
 }
 
 export interface TimeEntriesResponse {
@@ -689,6 +723,180 @@ export interface TimeEntriesResponse {
     total_break_hours: number;
     entry_count: number;
   };
+}
+
+export interface PaginationMeta {
+  current_page: number;
+  per_page: number;
+  total_count: number;
+  total_pages: number;
+}
+
+export interface PendingApprovalsSummary {
+  total_hours: number;
+  entry_count: number;
+  oldest_work_date: string | null;
+  newest_work_date: string | null;
+  pending_time_entry_count: number;
+  pending_overtime_count: number;
+  manual_count: number;
+  clock_count: number;
+  counts_by_date: Array<{ work_date: string; count: number; hours: number }>;
+  counts_by_client?: Array<{ id: number | null; name: string; count: number; hours: number }>;
+}
+
+export interface PendingApprovalsParams {
+  date?: string;
+  start_date?: string;
+  end_date?: string;
+  through_date?: string;
+  since_date?: string;
+  user_id?: number;
+  time_category_id?: number;
+  client_id?: number;
+  service_type_id?: number;
+  service_task_id?: number;
+  approval_type?: 'time_entry' | 'overtime' | 'both';
+  entry_method?: 'clock' | 'manual';
+  sort?: 'work_date' | 'created_at' | 'employee' | 'hours' | 'approval_type' | 'category' | 'client' | 'service';
+  direction?: 'asc' | 'desc';
+  page?: number;
+  per_page?: number;
+}
+
+export interface PendingApprovalsResponse {
+  pending_entries: TimeEntry[];
+  count: number;
+  pagination?: PaginationMeta & { truncated?: boolean };
+  summary?: PendingApprovalsSummary;
+  filters?: Record<string, string | number>;
+  sort?: { field: string; direction: 'asc' | 'desc' };
+}
+
+export interface HoursReportEntry {
+  id: number;
+  work_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  formatted_start_time: string | null;
+  formatted_end_time: string | null;
+  total_hours: number;
+  regular_hours: number;
+  overtime_hours: number;
+  break_minutes: number;
+  description: string | null;
+  entry_method: string;
+  approval_status: string | null;
+  overtime_status: string | null;
+  locked_at: string | null;
+  time_category: { id: number; name: string } | null;
+  client: { id: number; name: string } | null;
+  tax_return: { id: number; tax_year: number } | null;
+  service_type: { id: number; name: string; color?: string | null } | null;
+  service_task: { id: number; name: string } | null;
+  breaks: Array<{ id: number; start_time: string | null; end_time: string | null; duration_minutes: number | null }>;
+}
+
+export interface HoursReportDay {
+  work_date: string;
+  total_hours: number;
+  regular_hours: number;
+  overtime_hours: number;
+  break_hours: number;
+  entries: HoursReportEntry[];
+}
+
+export interface HoursReportGroup {
+  id: number | null;
+  name: string;
+  total_hours: number;
+  regular_hours: number;
+  overtime_hours: number;
+  break_hours: number;
+  entries_count: number;
+}
+
+export interface HoursReportWeek {
+  week_start: string;
+  week_end: string;
+  weekly_total_hours: number;
+  period_hours: number;
+  context_hours: number;
+  regular_hours: number;
+  overtime_hours: number;
+  context_note: string | null;
+}
+
+export interface HoursReportEmployee {
+  id: number;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  display_name: string;
+  full_name: string;
+  role: 'admin' | 'employee';
+  status: 'active' | 'pending' | 'inactive' | string;
+  total_hours: number;
+  regular_hours: number;
+  overtime_hours: number;
+  break_hours: number;
+  entries_count: number;
+  ready: boolean;
+  issues: {
+    pending_count: number;
+    denied_count: number;
+    pending_overtime_count: number;
+    denied_overtime_count: number;
+    open_clock_count: number;
+  };
+  days: HoursReportDay[];
+  categories: HoursReportGroup[];
+  clients: HoursReportGroup[];
+  services: HoursReportGroup[];
+  weeks: HoursReportWeek[];
+}
+
+export interface HoursReportResponse {
+  start_date: string;
+  end_date: string;
+  context_start_date: string;
+  context_end_date: string;
+  generated_at: string;
+  filters: Record<string, string | number | boolean>;
+  overtime_policy: {
+    daily_threshold_hours: number;
+    weekly_threshold_hours: number;
+  };
+  summary: {
+    employee_count: number;
+    total_hours: number;
+    regular_hours: number;
+    overtime_hours: number;
+    break_hours: number;
+    entries_count: number;
+    pending_count: number;
+    denied_count: number;
+    pending_overtime_count: number;
+    denied_overtime_count: number;
+    open_clock_count: number;
+  };
+  employees: HoursReportEmployee[];
+}
+
+export interface HoursReportParams {
+  start_date: string;
+  end_date: string;
+  user_id?: number;
+  role?: 'admin' | 'employee';
+  status?: 'active' | 'current' | 'pending';
+  time_category_id?: number;
+  client_id?: number;
+  service_type_id?: number;
+  service_task_id?: number;
+  entry_method?: 'clock' | 'manual';
+  approval_status?: 'pending' | 'approved' | 'denied' | 'approved_or_standard';
+  overtime_status?: 'none' | 'pending' | 'approved' | 'denied';
+  include_empty?: boolean;
 }
 
 export interface TimePeriodLock {
@@ -1677,7 +1885,12 @@ export const api = {
     end_date?: string;
     time_category_id?: number;
     client_id?: number;
+    service_type_id?: number;
+    service_task_id?: number;
     user_id?: number;
+    entry_method?: 'clock' | 'manual';
+    approval_status?: 'pending' | 'approved' | 'denied' | 'approved_or_standard';
+    overtime_status?: 'none' | 'pending' | 'approved' | 'denied';
     exclude_approval_statuses?: string[];
   }) => {
     const searchParams = new URLSearchParams();
@@ -1689,7 +1902,12 @@ export const api = {
     if (params?.end_date) searchParams.set('end_date', params.end_date);
     if (params?.time_category_id) searchParams.set('time_category_id', params.time_category_id.toString());
     if (params?.client_id) searchParams.set('client_id', params.client_id.toString());
+    if (params?.service_type_id) searchParams.set('service_type_id', params.service_type_id.toString());
+    if (params?.service_task_id) searchParams.set('service_task_id', params.service_task_id.toString());
     if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
+    if (params?.entry_method) searchParams.set('entry_method', params.entry_method);
+    if (params?.approval_status) searchParams.set('approval_status', params.approval_status);
+    if (params?.overtime_status) searchParams.set('overtime_status', params.overtime_status);
     if (params?.exclude_approval_statuses) {
       params.exclude_approval_statuses.forEach(s => searchParams.append('exclude_approval_statuses[]', s));
     }
@@ -1724,13 +1942,14 @@ export const api = {
     start_time: string;
     end_time: string;
     description: string;
-    time_category_id: number;
-    client_id: number;
-    tax_return_id: number;
+    time_category_id: number | null;
+    client_id: number | null;
+    tax_return_id: number | null;
     break_minutes: number | null;
-    service_type_id: number;
-    service_task_id: number;
+    service_type_id: number | null;
+    service_task_id: number | null;
     operation_task_id: number;
+    breaks: Array<{ id?: number; start_time: string; end_time: string; _destroy?: boolean }>;
   }>) =>
     fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}`, (() => {
       const { operation_task_id, ...timeEntryData } = data;
@@ -1777,13 +1996,39 @@ export const api = {
   getClockStatus: () =>
     fetchApi<ClockStatus>('/api/v1/time_entries/current_status'),
 
-  getPendingApprovals: () =>
-    fetchApi<{ pending_entries: TimeEntry[]; count: number }>('/api/v1/time_entries/pending_approvals'),
+  getPendingApprovals: (params?: PendingApprovalsParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.date) searchParams.set('date', params.date);
+    if (params?.start_date) searchParams.set('start_date', params.start_date);
+    if (params?.end_date) searchParams.set('end_date', params.end_date);
+    if (params?.through_date) searchParams.set('through_date', params.through_date);
+    if (params?.since_date) searchParams.set('since_date', params.since_date);
+    if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
+    if (params?.time_category_id) searchParams.set('time_category_id', params.time_category_id.toString());
+    if (params?.client_id) searchParams.set('client_id', params.client_id.toString());
+    if (params?.service_type_id) searchParams.set('service_type_id', params.service_type_id.toString());
+    if (params?.service_task_id) searchParams.set('service_task_id', params.service_task_id.toString());
+    if (params?.approval_type) searchParams.set('approval_type', params.approval_type);
+    if (params?.entry_method) searchParams.set('entry_method', params.entry_method);
+    if (params?.sort) searchParams.set('sort', params.sort);
+    if (params?.direction) searchParams.set('direction', params.direction);
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
+
+    const query = searchParams.toString();
+    return fetchApi<PendingApprovalsResponse>(`/api/v1/time_entries/pending_approvals${query ? `?${query}` : ''}`);
+  },
 
   approveTimeEntry: (id: number, note?: string) =>
     fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}/approve`, {
       method: 'POST',
       body: JSON.stringify({ note }),
+    }),
+
+  bulkApproveTimeEntries: (entryIds: number[], note?: string) =>
+    fetchApi<{ time_entries: TimeEntry[]; count: number }>('/api/v1/time_entries/bulk_approve', {
+      method: 'POST',
+      body: JSON.stringify({ entry_ids: entryIds, ...(note ? { note } : {}) }),
     }),
 
   denyTimeEntry: (id: number, note?: string) =>
@@ -1806,6 +2051,14 @@ export const api = {
 
   getWhosWorking: () =>
     fetchApi<{ workers: WorkerStatus[] }>('/api/v1/time_entries/whos_working'),
+
+  getHoursReport: (params: HoursReportParams) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') searchParams.set(key, String(value));
+    });
+    return fetchApi<HoursReportResponse>(`/api/v1/admin/hours_report?${searchParams.toString()}`);
+  },
 
   getTimeCategories: () =>
     fetchApi<{ time_categories: TimeCategory[] }>('/api/v1/time_categories'),

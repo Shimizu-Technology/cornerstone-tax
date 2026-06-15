@@ -1,0 +1,472 @@
+import { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { api } from '../../lib/api'
+
+interface TimeCategoryOption {
+  id: number
+  name: string
+}
+
+interface ClientOption {
+  id: number
+  first_name?: string
+  last_name?: string
+  name?: string
+}
+
+interface EditableTimeEntry {
+  id: number
+  work_date: string
+  start_time: string | null
+  end_time: string | null
+  break_minutes: number | null
+  description: string | null
+  approval_status?: 'pending' | 'approved' | 'denied' | null
+  approval_note?: string | null
+  approved_by?: { id: number; full_name: string } | null
+  entry_method?: 'clock' | 'manual'
+  status?: 'clocked_in' | 'on_break' | 'completed'
+  locked_at: string | null
+  user: {
+    id: number
+    email: string
+    display_name?: string
+    full_name?: string
+  } | null
+  time_category: {
+    id: number
+    name: string
+  } | null
+  client?: {
+    id: number
+    name: string
+  } | null
+  breaks?: Array<{
+    id?: number
+    start_time: string | null
+    end_time: string | null
+    duration_minutes?: number | null
+    active?: boolean
+  }>
+}
+
+interface EditTimeEntryModalProps {
+  isOpen: boolean
+  entry: EditableTimeEntry | null
+  categories: TimeCategoryOption[]
+  clients?: ClientOption[]
+  canDelete: boolean
+  onClose: () => void
+  onSaved: () => void | Promise<void>
+  onDeleted: () => void | Promise<void>
+  onError?: (message: string | null) => void
+}
+
+const BUSINESS_TIME_ZONE = 'Pacific/Guam'
+
+const BREAK_PRESETS = [
+  { label: 'None', minutes: null },
+  { label: '15m', minutes: 15 },
+  { label: '30m', minutes: 30 },
+  { label: '45m', minutes: 45 },
+  { label: '1h', minutes: 60 },
+  { label: 'Custom', minutes: -1 },
+]
+
+function timeInputValue(value: string | null | undefined) {
+  if (!value) return ''
+
+  const plainTime = value.match(/^(\d{1,2}):(\d{2})$/)
+  if (plainTime) return `${plainTime[1].padStart(2, '0')}:${plainTime[2]}`
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  const hour = parts.find((part) => part.type === 'hour')?.value
+  const minute = parts.find((part) => part.type === 'minute')?.value
+
+  return hour && minute ? `${hour}:${minute}` : ''
+}
+
+function clientLabel(client: ClientOption) {
+  return client.name || [client.first_name, client.last_name].filter(Boolean).join(' ') || `Client #${client.id}`
+}
+
+export default function EditTimeEntryModal({
+  isOpen,
+  entry,
+  categories,
+  clients = [],
+  canDelete,
+  onClose,
+  onSaved,
+  onDeleted,
+  onError,
+}: EditTimeEntryModalProps) {
+  const [formData, setFormData] = useState({
+    work_date: '',
+    start_time: '08:00',
+    end_time: '17:00',
+    description: '',
+    time_category_id: '',
+    client_id: '',
+    break_minutes: null as number | null,
+  })
+  const [breakRows, setBreakRows] = useState<Array<{ id?: number; start_time: string; end_time: string }>>([])
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isOpen || !entry) return
+
+    setFormData({
+      work_date: entry.work_date,
+      start_time: entry.start_time || '08:00',
+      end_time: entry.end_time || '17:00',
+      description: entry.description || '',
+      time_category_id: entry.time_category?.id.toString() || '',
+      client_id: entry.client?.id.toString() || '',
+      break_minutes: entry.break_minutes,
+    })
+    setBreakRows((entry.breaks || [])
+      .filter((row) => row.start_time && row.end_time)
+      .map((row) => ({
+        id: row.id,
+        start_time: timeInputValue(row.start_time),
+        end_time: timeInputValue(row.end_time),
+      }))
+      .filter((row) => row.start_time && row.end_time))
+    setError(null)
+  }, [entry, isOpen])
+
+  const calculatedHours = useMemo(() => {
+    if (!formData.start_time || !formData.end_time) return 0
+
+    const [startH, startM] = formData.start_time.split(':').map(Number)
+    const [endH, endM] = formData.end_time.split(':').map(Number)
+    const startMinutes = startH * 60 + startM
+    const endMinutes = endH * 60 + endM
+
+    let durationMinutes = endMinutes - startMinutes
+    if (durationMinutes < 0) durationMinutes += 24 * 60
+    if (formData.break_minutes) durationMinutes -= formData.break_minutes
+
+    return Math.max(0, durationMinutes / 60)
+  }, [formData.break_minutes, formData.end_time, formData.start_time])
+
+  const ownerName = entry?.user?.full_name || entry?.user?.display_name || entry?.user?.email?.split('@')[0] || 'Unknown team member'
+  const isLocked = !!entry?.locked_at
+  const isActiveClockEntry = entry?.entry_method === 'clock' && (entry.status === 'clocked_in' || entry.status === 'on_break')
+
+  const setLocalError = (message: string | null) => {
+    setError(message)
+    onError?.(message)
+  }
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!entry) return
+    setSaving(true)
+    setLocalError(null)
+
+    try {
+      const shouldSubmitDetailedBreaks = breakRows.length > 0 || (entry.breaks?.length ?? 0) > 0
+      const payload = {
+        work_date: formData.work_date,
+        start_time: formData.start_time,
+        description: formData.description || undefined,
+        time_category_id: formData.time_category_id ? parseInt(formData.time_category_id, 10) : null,
+        client_id: formData.client_id ? parseInt(formData.client_id, 10) : null,
+        ...(isActiveClockEntry ? {} : {
+          end_time: formData.end_time,
+          break_minutes: formData.break_minutes,
+          ...(shouldSubmitDetailedBreaks ? { breaks: breakRows } : {}),
+        }),
+      }
+
+      const response = await api.updateTimeEntry(entry.id, payload)
+
+      if (response.error) {
+        setLocalError(response.error)
+        return
+      }
+
+      await onSaved()
+    } catch {
+      setLocalError('Failed to save time entry')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!entry || !canDelete) return
+    if (!confirm('Are you sure you want to delete this time entry?')) return
+
+    setDeleting(true)
+    setLocalError(null)
+
+    try {
+      const response = await api.deleteTimeEntry(entry.id)
+      if (response.error) {
+        setLocalError(response.error)
+        return
+      }
+
+      await onDeleted()
+    } catch {
+      setLocalError('Failed to delete time entry')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <AnimatePresence>
+      {isOpen && entry && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) onClose()
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.25, delay: 0.1 }}
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl"
+          >
+            <div className="p-6">
+              <h2 className="mb-1 text-xl font-bold text-primary-dark">Edit Time Entry</h2>
+              <div className="mb-4">
+                <p className="text-sm text-primary-dark/70">
+                  Entry for: <span className="font-medium text-primary-dark">{ownerName}</span>
+                </p>
+                {isLocked && (
+                  <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                    <LockIcon />
+                    <span>This entry is locked and cannot be edited.</span>
+                  </div>
+                )}
+                {entry.approved_by && (
+                  <div className={`mt-2 rounded-lg border px-3 py-2 text-sm ${
+                    entry.approval_status === 'approved'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-red-200 bg-red-50 text-red-700'
+                  }`}>
+                    <span className="font-medium">
+                      {entry.approval_status === 'approved' ? 'Approved' : 'Denied'}
+                    </span>{' '}
+                    by {entry.approved_by.full_name}
+                    {entry.approval_note && <p className="mt-1 text-xs italic opacity-80">&quot;{entry.approval_note}&quot;</p>}
+                  </div>
+                )}
+                {isActiveClockEntry && (
+                  <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
+                    This person is still clocked in. Updating the start time corrects their live clock-in time; final hours are calculated when they clock out.
+                  </div>
+                )}
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <fieldset disabled={isLocked || saving || deleting} className={isLocked ? 'opacity-60' : ''}>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-primary-dark">Date *</label>
+                    <input
+                      type="date"
+                      value={formData.work_date}
+                      onChange={(event) => setFormData({ ...formData, work_date: event.target.value })}
+                      className="w-full rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+                      required
+                    />
+                  </div>
+
+                  <div className={`mt-4 grid gap-4 ${isActiveClockEntry ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-primary-dark">{isActiveClockEntry ? 'Clock-in Time *' : 'Start Time *'}</label>
+                      <input
+                        type="time"
+                        value={formData.start_time}
+                        onChange={(event) => setFormData({ ...formData, start_time: event.target.value })}
+                        className="w-full rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+                        required
+                      />
+                    </div>
+                    {!isActiveClockEntry && (
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-primary-dark">End Time *</label>
+                        <input
+                          type="time"
+                          value={formData.end_time}
+                          onChange={(event) => setFormData({ ...formData, end_time: event.target.value })}
+                          className="w-full rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+                          required
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {isActiveClockEntry ? (
+                    <div className="mt-4 rounded-lg bg-neutral-warm/30 p-3 text-sm text-primary-dark">Final hours will be calculated after clock-out.</div>
+                  ) : (
+                    <div className="mt-4 flex items-center justify-between rounded-lg bg-neutral-warm/30 p-3">
+                      <span className="text-sm text-primary-dark">Calculated Hours:</span>
+                      <span className="text-lg font-bold text-primary">{calculatedHours.toFixed(2)}h</span>
+                    </div>
+                  )}
+
+                  {!isActiveClockEntry && (
+                    <div className="mt-4">
+                      <div className="mb-3 rounded-xl border border-cyan-100 bg-cyan-50/60 px-3 py-2 text-xs text-cyan-900">
+                        Add detailed break start/end times when a break needs correction. Detailed breaks replace the total break duration and recalculate hours.
+                      </div>
+                      <label className="mb-1 block text-sm font-medium text-primary-dark">Break Duration</label>
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        {BREAK_PRESETS.map((preset) => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => {
+                              if (preset.minutes === -1) setFormData({ ...formData, break_minutes: formData.break_minutes || 0 })
+                              else setFormData({ ...formData, break_minutes: preset.minutes })
+                            }}
+                            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                              (preset.minutes === null && formData.break_minutes === null) ||
+                              (preset.minutes === formData.break_minutes) ||
+                              (preset.minutes === -1 &&
+                                formData.break_minutes !== null &&
+                                !BREAK_PRESETS.slice(0, -1).some((item) => item.minutes === formData.break_minutes))
+                                ? 'bg-primary text-white'
+                                : 'bg-neutral-warm text-primary-dark hover:bg-primary/20'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                      {formData.break_minutes !== null &&
+                        !BREAK_PRESETS.slice(0, -1).some((preset) => preset.minutes === formData.break_minutes) && (
+                          <input
+                            type="number"
+                            min="0"
+                            max="480"
+                            value={formData.break_minutes || ''}
+                            onChange={(event) => setFormData({ ...formData, break_minutes: event.target.value ? parseInt(event.target.value, 10) : null })}
+                            placeholder="Minutes"
+                            className="w-full rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        )}
+                      <p className="mt-1 text-xs text-text-muted">Break time is not counted toward work hours</p>
+
+                      <div className="mt-4 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-sm font-semibold text-primary-dark">Detailed breaks</h3>
+                          <button
+                            type="button"
+                            onClick={() => setBreakRows([...breakRows, { start_time: '12:00', end_time: '12:30' }])}
+                            className="rounded-lg border border-cyan-200 px-3 py-1.5 text-xs font-semibold text-cyan-700 hover:bg-cyan-50"
+                          >
+                            Add break
+                          </button>
+                        </div>
+                        {breakRows.length === 0 ? (
+                          <p className="text-xs text-text-muted">No detailed breaks logged.</p>
+                        ) : breakRows.map((row, index) => (
+                          <div key={`${row.id || 'new'}-${index}`} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-xl border border-neutral-warm bg-white p-2">
+                            <label className="block">
+                              <span className="mb-1 block text-[11px] font-medium text-text-muted">Start</span>
+                              <input type="time" value={row.start_time} onChange={(event) => setBreakRows(breakRows.map((item, i) => i === index ? { ...item, start_time: event.target.value } : item))} className="w-full rounded-lg border border-neutral-warm px-2 py-1.5 text-sm" />
+                            </label>
+                            <label className="block">
+                              <span className="mb-1 block text-[11px] font-medium text-text-muted">End</span>
+                              <input type="time" value={row.end_time} onChange={(event) => setBreakRows(breakRows.map((item, i) => i === index ? { ...item, end_time: event.target.value } : item))} className="w-full rounded-lg border border-neutral-warm px-2 py-1.5 text-sm" />
+                            </label>
+                            <button type="button" onClick={() => setBreakRows(breakRows.filter((_, i) => i !== index))} className="rounded-lg px-2 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4">
+                    <label className="mb-1 block text-sm font-medium text-primary-dark">Category</label>
+                    <select
+                      value={formData.time_category_id}
+                      onChange={(event) => setFormData({ ...formData, time_category_id: event.target.value })}
+                      className="w-full rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="">Select category...</option>
+                      {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="mb-1 block text-sm font-medium text-primary-dark">Client</label>
+                    <select
+                      value={formData.client_id}
+                      onChange={(event) => setFormData({ ...formData, client_id: event.target.value })}
+                      className="w-full rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="">No client</option>
+                      {clients.map((client) => <option key={client.id} value={client.id}>{clientLabel(client)}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="mb-1 block text-sm font-medium text-primary-dark">Description</label>
+                    <textarea
+                      value={formData.description}
+                      onChange={(event) => setFormData({ ...formData, description: event.target.value })}
+                      rows={3}
+                      placeholder="What did you work on?"
+                      className="w-full resize-none rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                </fieldset>
+
+                {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
+
+                <div className="flex items-center justify-between gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={!canDelete || deleting || saving}
+                    className={`rounded-lg px-4 py-2 transition-colors ${canDelete ? 'text-red-600 hover:bg-red-50' : 'cursor-not-allowed text-gray-300'}`}
+                    title={canDelete ? 'Delete this time entry' : 'This entry is locked/finalized or cannot be deleted'}
+                  >
+                    {deleting ? 'Deleting...' : 'Delete'}
+                  </button>
+
+                  <div className="flex gap-3">
+                    <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 font-medium text-primary-dark transition-colors hover:bg-neutral-warm">Cancel</button>
+                    {!isLocked && <button type="submit" disabled={saving || deleting} className="rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-dark disabled:opacity-50">{saving ? 'Saving...' : 'Update'}</button>}
+                  </div>
+                </div>
+              </form>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+function LockIcon() {
+  return (
+    <svg className="h-3 w-3" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+    </svg>
+  )
+}
