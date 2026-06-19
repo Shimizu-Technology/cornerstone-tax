@@ -2013,6 +2013,19 @@ function EmployeeReportDrawer({
               <div className="mt-3 space-y-2">
                 {employee.weeks.map((week) => {
                   const weeklyThresholdTriggered = week.weekly_total_hours > weeklyThreshold
+                  const dailyThresholdTriggered = employee.days.some((day) => (
+                    day.work_date >= week.week_start &&
+                    day.work_date <= week.week_end &&
+                    day.overtime_hours > 0 &&
+                    day.total_hours > dailyThreshold
+                  ))
+                  const thresholdDescription = weeklyThresholdTriggered && dailyThresholdTriggered
+                    ? `the ${dailyThreshold.toFixed(2)}h daily and ${weeklyThreshold.toFixed(2)}h weekly thresholds`
+                    : weeklyThresholdTriggered
+                      ? `the ${weeklyThreshold.toFixed(2)}h weekly threshold`
+                      : dailyThresholdTriggered
+                        ? `the ${dailyThreshold.toFixed(2)}h daily threshold`
+                        : 'the configured overtime thresholds'
 
                   return (
                     <div key={week.week_start} className={`rounded-xl border px-4 py-3 text-sm ${week.overtime_hours > 0 ? 'border-orange-200 bg-orange-50/70' : 'border-slate-200 bg-white'}`}>
@@ -2022,9 +2035,7 @@ function EmployeeReportDrawer({
                       </div>
                       {week.overtime_hours > 0 && (
                         <p className="mt-2 text-xs font-medium text-orange-800">
-                          OT reason: {weeklyThresholdTriggered
-                            ? `${week.overtime_hours.toFixed(2)}h was classified as overtime after applying the ${weeklyThreshold.toFixed(2)}h weekly threshold.`
-                            : `${week.overtime_hours.toFixed(2)}h was classified as overtime after applying the ${dailyThreshold.toFixed(2)}h daily threshold.`}
+                          OT reason: {week.overtime_hours.toFixed(2)}h was classified as overtime after applying {thresholdDescription}.
                         </p>
                       )}
                       {week.context_note && <p className="mt-2 text-xs text-cyan-800">{week.context_note}</p>}
