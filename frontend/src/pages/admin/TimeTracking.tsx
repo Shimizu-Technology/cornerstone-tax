@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
+import type { HoursReportEmployee, HoursReportResponse, PendingApprovalsSummary } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeIn } from '../../components/ui/FadeIn'
 import { formatDateISO } from '../../lib/dateUtils'
@@ -164,6 +165,10 @@ function isSameDay(date1: Date, date2: Date): boolean {
          date1.getDate() === date2.getDate()
 }
 
+function formatBadgeCount(count: number): string {
+  return count > 99 ? '99+' : String(count)
+}
+
 export default function TimeTracking() {
   useEffect(() => { document.title = 'Time Tracking | Cornerstone Admin' }, [])
 
@@ -173,6 +178,7 @@ export default function TimeTracking() {
   const [categories, setCategories] = useState<TimeCategory[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
   const [users, setUsers] = useState<UserOption[]>([])
+  const [pendingApprovalSummary, setPendingApprovalSummary] = useState<PendingApprovalsSummary | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -202,6 +208,11 @@ export default function TimeTracking() {
     client_id: '',
   })
   const [reportData, setReportData] = useState<TimeEntryItem[]>([])
+  const [hoursReport, setHoursReport] = useState<HoursReportResponse | null>(null)
+  const [selectedReportEmployee, setSelectedReportEmployee] = useState<HoursReportEmployee | null>(null)
+  const handleCloseEmployeeReportDrawer = useCallback(() => {
+    setSelectedReportEmployee(null)
+  }, [])
   const [reportLoading, setReportLoading] = useState(false)
   const [reportSummary, setReportSummary] = useState({
     total_hours: 0,
@@ -361,6 +372,22 @@ export default function TimeTracking() {
       console.error('Failed to load options')
     }
   }, [])
+
+  const loadPendingApprovalSummary = useCallback(async () => {
+    if (!isAdmin) {
+      setPendingApprovalSummary(null)
+      return
+    }
+
+    try {
+      const response = await api.getPendingApprovals({ page: 1, per_page: 1 })
+      if (response.data) {
+        setPendingApprovalSummary(response.data.summary ?? null)
+      }
+    } catch {
+      // The approvals queue itself will surface errors when opened.
+    }
+  }, [isAdmin])
   
   const loadWeekLockStatus = useCallback(async () => {
     try {
@@ -427,6 +454,9 @@ export default function TimeTracking() {
       const response = await api.getHoursReport(params)
 
       if (response.data) {
+        setHoursReport(response.data)
+        setSelectedReportEmployee((current) => current ? response.data!.employees.find((employee) => employee.id === current.id) ?? null : null)
+
         const rows = response.data.employees.flatMap(employee =>
           employee.days.flatMap(day =>
             day.entries.map(entry => ({
@@ -490,6 +520,20 @@ export default function TimeTracking() {
   }, [loadOptions])
 
   useEffect(() => {
+    if (!isAdmin) {
+      setPendingApprovalSummary(null)
+      return
+    }
+
+    void loadPendingApprovalSummary()
+    const interval = window.setInterval(() => {
+      void loadPendingApprovalSummary()
+    }, 60000)
+
+    return () => window.clearInterval(interval)
+  }, [isAdmin, loadPendingApprovalSummary])
+
+  useEffect(() => {
     loadWeekLockStatus()
   }, [loadWeekLockStatus])
   
@@ -498,6 +542,12 @@ export default function TimeTracking() {
       loadReport()
     }
   }, [activeTab, loadReport])
+
+  useEffect(() => {
+    if (activeTab !== 'reports') {
+      setSelectedReportEmployee(null)
+    }
+  }, [activeTab])
 
   // Handle prefill from schedule
   useEffect(() => {
@@ -628,7 +678,8 @@ export default function TimeTracking() {
       }
 
       setShowModal(false)
-      loadEntries()
+      await loadEntries()
+      await loadPendingApprovalSummary()
     } catch {
       setError('Failed to save time entry')
     } finally {
@@ -658,7 +709,8 @@ export default function TimeTracking() {
       }
       setShowModal(false)
       setEditingEntry(null)
-      loadEntries()
+      await loadEntries()
+      await loadPendingApprovalSummary()
     } catch {
       setError('Failed to delete time entry')
     }
@@ -700,19 +752,15 @@ export default function TimeTracking() {
     return acc
   }, {} as Record<string, number>)
 
-  const reportByUser = reportData.reduce((acc, entry) => {
-    const name = entry.user.display_name || entry.user.email.split('@')[0]
-    if (!acc[name]) acc[name] = 0
-    acc[name] += entry.hours
-    return acc
-  }, {} as Record<string, number>)
-
   const reportByClient = reportData.reduce((acc, entry) => {
     const clientName = entry.client?.name || 'No Client'
     if (!acc[clientName]) acc[clientName] = 0
     acc[clientName] += entry.hours
     return acc
   }, {} as Record<string, number>)
+  const hoursSummaryRows = hoursReport?.employees ?? []
+  const pendingApprovalCount = pendingApprovalSummary?.entry_count ?? 0
+  const pendingOvertimeApprovalCount = pendingApprovalSummary?.pending_overtime_count ?? 0
 
   return (
     <div className="space-y-6">
@@ -738,7 +786,10 @@ export default function TimeTracking() {
       </FadeUp>
 
       {/* Clock In/Out Card - full width, horizontal on desktop */}
-      <ClockInOutCard onStatusChange={() => loadEntries()} />
+      <ClockInOutCard onStatusChange={() => {
+        void loadEntries()
+        void loadPendingApprovalSummary()
+      }} />
 
       {/* Admin live status */}
       {isAdmin && activeTab !== 'approvals' && (
@@ -762,6 +813,7 @@ export default function TimeTracking() {
           {isAdmin && (
             <button
               onClick={() => setActiveTab('approvals')}
+              aria-label={pendingApprovalCount > 0 ? `Approvals, ${pendingApprovalCount} pending` : 'Approvals'}
               className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
                 activeTab === 'approvals'
                   ? 'border-primary text-primary'
@@ -769,7 +821,15 @@ export default function TimeTracking() {
               }`}
             >
               <ClockIcon />
-              Approvals
+              <span>Approvals</span>
+              {pendingApprovalCount > 0 && (
+                <span className="relative inline-flex items-center" title={`${pendingApprovalCount} pending approval${pendingApprovalCount === 1 ? '' : 's'}${pendingOvertimeApprovalCount > 0 ? ` · ${pendingOvertimeApprovalCount} OT` : ''}`}>
+                  <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-amber-400 opacity-30" aria-hidden="true" />
+                  <span className="relative inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-amber-200 bg-amber-50 px-1.5 text-[11px] font-bold leading-none text-amber-700 shadow-sm">
+                    {formatBadgeCount(pendingApprovalCount)}
+                  </span>
+                </span>
+              )}
             </button>
           )}
           {isAdmin && (
@@ -1562,7 +1622,10 @@ export default function TimeTracking() {
             <p className="mt-1 text-sm text-text-muted">Filter pending time, edit exceptions inline, and approve entries in batches.</p>
           </div>
           <ApprovalQueue
-            onUpdate={() => loadEntries()}
+            onUpdate={() => {
+              void loadEntries()
+              void loadPendingApprovalSummary()
+            }}
             canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry as unknown as TimeEntryItem) : false}
             clients={clients}
           />
@@ -1682,6 +1745,12 @@ export default function TimeTracking() {
             </StaggerItem>
           </StaggerContainer>
 
+          {hoursReport && (hoursReport.context_start_date !== hoursReport.start_date || hoursReport.context_end_date !== hoursReport.end_date) && (
+            <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+              OT is calculated with {hoursReport.overtime_policy.daily_threshold_hours.toFixed(2)}h daily and {hoursReport.overtime_policy.weekly_threshold_hours.toFixed(2)}h Sunday–Saturday weekly thresholds. This report uses context from {formatDate(hoursReport.context_start_date)} through {formatDate(hoursReport.context_end_date)} so split weeks calculate correctly.
+            </div>
+          )}
+
           {reportTruncated && !reportLoading && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
               <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -1727,20 +1796,31 @@ export default function TimeTracking() {
             <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
               <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
                 <h3 className="font-semibold text-primary-dark">Hours by Employee</h3>
+                <p className="mt-0.5 text-xs text-text-muted">Click a row or an orange OT pill to inspect daily and weekly overtime context.</p>
               </div>
               <div className="divide-y divide-neutral-warm">
                 {reportLoading ? (
                   <div className="p-4 text-center text-text-muted">Loading...</div>
-                ) : Object.entries(reportByUser).length === 0 ? (
+                ) : hoursSummaryRows.length === 0 ? (
                   <div className="p-4 text-center text-text-muted">No data</div>
                 ) : (
-                  Object.entries(reportByUser)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([email, hours]) => (
-                      <div key={email} className="px-4 py-3 flex justify-between items-center">
-                        <span className="text-primary-dark truncate max-w-[150px]">{email}</span>
-                        <span className="font-semibold text-primary">{hours.toFixed(1)}h</span>
-                      </div>
+                  hoursSummaryRows
+                    .slice()
+                    .sort((a, b) => b.total_hours - a.total_hours)
+                    .map((employee) => (
+                      <button key={employee.id} type="button" onClick={() => setSelectedReportEmployee(employee)} className="grid w-full grid-cols-[1fr_auto] gap-3 px-4 py-3 text-left transition hover:bg-cyan-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-primary-dark">{employee.full_name || employee.display_name || employee.email}</span>
+                          <span className="mt-0.5 block text-xs text-text-muted">Regular {employee.regular_hours.toFixed(2)}h · Total {employee.total_hours.toFixed(2)}h</span>
+                        </span>
+                        {employee.overtime_hours > 0 ? (
+                          <span className="inline-flex items-center self-center rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-700">
+                            {employee.overtime_hours.toFixed(2)}h OT
+                          </span>
+                        ) : (
+                          <span className="self-center text-sm font-semibold text-primary">{employee.total_hours.toFixed(1)}h</span>
+                        )}
+                      </button>
                     ))
                 )}
               </div>
@@ -1823,8 +1903,191 @@ export default function TimeTracking() {
               )}
             </div>
           </div>
+
+          <EmployeeReportDrawer
+            employee={selectedReportEmployee}
+            overtimePolicy={hoursReport?.overtime_policy ?? null}
+            onClose={handleCloseEmployeeReportDrawer}
+          />
         </div>
       )}
+    </div>
+  )
+}
+
+function ReportMetric({ label, value, emphasize = false, tone = 'normal' }: { label: string; value: string; emphasize?: boolean; tone?: 'normal' | 'warning' }) {
+  return (
+    <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
+      <div className="text-sm text-text-muted">{label}</div>
+      <div className={`mt-1 text-2xl font-bold ${emphasize ? 'text-primary' : tone === 'warning' ? 'text-orange-700' : 'text-primary-dark'}`}>{value}</div>
+    </div>
+  )
+}
+
+function EmployeeReportDrawer({
+  employee,
+  overtimePolicy,
+  onClose,
+}: {
+  employee: HoursReportEmployee | null
+  overtimePolicy: HoursReportResponse['overtime_policy'] | null
+  onClose: () => void
+}) {
+  const drawerRef = useRef<HTMLDivElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const titleId = 'cornerstone-employee-report-drawer-title'
+  const dailyThreshold = overtimePolicy?.daily_threshold_hours ?? 8
+  const weeklyThreshold = overtimePolicy?.weekly_threshold_hours ?? 40
+
+  useEffect(() => {
+    if (!employee) return
+
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const focusDrawer = window.requestAnimationFrame(() => {
+      closeButtonRef.current?.focus()
+    })
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose()
+        return
+      }
+
+      if (event.key !== 'Tab' || !drawerRef.current) return
+
+      const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), details summary, [tabindex]:not([tabindex="-1"])'
+      )).filter((element) => !element.hasAttribute('disabled') && element.tabIndex !== -1)
+
+      if (focusable.length === 0) {
+        event.preventDefault()
+        drawerRef.current.focus()
+        return
+      }
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.cancelAnimationFrame(focusDrawer)
+      document.removeEventListener('keydown', handleKeyDown)
+      previouslyFocused?.focus()
+    }
+  }, [employee, onClose])
+
+  if (!employee) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div ref={drawerRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="h-full w-full max-w-3xl overflow-y-auto bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 id={titleId} className="text-xl font-bold text-primary-dark">{employee.full_name}</h2>
+              <p className="mt-1 text-sm text-text-muted">
+                {employee.total_hours.toFixed(2)}h total · {employee.regular_hours.toFixed(2)}h regular · {employee.overtime_hours.toFixed(2)}h OT
+              </p>
+            </div>
+            <button ref={closeButtonRef} type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Close</button>
+          </div>
+        </div>
+
+        <div className="space-y-5 p-6">
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+            Cornerstone OT is allocated when a day exceeds {dailyThreshold.toFixed(2)}h or a Sunday–Saturday week exceeds {weeklyThreshold.toFixed(2)}h. The breakdown below shows which day/week created the OT.
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <ReportMetric label="Regular" value={employee.regular_hours.toFixed(2)} />
+            <ReportMetric label="Overtime" value={employee.overtime_hours.toFixed(2)} tone={employee.overtime_hours > 0 ? 'warning' : 'normal'} />
+            <ReportMetric label="Total" value={employee.total_hours.toFixed(2)} emphasize />
+            <ReportMetric label="Breaks" value={employee.break_hours.toFixed(2)} />
+          </div>
+
+          {employee.weeks.length > 0 && (
+            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <h3 className="font-semibold text-primary-dark">Weekly overtime context</h3>
+              <div className="mt-3 space-y-2">
+                {employee.weeks.map((week) => {
+                  const weeklyThresholdTriggered = week.weekly_total_hours > weeklyThreshold
+                  const dailyThresholdTriggered = employee.days.some((day) => (
+                    day.work_date >= week.week_start &&
+                    day.work_date <= week.week_end &&
+                    day.overtime_hours > 0 &&
+                    day.total_hours > dailyThreshold
+                  ))
+                  const thresholdDescription = weeklyThresholdTriggered && dailyThresholdTriggered
+                    ? `the ${dailyThreshold.toFixed(2)}h daily and ${weeklyThreshold.toFixed(2)}h weekly thresholds`
+                    : weeklyThresholdTriggered
+                      ? `the ${weeklyThreshold.toFixed(2)}h weekly threshold`
+                      : dailyThresholdTriggered
+                        ? `the ${dailyThreshold.toFixed(2)}h daily threshold`
+                        : 'the configured overtime thresholds'
+
+                  return (
+                    <div key={week.week_start} className={`rounded-xl border px-4 py-3 text-sm ${week.overtime_hours > 0 ? 'border-orange-200 bg-orange-50/70' : 'border-slate-200 bg-white'}`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-primary-dark">{formatDate(week.week_start)} – {formatDate(week.week_end)}</span>
+                        <span className="text-text-muted">Week {week.weekly_total_hours.toFixed(2)}h · Period {week.period_hours.toFixed(2)}h · OT {week.overtime_hours.toFixed(2)}h</span>
+                      </div>
+                      {week.overtime_hours > 0 && (
+                        <p className="mt-2 text-xs font-medium text-orange-800">
+                          OT reason: {week.overtime_hours.toFixed(2)}h was classified as overtime after applying {thresholdDescription}.
+                        </p>
+                      )}
+                      {week.context_note && <p className="mt-2 text-xs text-cyan-800">{week.context_note}</p>}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          <section className="rounded-2xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 px-4 py-3"><h3 className="font-semibold text-primary-dark">Hours per day</h3></div>
+            <div className="divide-y divide-slate-200">
+              {employee.days.length === 0 ? (
+                <div className="p-4 text-sm text-text-muted">No approved hours in this period.</div>
+              ) : employee.days.map((day) => (
+                <details key={day.work_date} className="group">
+                  <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50">
+                    <div className="font-medium text-primary-dark">{formatDate(day.work_date)}</div>
+                    <div className="text-sm text-text-muted">Regular {day.regular_hours.toFixed(2)}h · OT {day.overtime_hours.toFixed(2)}h · Total {day.total_hours.toFixed(2)}h</div>
+                  </summary>
+                  <div className="space-y-2 bg-slate-50/60 px-4 pb-4">
+                    {day.entries.map((entry) => (
+                      <div key={entry.id} className={`rounded-xl border px-4 py-3 text-sm ${entry.overtime_hours > 0 ? 'border-orange-200 bg-orange-50/60' : 'border-slate-200 bg-white'}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium text-primary-dark">{entry.formatted_start_time || entry.start_time || '—'} – {entry.formatted_end_time || entry.end_time || '—'}</span>
+                          <span className="font-semibold text-primary">{entry.total_hours.toFixed(2)}h</span>
+                        </div>
+                        <div className="mt-1 text-xs text-text-muted">
+                          {entry.time_category?.name || 'Uncategorized'} · {entry.client?.name || 'No client'} · {entry.entry_method}
+                        </div>
+                        {entry.overtime_hours > 0 && <p className="mt-2 text-xs font-semibold text-orange-800">{entry.overtime_hours.toFixed(2)}h of this entry is overtime.</p>}
+                        {entry.breaks.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {entry.breaks.map((brk, index) => <span key={`${entry.id}-${index}`} className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">Break {brk.start_time}–{brk.end_time} ({brk.duration_minutes}m)</span>)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   )
 }
