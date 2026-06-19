@@ -543,6 +543,12 @@ export default function TimeTracking() {
     }
   }, [activeTab, loadReport])
 
+  useEffect(() => {
+    if (activeTab !== 'reports') {
+      setSelectedReportEmployee(null)
+    }
+  }, [activeTab])
+
   // Handle prefill from schedule
   useEffect(() => {
     const prefill = searchParams.get('prefill')
