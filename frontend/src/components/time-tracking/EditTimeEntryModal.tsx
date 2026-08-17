@@ -122,6 +122,9 @@ export default function EditTimeEntryModal({
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [correctionReason, setCorrectionReason] = useState('')
+  const [correctionReferences, setCorrectionReferences] = useState<string[]>([])
+  const [requiresCorrectionReason, setRequiresCorrectionReason] = useState(false)
 
   useEffect(() => {
     if (!isOpen || !entry) return
@@ -144,6 +147,9 @@ export default function EditTimeEntryModal({
       }))
       .filter((row) => row.start_time && row.end_time))
     setError(null)
+    setCorrectionReason('')
+    setCorrectionReferences([])
+    setRequiresCorrectionReason(false)
   }, [entry, isOpen])
 
   const calculatedHours = useMemo(() => {
@@ -191,9 +197,13 @@ export default function EditTimeEntryModal({
         }),
       }
 
-      const response = await api.updateTimeEntry(entry.id, payload)
+      const response = await api.updateTimeEntry(entry.id, payload, correctionReason)
 
       if (response.error) {
+        if (response.code === 'correction_reason_required') {
+          setRequiresCorrectionReason(true)
+          setCorrectionReferences(response.export_references || [])
+        }
         setLocalError(response.error)
         return
       }
@@ -214,8 +224,12 @@ export default function EditTimeEntryModal({
     setLocalError(null)
 
     try {
-      const response = await api.deleteTimeEntry(entry.id)
+      const response = await api.deleteTimeEntry(entry.id, correctionReason)
       if (response.error) {
+        if (response.code === 'correction_reason_required') {
+          setRequiresCorrectionReason(true)
+          setCorrectionReferences(response.export_references || [])
+        }
         setLocalError(response.error)
         return
       }
@@ -434,6 +448,29 @@ export default function EditTimeEntryModal({
                       className="w-full resize-none rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
+
+                  {requiresCorrectionReason && (
+                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                      <label htmlFor="approval-entry-correction-reason" className="block text-sm font-semibold text-amber-900">
+                        Correction reason *
+                      </label>
+                      <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                        This entry appears in a previously exported report. Explain the correction so the earlier export can be marked stale with a clear audit trail.
+                      </p>
+                      {correctionReferences.length > 0 && (
+                        <p className="mt-2 break-all text-xs font-medium text-amber-900">Affected: {correctionReferences.join(', ')}</p>
+                      )}
+                      <textarea
+                        id="approval-entry-correction-reason"
+                        value={correctionReason}
+                        onChange={(event) => setCorrectionReason(event.target.value)}
+                        rows={3}
+                        required
+                        placeholder="What changed, why, and who confirmed it?"
+                        className="mt-2 w-full resize-none rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  )}
                 </fieldset>
 
                 {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
@@ -444,7 +481,7 @@ export default function EditTimeEntryModal({
                     onClick={handleDelete}
                     disabled={!canDelete || deleting || saving}
                     className={`rounded-lg px-4 py-2 transition-colors ${canDelete ? 'text-red-600 hover:bg-red-50' : 'cursor-not-allowed text-gray-300'}`}
-                    title={canDelete ? 'Delete this time entry' : 'This entry is locked/finalized or cannot be deleted'}
+                    title={canDelete ? 'Delete this time entry' : 'This entry is locked or cannot be deleted'}
                   >
                     {deleting ? 'Deleting...' : 'Delete'}
                   </button>

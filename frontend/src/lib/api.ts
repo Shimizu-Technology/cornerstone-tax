@@ -7,6 +7,9 @@ interface ApiResponse<T> {
   data?: T;
   error?: string;
   errors?: string[];
+  status?: number;
+  code?: string;
+  export_references?: string[];
 }
 
 // Store for the auth token getter function
@@ -87,6 +90,9 @@ async function fetchApi<T>(
       return {
         error: data.error || 'Something went wrong',
         errors: data.errors || [],
+        status: response.status,
+        code: data.code,
+        export_references: data.export_references,
       };
     }
 
@@ -106,6 +112,49 @@ async function fetchApiPublic<T>(
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   return fetchApi(endpoint, options, false);
+}
+
+export interface ReportDownloadResponse {
+  blob?: Blob;
+  filename?: string;
+  error?: string;
+  code?: string;
+  issues?: Record<string, number>;
+  status?: number;
+}
+
+export type HoursReportDownloadType = 'pdf' | 'timesheet_pdf' | 'detailed_csv' | 'summary_csv';
+
+async function fetchDownload(endpoint: string): Promise<ReportDownloadResponse> {
+  try {
+    const headers: Record<string, string> = {};
+    if (getAuthToken) {
+      const token = await getAuthToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      return {
+        error: data.error || 'Unable to download report',
+        code: data.code,
+        issues: data.issues,
+        status: response.status,
+      };
+    }
+
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const encodedFilename = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const plainFilename = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+    return {
+      blob: await response.blob(),
+      filename: encodedFilename ? decodeURIComponent(encodedFilename) : plainFilename || 'Cornerstone_Report',
+      status: response.status,
+    };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Network error' };
+  }
 }
 
 async function fetchApiMultipart<T>(
@@ -788,7 +837,11 @@ export interface HoursReportEntry {
   description: string | null;
   entry_method: string;
   approval_status: string | null;
+  approved_by: { id: number; full_name: string } | null;
+  approved_at: string | null;
   overtime_status: string | null;
+  overtime_approved_by: { id: number; full_name: string } | null;
+  overtime_approved_at: string | null;
   locked_at: string | null;
   time_category: { id: number; name: string } | null;
   client: { id: number; name: string } | null;
@@ -863,6 +916,14 @@ export interface HoursReportResponse {
   context_start_date: string;
   context_end_date: string;
   generated_at: string;
+  ready: boolean;
+  finalization: {
+    status: 'finalized' | 'partially_finalized' | 'not_finalized';
+    label: string;
+    selected_days: number;
+    finalized_days: number;
+    locks: TimePeriodLock[];
+  };
   filters: Record<string, string | number | boolean>;
   overtime_policy: {
     daily_threshold_hours: number;
@@ -1951,18 +2012,19 @@ export const api = {
     service_task_id: number | null;
     operation_task_id: number;
     breaks: Array<{ id?: number; start_time: string; end_time: string; _destroy?: boolean }>;
-  }>) =>
+  }>, correctionReason?: string) =>
     fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}`, (() => {
       const { operation_task_id, ...timeEntryData } = data;
       return {
         method: 'PATCH',
-        body: JSON.stringify({ time_entry: timeEntryData, operation_task_id }),
+        body: JSON.stringify({ time_entry: timeEntryData, operation_task_id, correction_reason: correctionReason }),
       };
     })()),
 
-  deleteTimeEntry: (id: number) =>
+  deleteTimeEntry: (id: number, correctionReason?: string) =>
     fetchApi<void>(`/api/v1/time_entries/${id}`, {
       method: 'DELETE',
+      body: JSON.stringify({ correction_reason: correctionReason }),
     }),
 
   // Time Clock
@@ -2059,6 +2121,19 @@ export const api = {
       if (value !== undefined && value !== null && value !== '') searchParams.set(key, String(value));
     });
     return fetchApi<HoursReportResponse>(`/api/v1/admin/hours_report?${searchParams.toString()}`);
+  },
+
+  downloadHoursReport: (
+    type: HoursReportDownloadType,
+    params: HoursReportParams,
+    acknowledgeDraft: boolean = false
+  ) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') searchParams.set(key, String(value));
+    });
+    if (acknowledgeDraft) searchParams.set('acknowledge_draft', 'true');
+    return fetchDownload(`/api/v1/admin/hours_report/${type}?${searchParams.toString()}`);
   },
 
   getTimeCategories: () =>

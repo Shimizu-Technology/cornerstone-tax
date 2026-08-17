@@ -15,6 +15,7 @@ class User < ApplicationRecord
   has_many :uploaded_documents, class_name: "Document", foreign_key: "uploaded_by_id", dependent: :nullify
   has_many :created_transmittals, class_name: "Transmittal", foreign_key: "created_by_id", dependent: :nullify
   has_many :time_period_locks, foreign_key: "locked_by_id", dependent: :nullify
+  has_many :generated_report_exports, class_name: "ReportExport", foreign_key: "generated_by_id", dependent: :nullify
   has_many :client_operation_assignments, foreign_key: "created_by_id", dependent: :nullify
   has_many :generated_operation_cycles, class_name: "OperationCycle", foreign_key: "generated_by_id", dependent: :nullify
   has_many :assigned_operation_tasks, class_name: "OperationTask", foreign_key: "assigned_to_id", dependent: :nullify

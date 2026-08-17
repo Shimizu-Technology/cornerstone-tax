@@ -3,13 +3,14 @@ import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/Motio
 import { AnimatePresence, motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
-import type { HoursReportEmployee, HoursReportResponse, PendingApprovalsSummary } from '../../lib/api'
+import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeIn } from '../../components/ui/FadeIn'
 import { formatDateISO } from '../../lib/dateUtils'
 import ClockInOutCard from '../../components/time-tracking/ClockInOutCard'
 import ApprovalQueue from '../../components/time-tracking/ApprovalQueue'
 import WhosWorking from '../../components/time-tracking/WhosWorking'
+import ReportExportActions from '../../components/time-tracking/ReportExportActions'
 
 // Local types to avoid Vite caching issues
 interface TimeCategory {
@@ -214,6 +215,7 @@ export default function TimeTracking() {
     setSelectedReportEmployee(null)
   }, [])
   const [reportLoading, setReportLoading] = useState(false)
+  const [reportExporting, setReportExporting] = useState<HoursReportDownloadType | null>(null)
   const [reportSummary, setReportSummary] = useState({
     total_hours: 0,
     total_break_hours: 0,
@@ -234,6 +236,9 @@ export default function TimeTracking() {
   // Modal state
   const [showModal, setShowModal] = useState(false)
   const [editingEntry, setEditingEntry] = useState<TimeEntryItem | null>(null)
+  const [correctionReason, setCorrectionReason] = useState('')
+  const [correctionReferences, setCorrectionReferences] = useState<string[]>([])
+  const [requiresCorrectionReason, setRequiresCorrectionReason] = useState(false)
   const [formData, setFormData] = useState({
     work_date: formatDateISO(new Date()),
     start_time: '08:00',
@@ -608,6 +613,9 @@ export default function TimeTracking() {
     }
 
     setEditingEntry(null)
+    setCorrectionReason('')
+    setCorrectionReferences([])
+    setRequiresCorrectionReason(false)
     setFormData({
       work_date: formatDateISO(date || currentDate),
       start_time: prefillStart || '08:00',
@@ -623,6 +631,9 @@ export default function TimeTracking() {
 
   const openEditEntry = (entry: TimeEntryItem) => {
     setEditingEntry(entry)
+    setCorrectionReason('')
+    setCorrectionReferences([])
+    setRequiresCorrectionReason(false)
     setFormData({
       work_date: entry.work_date,
       start_time: entry.start_time || '08:00',
@@ -664,8 +675,12 @@ export default function TimeTracking() {
       }
 
       if (editingEntry) {
-        const response = await api.updateTimeEntry(editingEntry.id, data)
+        const response = await api.updateTimeEntry(editingEntry.id, data, correctionReason)
         if (response.error) {
+          if (response.code === 'correction_reason_required') {
+            setRequiresCorrectionReason(true)
+            setCorrectionReferences(response.export_references || [])
+          }
           setError(response.error)
           return
         }
@@ -678,6 +693,9 @@ export default function TimeTracking() {
       }
 
       setShowModal(false)
+      setCorrectionReason('')
+      setCorrectionReferences([])
+      setRequiresCorrectionReason(false)
       await loadEntries()
       await loadPendingApprovalSummary()
     } catch {
@@ -695,15 +713,20 @@ export default function TimeTracking() {
 
   const handleDelete = async (entry: TimeEntryItem) => {
     if (!canDeleteEntry(entry)) {
-      setError('This time entry cannot be deleted (locked/finalized or insufficient permissions)')
+      setError('This time entry cannot be deleted (locked or insufficient permissions)')
       return
     }
 
     if (!confirm('Are you sure you want to delete this time entry?')) return
 
     try {
-      const response = await api.deleteTimeEntry(entry.id)
+      const response = await api.deleteTimeEntry(entry.id, correctionReason)
       if (response.error) {
+        if (response.code === 'correction_reason_required') {
+          openEditEntry(entry)
+          setRequiresCorrectionReason(true)
+          setCorrectionReferences(response.export_references || [])
+        }
         setError(response.error)
         return
       }
@@ -761,6 +784,46 @@ export default function TimeTracking() {
   const hoursSummaryRows = hoursReport?.employees ?? []
   const pendingApprovalCount = pendingApprovalSummary?.entry_count ?? 0
   const pendingOvertimeApprovalCount = pendingApprovalSummary?.pending_overtime_count ?? 0
+
+  const currentReportParams = (): HoursReportParams => ({
+    start_date: reportFilters.start_date,
+    end_date: reportFilters.end_date,
+    approval_status: 'approved_or_standard',
+    ...(reportFilters.user_id ? { user_id: parseInt(reportFilters.user_id, 10) } : {}),
+    ...(reportFilters.time_category_id ? { time_category_id: parseInt(reportFilters.time_category_id, 10) } : {}),
+    ...(reportFilters.client_id ? { client_id: parseInt(reportFilters.client_id, 10) } : {}),
+  })
+
+  const saveReportDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  const downloadReport = async (type: HoursReportDownloadType, acknowledgeDraft = false) => {
+    setReportExporting(type)
+    setError(null)
+    try {
+      const response = await api.downloadHoursReport(type, currentReportParams(), acknowledgeDraft)
+      if (response.code === 'draft_acknowledgement_required' && !acknowledgeDraft) {
+        const confirmed = confirm('This report has pending approvals or open clocks. Download a clearly marked draft anyway?')
+        if (confirmed) await downloadReport(type, true)
+        return
+      }
+      if (response.error || !response.blob) {
+        setError(response.error || 'Unable to download report')
+        return
+      }
+      saveReportDownload(response.blob, response.filename || 'Cornerstone_Report')
+    } finally {
+      setReportExporting(null)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -1569,6 +1632,29 @@ export default function TimeTracking() {
                   />
                 </div>
 
+                {editingEntry && requiresCorrectionReason && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <label htmlFor="time-entry-correction-reason" className="block text-sm font-semibold text-amber-900">
+                      Correction reason *
+                    </label>
+                    <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                      This entry appears in a previously exported report. Explain the correction so the earlier export can be marked stale with a clear audit trail.
+                    </p>
+                    {correctionReferences.length > 0 && (
+                      <p className="mt-2 break-all text-xs font-medium text-amber-900">Affected: {correctionReferences.join(', ')}</p>
+                    )}
+                    <textarea
+                      id="time-entry-correction-reason"
+                      value={correctionReason}
+                      onChange={(event) => setCorrectionReason(event.target.value)}
+                      rows={3}
+                      required
+                      placeholder="What changed, why, and who confirmed it?"
+                      className="mt-2 w-full resize-none rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                )}
+
               </fieldset>
                 {/* Actions */}
                 <div className="flex justify-between items-center gap-3 pt-4">
@@ -1579,7 +1665,7 @@ export default function TimeTracking() {
                         onClick={() => handleDelete(editingEntry)}
                         disabled={!canDeleteEntry(editingEntry)}
                         className={`px-4 py-2 rounded-lg transition-colors ${canDeleteEntry(editingEntry) ? 'text-red-600 hover:bg-red-50' : 'text-gray-300 cursor-not-allowed'}`}
-                        title={canDeleteEntry(editingEntry) ? 'Delete this time entry' : 'This entry is locked/finalized or cannot be deleted'}
+                        title={canDeleteEntry(editingEntry) ? 'Delete this time entry' : 'This entry is locked or cannot be deleted'}
                       >
                         Delete
                       </button>
@@ -1637,7 +1723,21 @@ export default function TimeTracking() {
         <div className="space-y-6">
           {/* Report Filters */}
           <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-            <h3 className="text-sm font-medium text-primary-dark mb-4">Filter Report</h3>
+            <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-primary-dark">Payroll Hours Report</h3>
+                <p className="mt-1 max-w-2xl text-xs leading-relaxed text-text-muted">
+                  Filter the point-in-time ledger, then download a share-ready PDF or an internal spreadsheet export. Week finalization is reported separately and is never required to export.
+                </p>
+              </div>
+              <ReportExportActions
+                employeeSelected={Boolean(reportFilters.user_id)}
+                hasResults={hoursSummaryRows.length > 0}
+                loading={reportLoading}
+                exporting={reportExporting}
+                onExport={(type) => void downloadReport(type)}
+              />
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm text-text-muted mb-1">Start Date</label>
@@ -1744,6 +1844,40 @@ export default function TimeTracking() {
               </div>
             </StaggerItem>
           </StaggerContainer>
+
+          {hoursReport && (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className={`rounded-xl border px-4 py-3 ${
+                hoursReport.ready
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                  : 'border-amber-200 bg-amber-50 text-amber-900'
+              }`}>
+                <div className="font-semibold">
+                  {hoursReport.ready
+                    ? hoursReport.summary.denied_count + hoursReport.summary.denied_overtime_count > 0
+                      ? 'Complete with exclusions'
+                      : 'Complete as of the generated time'
+                    : 'Draft - entries need review'}
+                </div>
+                <p className="mt-1 text-sm leading-relaxed">
+                  {hoursReport.ready
+                    ? hoursReport.summary.denied_count + hoursReport.summary.denied_overtime_count > 0
+                      ? `${hoursReport.summary.denied_count + hoursReport.summary.denied_overtime_count} denied item(s) are excluded from totals and remain visible for attention.`
+                      : 'No pending approvals or open clocks were found in this period.'
+                    : [
+                        hoursReport.summary.pending_count > 0 ? `${hoursReport.summary.pending_count} pending approval` : null,
+                        hoursReport.summary.pending_overtime_count > 0 ? `${hoursReport.summary.pending_overtime_count} pending overtime review` : null,
+                        hoursReport.summary.open_clock_count > 0 ? `${hoursReport.summary.open_clock_count} open clock` : null,
+                      ].filter(Boolean).join(', ') + '. A clearly marked draft can still be exported after confirmation.'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-neutral-warm bg-secondary/35 px-4 py-3 text-primary-dark">
+                <div className="font-semibold">Finalization coverage</div>
+                <p className="mt-1 text-sm leading-relaxed">{hoursReport.finalization.label}</p>
+                <p className="mt-1 text-xs text-text-muted">Finalization locks entries against changes; it does not control whether a point-in-time report can be downloaded.</p>
+              </div>
+            </div>
+          )}
 
           {hoursReport && (hoursReport.context_start_date !== hoursReport.start_date || hoursReport.context_end_date !== hoursReport.end_date) && (
             <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">

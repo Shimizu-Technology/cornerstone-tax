@@ -21,13 +21,16 @@ module Payroll
       entries = entries.select { |entry| staff_user_ids.include?(entry.user_id) }
       entries_by_user_id = entries.group_by(&:user_id)
 
+      report_summary = summary(entries)
+
       {
         source: SOURCE,
         start_date: start_date.iso8601,
         end_date: end_date.iso8601,
         generated_at: Time.current.iso8601,
+        ready: report_ready?(report_summary),
         employees: users.map { |user| serialize_user(user, entries_by_user_id.fetch(user.id, [])) },
-        summary: summary(entries)
+        summary: report_summary
       }
     end
 
@@ -118,6 +121,10 @@ module Payroll
 
     def countable?(entry)
       entry.status == "completed" && !entry.approval_status.in?(%w[denied pending])
+    end
+
+    def report_ready?(issues)
+      issues.values_at(:pending_count, :pending_overtime_count, :denied_count, :denied_overtime_count, :open_clock_count).all?(&:zero?)
     end
 
     def sum_hours(entries)

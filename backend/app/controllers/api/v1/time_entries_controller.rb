@@ -129,6 +129,8 @@ module Api
           return render json: { error: message }, status: :forbidden
         end
 
+        return unless require_correction_reason_for_exported_entry!
+
         old_values = {
           hours: @time_entry.hours.to_f,
           work_date: @time_entry.work_date.iso8601,
@@ -167,11 +169,7 @@ module Api
             raise ActiveRecord::Rollback if break_replace_error
           end
           raise ActiveRecord::Rollback unless saved
-        end
 
-        if break_replace_error
-          render json: { error: break_replace_error }, status: :unprocessable_entity
-        elsif saved
           if @time_entry.status == "completed" &&
              (old_values[:hours] != @time_entry.hours.to_f || old_values[:work_date] != @time_entry.work_date.iso8601)
             new_overtime = TimeClockService.check_overtime_status(@time_entry.user, @time_entry, include_entry_hours: false)
@@ -209,9 +207,15 @@ module Api
             action: "updated",
             user: current_user,
             changes_made: changes.presence,
-            metadata: "#{@time_entry.hours}h on #{@time_entry.work_date}"
+            metadata: audit_metadata_with_correction("#{@time_entry.hours}h on #{@time_entry.work_date}")
           )
 
+          invalidate_payroll_exports!
+        end
+
+        if break_replace_error
+          render json: { error: break_replace_error }, status: :unprocessable_entity
+        elsif saved
           render json: { time_entry: serialize_time_entry(eager_reload(@time_entry)) }
         else
           render json: { error: @time_entry.errors.full_messages.join(", ") }, status: :unprocessable_entity
@@ -229,18 +233,24 @@ module Api
           return render json: { error: message }, status: :forbidden
         end
 
+        return unless require_correction_reason_for_exported_entry!
+
         entry_info = "#{@time_entry.hours}h on #{@time_entry.work_date}"
         entry_id = @time_entry.id
 
-        @time_entry.destroy
+        TimeEntry.transaction do
+          @time_entry.destroy!
 
-        AuditLog.create!(
-          auditable_type: "TimeEntry",
-          auditable_id: entry_id,
-          action: "deleted",
-          user: current_user,
-          metadata: entry_info
-        )
+          AuditLog.create!(
+            auditable_type: "TimeEntry",
+            auditable_id: entry_id,
+            action: "deleted",
+            user: current_user,
+            metadata: audit_metadata_with_correction(entry_info)
+          )
+
+          invalidate_payroll_exports!
+        end
 
         head :no_content
       end
@@ -348,7 +358,9 @@ module Api
 
       # POST /api/v1/time_entries/:id/approve
       def approve
-        entry = TimeClockService.approve_entry(entry: @time_entry, approved_by: current_user, note: params[:note])
+        entry = with_export_invalidation(@time_entry, approval_change_reason("Time entry approved")) do
+          TimeClockService.approve_entry(entry: @time_entry, approved_by: current_user, note: params[:note])
+        end
         render json: { time_entry: serialize_time_entry(eager_reload(entry)) }
       rescue TimeClockService::AuthorizationError => e
         render json: { error: e.message }, status: :forbidden
@@ -358,7 +370,9 @@ module Api
 
       # POST /api/v1/time_entries/:id/deny
       def deny
-        entry = TimeClockService.deny_entry(entry: @time_entry, denied_by: current_user, note: params[:note])
+        entry = with_export_invalidation(@time_entry, approval_change_reason("Time entry denied")) do
+          TimeClockService.deny_entry(entry: @time_entry, denied_by: current_user, note: params[:note])
+        end
         render json: { time_entry: serialize_time_entry(eager_reload(entry)) }
       rescue TimeClockService::AuthorizationError => e
         render json: { error: e.message }, status: :forbidden
@@ -368,7 +382,9 @@ module Api
 
       # POST /api/v1/time_entries/:id/approve_overtime
       def approve_overtime
-        entry = TimeClockService.approve_overtime(entry: @time_entry, approved_by: current_user, note: params[:note])
+        entry = with_export_invalidation(@time_entry, approval_change_reason("Overtime approved")) do
+          TimeClockService.approve_overtime(entry: @time_entry, approved_by: current_user, note: params[:note])
+        end
         render json: { time_entry: serialize_time_entry(eager_reload(entry)) }
       rescue TimeClockService::AuthorizationError => e
         render json: { error: e.message }, status: :forbidden
@@ -378,7 +394,9 @@ module Api
 
       # POST /api/v1/time_entries/:id/deny_overtime
       def deny_overtime
-        entry = TimeClockService.deny_overtime(entry: @time_entry, denied_by: current_user, note: params[:note])
+        entry = with_export_invalidation(@time_entry, approval_change_reason("Overtime denied")) do
+          TimeClockService.deny_overtime(entry: @time_entry, denied_by: current_user, note: params[:note])
+        end
         render json: { time_entry: serialize_time_entry(eager_reload(entry)) }
       rescue TimeClockService::AuthorizationError => e
         render json: { error: e.message }, status: :forbidden
@@ -432,6 +450,8 @@ module Api
               raise ActiveRecord::Rollback if error_message
             end
 
+            invalidate_exports_for_entry!(entry, approval_change_reason("Time entry and/or overtime approved in bulk", note))
+
             updated_entry_ids << entry.id
           end
         end
@@ -460,6 +480,60 @@ module Api
       end
 
       private
+
+      def with_export_invalidation(entry, reason)
+        TimeEntry.transaction do
+          updated_entry = yield
+          invalidate_exports_for_entry!(entry, reason)
+          updated_entry
+        end
+      end
+
+      def invalidate_exports_for_entry!(entry, reason)
+        ReportExport.invalidate_for_entry!(
+          entry_id: entry.id,
+          changed_by: current_user,
+          reason: reason
+        )
+      end
+
+      def approval_change_reason(action, note = params[:note])
+        note.present? ? "#{action}; note: #{note.to_s.strip}" : action
+      end
+
+      def require_correction_reason_for_exported_entry!
+        return true if active_payroll_exports.empty?
+        return true if correction_reason.present?
+
+        render json: {
+          error: "A correction reason is required because this entry was already exported to payroll.",
+          code: "correction_reason_required",
+          export_references: active_payroll_exports.map(&:public_id)
+        }, status: :unprocessable_entity
+        false
+      end
+
+      def active_payroll_exports
+        @active_payroll_exports ||= ReportExport.active_for_entry(@time_entry.id).order(generated_at: :desc).to_a
+      end
+
+      def correction_reason
+        @correction_reason ||= params[:correction_reason].to_s.strip.presence
+      end
+
+      def invalidate_payroll_exports!
+        return if active_payroll_exports.empty?
+
+        ReportExport.invalidate_for_entry!(
+          entry_id: @time_entry.id,
+          correction_reason: correction_reason,
+          changed_by: current_user
+        )
+      end
+
+      def audit_metadata_with_correction(base)
+        correction_reason.present? ? "#{base}; correction reason: #{correction_reason}" : base
+      end
 
       def eager_reload(entry)
         time_entry_serializer_scope.find(entry.id)

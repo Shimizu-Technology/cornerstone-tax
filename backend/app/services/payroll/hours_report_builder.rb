@@ -26,10 +26,10 @@ module Payroll
     def call
       scoped_users = users_scope.to_a
       user_ids = scoped_users.map(&:id)
-      overtime_context_entries = overtime_context_entries_scope(context_start_date..context_end_date, user_ids).to_a
+      control_entries = overtime_context_entries_scope(context_start_date..context_end_date, user_ids).to_a
       report_entries = report_entries_scope(context_start_date..context_end_date, user_ids).to_a
-      period_entries = report_entries.select { |entry| entry.work_date.between?(start_date, end_date) }
-      employees = build_employee_reports(scoped_users, overtime_context_entries, report_entries)
+      control_period_entries = control_entries.select { |entry| entry.work_date.between?(start_date, end_date) }
+      employees = build_employee_reports(scoped_users, control_entries, report_entries)
 
       {
         start_date: start_date.iso8601,
@@ -42,7 +42,9 @@ module Payroll
           daily_threshold_hours: daily_overtime_threshold,
           weekly_threshold_hours: weekly_overtime_threshold
         },
-        summary: summary(employees, period_entries),
+        ready: report_ready?(issues_for(control_period_entries)),
+        finalization: finalization_coverage,
+        summary: summary(employees, control_period_entries),
         employees: employees
       }
     end
@@ -93,7 +95,7 @@ module Payroll
 
       TimeEntry
         .where(user_id: user_ids, work_date: range)
-        .includes(:user, :time_category, :time_entry_breaks, :client, :tax_return, :service_type, :service_task)
+        .includes(:user, :time_category, :time_entry_breaks, :client, :tax_return, :service_type, :service_task, :approved_by, :overtime_approved_by)
         .order(:work_date, :start_time, :created_at, :id)
     end
 
@@ -109,9 +111,10 @@ module Payroll
         user_context_entries = context_entries_by_user.fetch(user.id, [])
         user_report_entries = report_entries_by_user.fetch(user.id, [])
         period_entries = user_report_entries.select { |entry| entry.work_date.between?(start_date, end_date) }
-        next if period_entries.empty? && !include_empty_employees?
+        control_period_entries = user_context_entries.select { |entry| entry.work_date.between?(start_date, end_date) }
+        next if period_entries.empty? && control_period_entries.empty? && !include_empty_employees?
 
-        build_employee_report(user, user_context_entries, user_report_entries)
+        build_employee_report(user, user_context_entries, user_report_entries, control_period_entries)
       end
     end
 
@@ -119,7 +122,7 @@ module Payroll
       ActiveModel::Type::Boolean.new.cast(params[:include_empty])
     end
 
-    def build_employee_report(user, user_context_entries, user_report_entries)
+    def build_employee_report(user, user_context_entries, user_report_entries, control_period_entries)
       overtime_allocations = allocate_overtime(user_context_entries)
       period_entries = user_report_entries.select { |entry| entry.work_date.between?(start_date, end_date) }
       countable_period_entries = period_entries.select { |entry| countable?(entry) }
@@ -128,7 +131,11 @@ module Payroll
       clients = build_clients(countable_period_entries, overtime_allocations)
       services = build_services(countable_period_entries, overtime_allocations)
       weeks = build_weeks(user_context_entries, countable_period_entries, overtime_allocations)
-      issues = issues_for(period_entries)
+      # Readiness is a control concern, not a display filter. Pending entries
+      # and open clocks keep the report in draft even when hidden by a visible
+      # approved-only filter. Denied entries remain visible as exclusions but
+      # do not permanently block a completed report.
+      issues = issues_for(control_period_entries)
 
       regular_hours = sum(days, :regular_hours)
       overtime_hours = sum(days, :overtime_hours)
@@ -226,7 +233,7 @@ module Payroll
       grouped_summary(entries.group_by(&:client), allocations) do |client|
         {
           id: client&.id,
-          name: client ? [ client.first_name, client.last_name ].compact.join(" ").strip.presence || "Client ##{client.id}" : "No client"
+          name: client ? client_name(client) : "No client"
         }
       end
     end
@@ -293,7 +300,17 @@ module Payroll
         description: entry.description,
         entry_method: entry.entry_method,
         approval_status: entry.approval_status,
+        approved_by: entry.approved_by ? {
+          id: entry.approved_by.id,
+          full_name: entry.approved_by.full_name
+        } : nil,
+        approved_at: entry.approved_at&.iso8601,
         overtime_status: entry.overtime_status,
+        overtime_approved_by: entry.overtime_approved_by ? {
+          id: entry.overtime_approved_by.id,
+          full_name: entry.overtime_approved_by.full_name
+        } : nil,
+        overtime_approved_at: entry.overtime_approved_at&.iso8601,
         locked_at: entry.locked_at&.iso8601,
         time_category: entry.time_category ? {
           id: entry.time_category.id,
@@ -301,7 +318,7 @@ module Payroll
         } : nil,
         client: entry.client ? {
           id: entry.client.id,
-          name: [ entry.client.first_name, entry.client.last_name ].compact.join(" ").strip
+          name: client_name(entry.client)
         } : nil,
         tax_return: entry.tax_return ? {
           id: entry.tax_return.id,
@@ -338,7 +355,46 @@ module Payroll
     end
 
     def report_ready?(issues)
-      issues.values.all?(&:zero?)
+      issues.values_at(:pending_count, :pending_overtime_count, :open_clock_count).all?(&:zero?)
+    end
+
+    def finalization_coverage
+      locks = TimePeriodLock
+        .where("start_date <= ? AND end_date >= ?", end_date, start_date)
+        .includes(:locked_by)
+        .order(:start_date, :id)
+        .to_a
+      dates = (start_date..end_date).to_a
+      locked_dates = dates.select { |date| locks.any? { |lock| date.between?(lock.start_date, lock.end_date) } }
+      status = if locked_dates.empty?
+        "not_finalized"
+      elsif locked_dates.length == dates.length
+        "finalized"
+      else
+        "partially_finalized"
+      end
+      label = case status
+      when "finalized" then "Finalized for all #{dates.length} selected days"
+      when "partially_finalized" then "Partially finalized (#{locked_dates.length} of #{dates.length} selected days)"
+      else "Not finalized"
+      end
+
+      {
+        status: status,
+        label: label,
+        selected_days: dates.length,
+        finalized_days: locked_dates.length,
+        locks: locks.map do |lock|
+          {
+            id: lock.id,
+            start_date: lock.start_date.iso8601,
+            end_date: lock.end_date.iso8601,
+            locked_at: lock.locked_at.iso8601,
+            reason: lock.reason,
+            locked_by: lock.locked_by && { id: lock.locked_by.id, full_name: lock.locked_by.full_name }
+          }
+        end
+      }
     end
 
     def summary(employees, period_entries)
@@ -373,6 +429,10 @@ module Payroll
       return "pending" if user.clerk_id.blank? || user.clerk_id.start_with?("pending_")
 
       "active"
+    end
+
+    def client_name(client)
+      client.business_name.presence || [ client.first_name, client.last_name ].compact.join(" ").strip.presence || "Client ##{client.id}"
     end
 
     def sum(rows, key)

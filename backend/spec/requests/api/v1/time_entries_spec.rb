@@ -16,6 +16,28 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
     JSON.parse(response.body, symbolize_names: true)
   end
 
+  def create_protecting_export(entry)
+    ReportExport.create!(
+      public_id: "CST-PAYROLL-#{SecureRandom.hex(6).upcase}",
+      export_type: "payroll_time_summary",
+      readiness_status: "complete",
+      state: "active",
+      start_date: entry.work_date,
+      end_date: entry.work_date,
+      employee_ids: [ entry.user_id ],
+      entry_ids: [ entry.id ],
+      filters: {},
+      summary: {},
+      issues: {},
+      report_context: {},
+      entry_snapshot: [ { id: entry.id, hours: entry.hours.to_f } ],
+      checksum: SecureRandom.hex(16),
+      protects_entries: true,
+      generated_at: Time.current,
+      last_downloaded_at: Time.current
+    )
+  end
+
   # ── CREATE ───────────────────────────────────────────────────────────
   describe "POST /api/v1/time_entries" do
     let(:valid_params) do
@@ -409,6 +431,82 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
         expect(ids).to include(emp_entry.id)
         expect(ids).not_to include(other_entry.id)
       end
+    end
+  end
+
+  # ── EXPORTED REPORT CORRECTIONS ──────────────────────────────────────
+  describe "corrections after an export" do
+    let!(:entry) { create(:time_entry, user: employee, approval_status: "approved") }
+
+    it "requires a reason and atomically invalidates prior reports when an entry is corrected" do
+      export = create_protecting_export(entry)
+
+      patch "/api/v1/time_entries/#{entry.id}",
+            params: { time_entry: { description: "corrected" } },
+            headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:code]).to eq("correction_reason_required")
+      expect(json[:export_references]).to eq([ export.public_id ])
+      expect(entry.reload.description).not_to eq("corrected")
+
+      patch "/api/v1/time_entries/#{entry.id}",
+            params: {
+              time_entry: { description: "corrected" },
+              correction_reason: "Employee confirmed the corrected client allocation."
+            },
+            headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(export.reload.state).to eq("stale")
+      expect(export.stale_reason).to include("Employee confirmed the corrected client allocation")
+      expect(AuditLog.where(auditable: entry, action: "updated").order(:id).last.metadata).to include("correction reason")
+    end
+
+    it "rolls back the entry and audit record when report invalidation fails" do
+      create_protecting_export(entry)
+      original_description = entry.description
+      allow(ReportExport).to receive(:invalidate_for_entry!).and_raise("invalidation failed")
+
+      patch "/api/v1/time_entries/#{entry.id}",
+            params: { time_entry: { description: "corrected" }, correction_reason: "Verified correction" },
+            headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:internal_server_error)
+      expect(entry.reload.description).to eq(original_description)
+      expect(AuditLog.where(auditable: entry, action: "updated")).to be_empty
+    end
+
+    it "requires a correction reason before deletion and preserves a deletion audit trail" do
+      export = create_protecting_export(entry)
+
+      delete "/api/v1/time_entries/#{entry.id}", headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(entry.reload).to be_present
+
+      delete "/api/v1/time_entries/#{entry.id}",
+             params: { correction_reason: "Duplicate entry confirmed by payroll." },
+             headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:no_content)
+      expect(TimeEntry.find_by(id: entry.id)).to be_nil
+      expect(export.reload.state).to eq("stale")
+      audit = AuditLog.where(auditable_type: "TimeEntry", auditable_id: entry.id, action: "deleted").last
+      expect(audit.metadata).to include("Duplicate entry confirmed by payroll")
+    end
+
+    it "marks an earlier export stale when approval status changes" do
+      entry.update!(approval_status: "pending")
+      export = create_protecting_export(entry)
+
+      post "/api/v1/time_entries/#{entry.id}/approve",
+           params: { note: "Reviewed against schedule" },
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(export.reload.state).to eq("stale")
+      expect(export.stale_reason).to include("Time entry approved")
     end
   end
 
