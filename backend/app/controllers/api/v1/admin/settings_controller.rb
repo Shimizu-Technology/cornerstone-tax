@@ -49,6 +49,10 @@ module Api
           params.permit(
             :contact_email,
             :notification_email,
+            :report_business_name,
+            :report_address,
+            :report_phone,
+            :report_email,
             :overtime_daily_threshold_hours,
             :overtime_weekly_threshold_hours,
             :early_clock_in_buffer_minutes

@@ -29,10 +29,48 @@ module Api
           render json: { error: e.message }, status: :unprocessable_entity
         end
 
+        def pdf
+          export_type = params[:user_id].present? ? "employee_timesheet_pdf" : "payroll_hours_pdf"
+          send_export(export_type)
+        end
+
+        def timesheet_pdf
+          send_export("employee_timesheet_pdf")
+        end
+
+        def detailed_csv
+          send_export("detailed_entries_csv")
+        end
+
+        def summary_csv
+          send_export("payroll_summary_csv")
+        end
+
         private
 
         def report_params
           REPORT_PARAM_KEYS.index_with { |key| params[key] }.compact
+        end
+
+        def send_export(export_type)
+          result = Reports::GenerateHoursReportExportService.new(
+            export_type: export_type,
+            report_params: report_params,
+            generated_by: current_user,
+            acknowledge_draft: params[:acknowledge_draft]
+          ).call
+          send_data result.content,
+                    filename: result.filename,
+                    type: result.content_type,
+                    disposition: "attachment"
+        rescue Reports::GenerateHoursReportExportService::DraftAcknowledgementRequired => e
+          render json: {
+            error: e.message,
+            code: "draft_acknowledgement_required",
+            issues: e.issues
+          }, status: :unprocessable_entity
+        rescue ArgumentError => e
+          render json: { error: e.message }, status: :unprocessable_entity
         end
       end
     end

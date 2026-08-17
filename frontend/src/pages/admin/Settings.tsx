@@ -49,6 +49,10 @@ export default function Settings() {
   const [loadingSystemSettings, setLoadingSystemSettings] = useState(true)
   const [contactEmail, setContactEmail] = useState('')
   const [notificationEmail, setNotificationEmail] = useState('')
+  const [reportBusinessName, setReportBusinessName] = useState('')
+  const [reportAddress, setReportAddress] = useState('')
+  const [reportPhone, setReportPhone] = useState('')
+  const [reportEmail, setReportEmail] = useState('')
   const [savingSystemSettings, setSavingSystemSettings] = useState(false)
   const [systemSettingsSuccess, setSystemSettingsSuccess] = useState('')
   const [systemSettingsError, setSystemSettingsError] = useState('')
@@ -184,6 +188,10 @@ export default function Settings() {
       setSystemSettings(response.data)
       setContactEmail(response.data.contact_email || 'dmshimizucpa@gmail.com')
       setNotificationEmail(response.data.notification_email || 'dmshimizucpa@gmail.com')
+      setReportBusinessName(response.data.report_business_name || 'Cornerstone Accounting & Business Services')
+      setReportAddress(response.data.report_address || '130 Aspinall Ave, Suite 202, Hagatna, Guam')
+      setReportPhone(response.data.report_phone || '(671) 828-8591')
+      setReportEmail(response.data.report_email || 'dmshimizucpa@gmail.com')
       setOvertimeDailyHours(response.data.overtime_daily_threshold_hours || '8')
       setOvertimeWeeklyHours(response.data.overtime_weekly_threshold_hours || '40')
       setEarlyClockInBuffer(response.data.early_clock_in_buffer_minutes || '5')
@@ -199,6 +207,10 @@ export default function Settings() {
     const response = await api.updateSystemSettings({
       contact_email: contactEmail,
       notification_email: notificationEmail,
+      report_business_name: reportBusinessName,
+      report_address: reportAddress,
+      report_phone: reportPhone,
+      report_email: reportEmail,
       overtime_daily_threshold_hours: overtimeDailyHours,
       overtime_weekly_threshold_hours: overtimeWeeklyHours,
       early_clock_in_buffer_minutes: earlyClockInBuffer,
@@ -1929,6 +1941,31 @@ export default function Settings() {
                     placeholder="dmshimizucpa@gmail.com"
                     className="w-full max-w-md px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white"
                   />
+                </div>
+
+                <div className="bg-secondary/30 rounded-xl p-6">
+                  <h3 className="font-semibold text-primary-dark mb-2">Report Branding</h3>
+                  <p className="text-sm text-text-muted mb-4">
+                    Safe business contact details printed on payroll PDFs and employee timesheets. Client and tax-return information is not included in PDF headers.
+                  </p>
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-primary-dark">Business name</label>
+                      <input value={reportBusinessName} onChange={(event) => setReportBusinessName(event.target.value)} className="w-full rounded-xl border border-neutral-warm bg-white px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-primary-dark">Report email</label>
+                      <input type="email" value={reportEmail} onChange={(event) => setReportEmail(event.target.value)} className="w-full rounded-xl border border-neutral-warm bg-white px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-primary-dark">Address</label>
+                      <input value={reportAddress} onChange={(event) => setReportAddress(event.target.value)} className="w-full rounded-xl border border-neutral-warm bg-white px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-primary-dark">Phone</label>
+                      <input value={reportPhone} onChange={(event) => setReportPhone(event.target.value)} className="w-full rounded-xl border border-neutral-warm bg-white px-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary" />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Time Clock Settings */}

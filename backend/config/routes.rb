@@ -214,7 +214,12 @@ Rails.application.routes.draw do
         end
 
         # Payroll-style hours reporting
-        resource :hours_report, only: [:show], controller: "hours_reports"
+        resource :hours_report, only: [ :show ], controller: "hours_reports" do
+          get :pdf
+          get :timesheet_pdf
+          get :detailed_csv
+          get :summary_csv
+        end
 
         # Payroll import batches (read-only admin visibility)
         resources :payroll_import_batches, only: [:index, :show]
