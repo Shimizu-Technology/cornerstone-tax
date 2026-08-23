@@ -153,6 +153,15 @@ test.describe('Mobile Responsiveness', () => {
     // Wait for the mobile menu container to appear
     const mobileMenu = page.locator('.md\\:hidden >> text=About');
     await expect(mobileMenu).toBeVisible({ timeout: 5000 });
+
+    await mobileMenu.click();
+    await expect(page).toHaveURL(/\/about/);
+    await menuButton.click();
+    await expect(mobileMenu).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(mobileMenu).toBeHidden();
   });
 
   test('intake form is usable on mobile', async ({ page }) => {

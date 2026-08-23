@@ -12,7 +12,8 @@ const navigation = [
 
 export default function PortalLayout() {
   const location = useLocation()
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mobileMenuPath, setMobileMenuPath] = useState<string | null>(null)
+  const mobileMenuOpen = mobileMenuPath === location.pathname
   const [scrolled, setScrolled] = useState(false)
   const headerRef = useRef<HTMLElement>(null)
   const currentYear = new Date().getFullYear()
@@ -31,7 +32,7 @@ export default function PortalLayout() {
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (headerRef.current && !headerRef.current.contains(event.target as Node)) {
-        setMobileMenuOpen(false)
+        setMobileMenuPath(null)
       }
     }
     if (mobileMenuOpen) {
@@ -106,7 +107,7 @@ export default function PortalLayout() {
             <button
               type="button"
               className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 min-w-[44px] min-h-[44px] flex items-center justify-center"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              onClick={() => setMobileMenuPath(mobileMenuOpen ? null : location.pathname)}
               aria-label="Toggle menu"
             >
               {mobileMenuOpen ? (
@@ -142,7 +143,7 @@ export default function PortalLayout() {
                   >
                     <Link
                       to={item.href}
-                      onClick={() => setMobileMenuOpen(false)}
+                      onClick={() => setMobileMenuPath(null)}
                       className={`px-4 py-3 rounded-lg text-base font-medium min-h-[44px] flex items-center transition-colors ${
                         isActive(item.href) ? 'bg-secondary text-primary' : 'text-gray-600 hover:bg-gray-50'
                       }`}
@@ -158,7 +159,7 @@ export default function PortalLayout() {
                 >
                   <Link
                     to="/"
-                    onClick={() => setMobileMenuOpen(false)}
+                    onClick={() => setMobileMenuPath(null)}
                     className="px-4 py-3 rounded-lg text-base font-medium min-h-[44px] flex items-center text-gray-400 hover:bg-gray-50"
                   >
                     Main Website

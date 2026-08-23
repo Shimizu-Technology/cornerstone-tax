@@ -3,7 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { isClerkConfigured, isProductionAuthUnavailable } from './authConfiguration'
 
 describe('authentication deployment configuration', () => {
-  it.each([undefined, '', '   ', 'YOUR_PUBLISHABLE_KEY'])(
+  it.each([
+    undefined,
+    '',
+    '   ',
+    'YOUR_PUBLISHABLE_KEY',
+    'pk_live_...',
+    'pk_test_xxxxx',
+    'pk_test_abc123',
+  ])(
     'treats %p as an unconfigured Clerk key',
     (publishableKey) => {
       expect(isClerkConfigured(publishableKey)).toBe(false)
@@ -11,7 +19,7 @@ describe('authentication deployment configuration', () => {
   )
 
   it('accepts a configured Clerk publishable key', () => {
-    expect(isClerkConfigured('pk_live_configured')).toBe(true)
+    expect(isClerkConfigured('pk_live_Y29ybmVyc3RvbmUuZXhhbXBsZSQ')).toBe(true)
   })
 
   it('fails closed when production is missing Clerk', () => {
