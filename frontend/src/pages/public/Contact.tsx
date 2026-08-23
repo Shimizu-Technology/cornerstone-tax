@@ -15,6 +15,7 @@ function FloatingInput({
     <div className="relative">
       <input
         {...props}
+        required={required}
         placeholder=" "
         className="
           peer w-full px-4 pt-6 pb-2 bg-gray-50
@@ -49,6 +50,7 @@ function FloatingSelect({
     <div className="relative">
       <select
         {...props}
+        required={required}
         value={value}
         className={`
           peer w-full px-4 pt-6 pb-2 bg-gray-50
@@ -87,6 +89,7 @@ function FloatingTextarea({
     <div className="relative">
       <textarea
         {...props}
+        required={required}
         placeholder=" "
         className="
           peer w-full px-4 pt-6 pb-2 bg-gray-50
@@ -174,11 +177,11 @@ export default function Contact() {
     setError(null)
 
     const result = await api.submitContact({
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone || undefined,
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      phone: formData.phone.trim() || undefined,
       subject: formData.subject,
-      message: formData.message,
+      message: formData.message.trim(),
     })
 
     setIsSubmitting(false)

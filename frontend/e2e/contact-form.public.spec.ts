@@ -1,4 +1,22 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+async function mockContactSubmission(
+  page: Page,
+  options: { delayMs?: number; inspect?: (payload: Record<string, string>) => void } = {},
+) {
+  await page.route('**/api/v1/contact', async (route) => {
+    const payload = route.request().postDataJSON() as Record<string, string>;
+    options.inspect?.(payload);
+    if (options.delayMs) {
+      await new Promise((resolve) => setTimeout(resolve, options.delayMs));
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, message: 'Message sent' }),
+    });
+  });
+}
 
 /**
  * Contact Form Tests
@@ -69,6 +87,8 @@ test.describe('Contact Form', () => {
   });
 
   test('can fill and submit contact form successfully', async ({ page }) => {
+    await mockContactSubmission(page);
+
     // Fill all required fields
     await page.fill('input[name="name"], input#name', 'Test User');
     await page.fill('input[name="email"], input#email', `test-${Date.now()}@example.com`);
@@ -91,6 +111,8 @@ test.describe('Contact Form', () => {
   });
 
   test('shows loading state during submission', async ({ page }) => {
+    await mockContactSubmission(page, { delayMs: 500 });
+
     await page.fill('input[name="name"], input#name', 'Test User');
     await page.fill('input[name="email"], input#email', 'test@example.com');
     await page.selectOption('select[name="subject"], select#subject', { index: 1 });
@@ -126,11 +148,11 @@ test.describe('Contact Form', () => {
 
   test('has quick link to intake form', async ({ page }) => {
     // Should have a link to the intake form
-    const intakeLink = page.locator('a[href*="intake"]');
-    await expect(intakeLink.first()).toBeVisible();
+    const intakeLink = page.getByRole('link', { name: 'Go to Intake Form' });
+    await expect(intakeLink).toBeVisible();
     
     // Click it
-    await intakeLink.first().click();
+    await intakeLink.click();
     
     // Should navigate to intake form
     await expect(page).toHaveURL(/\/intake/);
@@ -142,15 +164,10 @@ test.describe('Contact Page Information Display', () => {
     await page.goto('/contact');
     
     // Check weekday hours - look for the text pattern
-    await expect(page.locator('text=Monday - Friday')).toBeVisible();
-    await expect(page.locator('text=8:00 AM')).toBeVisible();
+    await expect(page.getByText('Monday – Friday: 10:00 AM – 3:00 PM')).toBeVisible();
     
-    // Check Saturday hours
-    await expect(page.locator('text=Saturday')).toBeVisible();
-    await expect(page.locator('text=9:00 AM')).toBeVisible();
-    
-    // Check Sunday closed
-    await expect(page.locator('text=Sunday: Closed')).toBeVisible();
+    // Check weekend hours
+    await expect(page.getByText('Saturday – Sunday: Closed')).toBeVisible();
   });
 
   test('displays phone numbers with click-to-call', async ({ page }) => {
@@ -181,6 +198,7 @@ test.describe('Contact Page Information Display', () => {
 
 test.describe('Contact Form Edge Cases', () => {
   test('handles special characters in name and message', async ({ page }) => {
+    await mockContactSubmission(page);
     await page.goto('/contact');
     
     await page.fill('input[name="name"], input#name', "María O'Connor-García");
@@ -196,6 +214,7 @@ test.describe('Contact Form Edge Cases', () => {
   });
 
   test('handles very long message', async ({ page }) => {
+    await mockContactSubmission(page);
     await page.goto('/contact');
     
     const longMessage = 'This is a very long test message. '.repeat(50);
@@ -207,13 +226,14 @@ test.describe('Contact Form Edge Cases', () => {
     
     await page.click('button[type="submit"]');
     
-    // Should handle long message (either submit or show length error)
-    await page.waitForTimeout(2000);
-    const pageContent = await page.content();
-    expect(pageContent).toBeTruthy();
+    await expect(page.getByRole('heading', { name: 'Message Sent!' })).toBeVisible();
   });
 
   test('trims whitespace from inputs', async ({ page }) => {
+    let submittedPayload: Record<string, string> | undefined;
+    await mockContactSubmission(page, {
+      inspect: (payload) => { submittedPayload = payload; },
+    });
     await page.goto('/contact');
     
     await page.fill('input[name="name"], input#name', '  Test User  ');
@@ -223,8 +243,11 @@ test.describe('Contact Form Edge Cases', () => {
     
     await page.click('button[type="submit"]');
     
-    // Should process successfully
-    const successOrError = page.locator('text=/sent|success|error/i');
-    await expect(successOrError.first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Message Sent!' })).toBeVisible();
+    expect(submittedPayload).toMatchObject({
+      name: 'Test User',
+      email: 'test@example.com',
+      message: 'Test message',
+    });
   });
 });

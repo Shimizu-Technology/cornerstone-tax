@@ -1,17 +1,24 @@
+/* eslint-disable react-refresh/only-export-components */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ClerkProvider } from '@clerk/clerk-react'
 import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './contexts/AuthContext'
+import { isClerkConfigured } from './lib/authConfiguration'
 import { PostHogProvider } from './providers/PostHogProvider'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-const isClerkEnabled = Boolean(PUBLISHABLE_KEY && PUBLISHABLE_KEY !== 'YOUR_PUBLISHABLE_KEY')
+const isClerkEnabled = isClerkConfigured(PUBLISHABLE_KEY)
 
-// Log warning if Clerk is not configured
-if (!isClerkEnabled) {
-  console.warn('⚠️ Clerk not configured - running without authentication. Add VITE_CLERK_PUBLISHABLE_KEY to .env.local')
+if (!isClerkEnabled && import.meta.env.PROD) {
+  console.error(
+    'VITE_CLERK_PUBLISHABLE_KEY is not set. Staff and client routes are unavailable until Clerk is configured.',
+  )
+}
+
+if (!isClerkEnabled && import.meta.env.DEV) {
+  console.warn('Clerk not configured - development auth bypass is active. Add VITE_CLERK_PUBLISHABLE_KEY to .env.local')
 }
 
 function Root() {

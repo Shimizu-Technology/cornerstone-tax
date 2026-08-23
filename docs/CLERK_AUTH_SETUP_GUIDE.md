@@ -115,7 +115,7 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_live_xyz789...
 
 ### Main Entry Point (main.tsx):
 
-The key pattern is **conditional ClerkProvider** - allowing the app to run without Clerk configured (dev mode).
+The key pattern is a **conditional ClerkProvider with an environment boundary**: a missing key may enable the local development bypass, but production protected routes must fail closed.
 
 ```tsx
 // src/main.tsx
@@ -124,13 +124,17 @@ import { createRoot } from 'react-dom/client'
 import { ClerkProvider } from '@clerk/clerk-react'
 import App from './App'
 import { AuthProvider } from './contexts/AuthContext'
+import { isClerkConfigured } from './lib/authConfiguration'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-const isClerkEnabled = Boolean(PUBLISHABLE_KEY && PUBLISHABLE_KEY !== 'YOUR_PUBLISHABLE_KEY')
+const isClerkEnabled = isClerkConfigured(PUBLISHABLE_KEY)
 
-// Log warning if Clerk is not configured
-if (!isClerkEnabled) {
-  console.warn('⚠️ Clerk not configured - running without authentication. Add VITE_CLERK_PUBLISHABLE_KEY to .env.local')
+if (!isClerkEnabled && import.meta.env.PROD) {
+  console.error('Clerk is required in production. Protected routes are unavailable.')
+}
+
+if (!isClerkEnabled && import.meta.env.DEV) {
+  console.warn('Clerk not configured - development auth bypass is active.')
 }
 
 function Root() {
@@ -315,7 +319,11 @@ const ClerkProtectedContent = lazy(() => import('./ClerkProtectedContent'))
 export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { isClerkEnabled } = useAuthContext()
 
-  // If Clerk is not enabled (dev mode), allow access without auth
+  if (!isClerkEnabled && import.meta.env.PROD) {
+    return <div role="alert">Authentication is not configured.</div>
+  }
+
+  // Only local development may bypass authentication.
   if (!isClerkEnabled) {
     return <>{children}</>
   }

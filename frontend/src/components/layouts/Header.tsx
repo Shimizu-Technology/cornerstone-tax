@@ -97,9 +97,10 @@ function MobileUserButton() {
 }
 
 export default function Header() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const location = useLocation()
+  const [mobileMenuPath, setMobileMenuPath] = useState<string | null>(null)
+  const mobileMenuOpen = mobileMenuPath === location.pathname
   const headerRef = useRef<HTMLElement>(null)
 
   const isActive = (path: string) => location.pathname === path
@@ -113,7 +114,7 @@ export default function Header() {
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (headerRef.current && !headerRef.current.contains(event.target as Node)) {
-        setMobileMenuOpen(false)
+        setMobileMenuPath(null)
       }
     }
     if (mobileMenuOpen) {
@@ -121,8 +122,6 @@ export default function Header() {
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [mobileMenuOpen])
-
-  useEffect(() => { setMobileMenuOpen(false) }, [location.pathname])
 
   return (
     <header
@@ -175,7 +174,7 @@ export default function Header() {
           <button
             type="button"
             className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 min-w-[44px] min-h-[44px] flex items-center justify-center"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            onClick={() => setMobileMenuPath(mobileMenuOpen ? null : location.pathname)}
             aria-label="Toggle menu"
           >
             {mobileMenuOpen ? (
@@ -210,7 +209,7 @@ export default function Header() {
                 >
                   <Link
                     to={item.href}
-                    onClick={() => setMobileMenuOpen(false)}
+                    onClick={() => setMobileMenuPath(null)}
                     className={`px-4 py-3 rounded-lg text-base font-medium min-h-[44px] flex items-center transition-colors ${
                       isActive(item.href) ? 'bg-secondary text-primary' : 'text-gray-600 hover:bg-gray-50'
                     }`}
@@ -226,7 +225,7 @@ export default function Header() {
               >
                 <Link
                   to="/intake"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={() => setMobileMenuPath(null)}
                   className="mt-2 bg-primary text-white px-4 py-3 rounded-lg text-base font-medium text-center min-h-[48px] flex items-center justify-center"
                 >
                   Client Intake Form

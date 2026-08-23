@@ -96,17 +96,15 @@ export default function IntakeForm() {
   }, []);
 
   useEffect(() => {
-    if (isSubmitted && isKioskMode && countdown === null) {
-      setCountdown(15);
-    }
-  }, [isSubmitted, isKioskMode, countdown]);
-
-  useEffect(() => {
     if (countdown !== null && countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      const timer = setTimeout(() => {
+        if (countdown === 1) {
+          resetForm();
+        } else {
+          setCountdown(countdown - 1);
+        }
+      }, 1000);
       return () => clearTimeout(timer);
-    } else if (countdown === 0) {
-      resetForm();
     }
   }, [countdown, resetForm]);
 
@@ -229,6 +227,7 @@ export default function IntakeForm() {
       }
       setIsSubmitting(false);
       setIsSubmitted(true);
+      setCountdown(isKioskMode ? 15 : null);
     }
   };
 

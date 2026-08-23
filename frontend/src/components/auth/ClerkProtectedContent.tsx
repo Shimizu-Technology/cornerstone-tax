@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { useAuth, useUser, RedirectToSignIn } from '@clerk/clerk-react'
 import { useAuthContext } from '../../contexts/AuthContext'
 
@@ -11,36 +10,17 @@ export default function ClerkProtectedContent({ children, requiredRole }: ClerkP
   const { isLoaded, isSignedIn } = useAuth()
   const { user: clerkUser } = useUser()
   const { userRole, isLoading: authLoading, isStaff } = useAuthContext()
-  const [authStatus, setAuthStatus] = useState<'loading' | 'authorized' | 'unauthorized' | 'access_denied'>('loading')
-
-  useEffect(() => {
-    if (!isLoaded || authLoading) return
-
-    if (!isSignedIn) {
-      setAuthStatus('unauthorized')
-      return
-    }
-
-    if (!userRole) {
-      setAuthStatus('unauthorized')
-      return
-    }
-
-    if (requiredRole) {
-      const hasAccess =
-        requiredRole === 'staff' ? isStaff :
-        requiredRole === 'admin' ? userRole === 'admin' :
-        requiredRole === 'client' ? userRole === 'client' :
-        userRole === requiredRole
-
-      if (!hasAccess) {
-        setAuthStatus('access_denied')
-        return
-      }
-    }
-
-    setAuthStatus('authorized')
-  }, [isLoaded, isSignedIn, authLoading, userRole, requiredRole, isStaff])
+  const hasRequiredRole = !requiredRole || (
+    requiredRole === 'staff' ? isStaff :
+    requiredRole === 'admin' ? userRole === 'admin' :
+    requiredRole === 'client' ? userRole === 'client' :
+    userRole === requiredRole
+  )
+  const authStatus =
+    !isLoaded || authLoading ? 'loading' :
+    !isSignedIn || !userRole ? 'unauthorized' :
+    !hasRequiredRole ? 'access_denied' :
+    'authorized'
 
   if (!isLoaded || authStatus === 'loading') {
     return (

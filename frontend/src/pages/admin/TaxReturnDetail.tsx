@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useEffectEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
@@ -266,7 +266,7 @@ export default function TaxReturnDetailPage() {
       } else if (result.error) {
         setError(result.error)
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load tax return')
     } finally {
       setLoading(false)
@@ -338,9 +338,12 @@ export default function TaxReturnDetailPage() {
     }
   }
 
+  const loadTaxReturnForEffect = useEffectEvent(loadTaxReturn)
+  const loadDropdownDataForEffect = useEffectEvent(loadDropdownData)
+
   useEffect(() => {
-    loadTaxReturn()
-    loadDropdownData()
+    loadTaxReturnForEffect()
+    loadDropdownDataForEffect()
   }, [id])
 
   const handleStatusChange = async (stageId: number) => {
@@ -353,7 +356,7 @@ export default function TaxReturnDetailPage() {
         return
       }
       await loadTaxReturn()
-    } catch (err) {
+    } catch {
       alert('Failed to update status')
     } finally {
       setSaving(false)
@@ -373,7 +376,7 @@ export default function TaxReturnDetailPage() {
         return
       }
       await loadTaxReturn()
-    } catch (err) {
+    } catch {
       alert('Failed to update assignment')
     } finally {
       setSaving(false)
@@ -390,7 +393,7 @@ export default function TaxReturnDetailPage() {
         return
       }
       await loadTaxReturn()
-    } catch (err) {
+    } catch {
       alert('Failed to update reviewer')
     } finally {
       setSaving(false)
@@ -408,7 +411,7 @@ export default function TaxReturnDetailPage() {
       }
       await loadTaxReturn()
       setEditingNotes(false)
-    } catch (err) {
+    } catch {
       alert('Failed to save notes')
     } finally {
       setSaving(false)
@@ -425,7 +428,7 @@ export default function TaxReturnDetailPage() {
         return
       }
       await loadTaxReturn()
-    } catch (err) {
+    } catch {
       alert('Failed to save return details')
     } finally {
       setSaving(false)
@@ -457,7 +460,7 @@ export default function TaxReturnDetailPage() {
         return
       }
       await loadTaxReturn()
-    } catch (err) {
+    } catch {
       alert('Failed to save payment details')
     } finally {
       setSaving(false)
@@ -503,7 +506,7 @@ export default function TaxReturnDetailPage() {
         return
       }
       await loadTaxReturn()
-    } catch (err) {
+    } catch {
       alert('Failed to save filing details')
     } finally {
       setSaving(false)
@@ -520,7 +523,7 @@ export default function TaxReturnDetailPage() {
         return
       }
       await loadTaxReturn()
-    } catch (err) {
+    } catch {
       alert('Failed to save portal settings')
     } finally {
       setSaving(false)
@@ -564,7 +567,7 @@ export default function TaxReturnDetailPage() {
         setEditingIncomeSource(null)
       }
       await loadTaxReturn()
-    } catch (err) {
+    } catch {
       setIncomeError('Failed to save income source')
     } finally {
       setSaving(false)
@@ -582,7 +585,7 @@ export default function TaxReturnDetailPage() {
         return
       }
       await loadTaxReturn()
-    } catch (err) {
+    } catch {
       alert('Failed to delete income source')
     } finally {
       setSaving(false)

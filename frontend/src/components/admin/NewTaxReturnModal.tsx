@@ -101,6 +101,10 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
   const defaultClientId = defaultClient?.id
   const defaultClientType = defaultClient?.client_type
   const hasDefaultClient = Boolean(defaultClientId)
+  const defaultClientSeed = useMemo(
+    () => defaultClientId ? { id: defaultClientId, full_name: '', client_type: defaultClientType } : null,
+    [defaultClientId, defaultClientType],
+  )
   const [clientMode, setClientMode] = useState<'existing' | 'new'>('existing')
   const [clients, setClients] = useState<ClientSummary[]>([])
   const [clientSearch, setClientSearch] = useState('')
@@ -108,7 +112,7 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
   const [users, setUsers] = useState<UserSummary[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState(() => initialFormFor(defaultClient))
+  const [form, setForm] = useState(() => initialFormFor(defaultClientSeed))
   const [clientForm, setClientForm] = useState(initialClientForm)
   const [feeLineItems, setFeeLineItems] = useState<FeeLineItemForm[]>([])
 
@@ -117,11 +121,11 @@ export default function NewTaxReturnModal({ isOpen, onClose, defaultClient, onCr
     setError(null)
     setClientSearch('')
     setClients([])
-    setClientMode(defaultClient ? 'existing' : 'new')
-    setForm(initialFormFor(defaultClient))
+    setClientMode(defaultClientSeed ? 'existing' : 'new')
+    setForm(initialFormFor(defaultClientSeed))
     setClientForm(initialClientForm)
     setFeeLineItems([])
-  }, [defaultClientId, defaultClientType, isOpen])
+  }, [defaultClientSeed, isOpen])
 
   useEffect(() => {
     if (!isOpen) return

@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Complete Intake Form Submission', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/intake');
+    await page.goto('/intake/personal');
     // Wait for form to load
     await expect(page.locator('h2:has-text("Client Information")')).toBeVisible();
   });
@@ -134,7 +134,7 @@ test.describe('Complete Intake Form Submission', () => {
 
 test.describe('Intake Form Kiosk Mode', () => {
   test('kiosk mode auto-resets after submission timeout', async ({ page }) => {
-    await page.goto('/intake?mode=kiosk');
+    await page.goto('/intake/personal?mode=kiosk');
     
     // Verify kiosk mode is active (no header)
     const logoLink = page.locator('header a[href="/"]');
@@ -145,7 +145,7 @@ test.describe('Intake Form Kiosk Mode', () => {
   });
 
   test('kiosk mode hides header but shows form', async ({ page }) => {
-    await page.goto('/intake?mode=kiosk');
+    await page.goto('/intake/personal?mode=kiosk');
     
     // In kiosk mode, header should be hidden
     const logoLink = page.locator('a[href="/"]');
@@ -159,7 +159,7 @@ test.describe('Intake Form Kiosk Mode', () => {
 
 test.describe('Intake Form Edge Cases', () => {
   test('handles special characters in name fields', async ({ page }) => {
-    await page.goto('/intake');
+    await page.goto('/intake/personal');
     
     await page.fill('input[name="first_name"]', "María José");
     await page.fill('input[name="last_name"]', "O'Connor-García");
@@ -175,7 +175,7 @@ test.describe('Intake Form Edge Cases', () => {
   });
 
   test('handles very long address input', async ({ page }) => {
-    await page.goto('/intake');
+    await page.goto('/intake/personal');
     
     const longAddress = '123 Very Long Street Name That Goes On Forever, Apartment Complex Building A, Unit 1234, Floor 56, Hagatna, Guam 96910, United States of America';
     
@@ -193,7 +193,7 @@ test.describe('Intake Form Edge Cases', () => {
   });
 
   test('accepts valid date of birth', async ({ page }) => {
-    await page.goto('/intake');
+    await page.goto('/intake/personal');
     
     // Use a valid past date
     const validDate = '1990-01-15';
