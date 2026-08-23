@@ -122,8 +122,6 @@ export default function Header() {
     }
   }, [mobileMenuOpen])
 
-  useEffect(() => { setMobileMenuOpen(false) }, [location.pathname])
-
   return (
     <header
       ref={headerRef}

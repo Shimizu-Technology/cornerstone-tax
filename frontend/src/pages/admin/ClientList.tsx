@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { ServiceType, ClientServiceType } from '../../lib/api'
@@ -69,11 +69,7 @@ export default function ClientList() {
     }
   }
 
-  useEffect(() => {
-    loadClients()
-  }, [page, search, selectedServiceTypeId, showServiceOnly, showArchived])
-
-  async function loadClients() {
+  const loadClients = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -98,7 +94,11 @@ export default function ClientList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, search, selectedServiceTypeId, showArchived, showServiceOnly])
+
+  useEffect(() => {
+    loadClients()
+  }, [loadClients])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()

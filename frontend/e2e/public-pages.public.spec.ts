@@ -78,16 +78,19 @@ test.describe('Public Marketing Pages', () => {
 test.describe('Intake Form (Public Access)', () => {
   test('intake form loads', async ({ page }) => {
     await page.goto('/intake');
-    
-    // Check step title is visible (the form uses divs, not a <form> element)
+
+    await expect(page.getByRole('heading', { name: 'How Can We Help You?' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Personal Taxes/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Business Taxes/ })).toBeVisible();
+
+    await page.getByRole('button', { name: /Personal Taxes/ }).click();
     await expect(page.locator('h2:has-text("Client Information")')).toBeVisible();
-    
     // Check progress bar exists
     await expect(page.locator('text=Step 1 of')).toBeVisible();
   });
 
   test('kiosk mode hides navigation', async ({ page }) => {
-    await page.goto('/intake?mode=kiosk');
+    await page.goto('/intake/personal?mode=kiosk');
     
     // In kiosk mode, the header/nav should be hidden
     // Check that the form content is still visible
@@ -100,7 +103,7 @@ test.describe('Intake Form (Public Access)', () => {
   });
 
   test('form validation shows errors for empty required fields', async ({ page }) => {
-    await page.goto('/intake');
+    await page.goto('/intake/personal');
     
     // Wait for form to load
     await expect(page.locator('h2:has-text("Client Information")')).toBeVisible();
@@ -114,7 +117,7 @@ test.describe('Intake Form (Public Access)', () => {
   });
 
   test('can fill first step of intake form', async ({ page }) => {
-    await page.goto('/intake');
+    await page.goto('/intake/personal');
     
     // Wait for form to load
     await expect(page.locator('h2:has-text("Client Information")')).toBeVisible();
@@ -153,7 +156,7 @@ test.describe('Mobile Responsiveness', () => {
   });
 
   test('intake form is usable on mobile', async ({ page }) => {
-    await page.goto('/intake');
+    await page.goto('/intake/personal');
     
     // Check step title is visible
     await expect(page.locator('h2:has-text("Client Information")')).toBeVisible();

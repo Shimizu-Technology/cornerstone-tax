@@ -140,7 +140,9 @@ Add the generated keys to your `.env` file.
 ## Development Notes
 
 ### Running Without Clerk (Dev Mode)
-If `VITE_CLERK_PUBLISHABLE_KEY` is not set, the frontend runs without authentication. Useful for quick local testing.
+If `VITE_CLERK_PUBLISHABLE_KEY` is not set during local development, the frontend uses an explicit no-auth development mode for quick testing. Production builds fail closed: public marketing and intake routes remain available, while staff and client routes display an authentication-configuration error and expose no protected application content.
+
+`VITE_CLERK_PUBLISHABLE_KEY` is therefore required for every production deployment. Verify both `/admin` and `/portal` after deployment; neither route may render protected content when Clerk is unavailable.
 
 ### Database Seeds
 ```bash
@@ -157,4 +159,5 @@ Creates default workflow stages and time categories.
 - `docs/BUILD_PLAN-recurring-client-operations-checklists.md` - Build phases and completion tracking
 - `docs/OPERATIONS_CHECKLISTS_ADMIN_GUIDE.md` - Admin workflow + troubleshooting for recurrence and cycle generation
 - `docs/TESTING_GUIDE.md` - Testing and verification guidance
+- `docs/GATE_0_AUTH_AND_DEPENDENCY_CLOSEOUT_2026-08-23.md` - Gate 0 authentication and frontend dependency evidence
 - `.cursor/rules/` - AI assistant context rules

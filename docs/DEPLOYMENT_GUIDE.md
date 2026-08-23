@@ -270,7 +270,7 @@ Go to **Site settings** → **Environment variables**:
 | Variable | Value | Notes |
 |----------|-------|-------|
 | `VITE_API_URL` | `https://myapp-api.onrender.com` | Your Render URL |
-| `VITE_CLERK_PUBLISHABLE_KEY` | `pk_live_...` | If using Clerk |
+| `VITE_CLERK_PUBLISHABLE_KEY` | `pk_live_...` | **Required.** Production staff and client routes fail closed without it. |
 | `VITE_PUBLIC_POSTHOG_KEY` | `phc_...` | If using PostHog |
 | `VITE_PUBLIC_POSTHOG_HOST` | `https://us.i.posthog.com` | If using PostHog |
 
@@ -288,6 +288,8 @@ Click **Deploy site**. Netlify will:
 2. Navigate to different routes (e.g., `/about`, `/admin`)
 3. Refresh on those routes - should NOT 404
 4. Check browser console for API errors
+5. Verify Clerk sign-in and role enforcement on both `/admin` and `/portal`
+6. As a negative check in a non-production preview, build once without `VITE_CLERK_PUBLISHABLE_KEY`: public routes must remain available and protected routes must show the configuration error without rendering protected content
 
 ---
 

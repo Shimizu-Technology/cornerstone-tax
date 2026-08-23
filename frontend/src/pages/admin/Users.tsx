@@ -79,7 +79,7 @@ export default function Users() {
         resetInviteForm()
         fetchUsers()
       }
-    } catch (err) {
+    } catch {
       setError('Failed to invite user')
     } finally {
       setInviting(false)
@@ -95,7 +95,7 @@ export default function Users() {
       } else {
         fetchUsers()
       }
-    } catch (err) {
+    } catch {
       alert('Failed to update role')
     } finally {
       setUpdatingRoleIds(prev => { const next = new Set(prev); next.delete(userId); return next })
@@ -116,7 +116,7 @@ export default function Users() {
       } else {
         fetchUsers()
       }
-    } catch (err) {
+    } catch {
       alert('Failed to delete user')
     } finally {
       setDeletingIds(prev => { const next = new Set(prev); next.delete(user.id); return next })
@@ -132,7 +132,7 @@ export default function Users() {
       } else {
         alert(`Invitation re-sent to ${user.email}`)
       }
-    } catch (err) {
+    } catch {
       alert('Failed to resend invite')
     } finally {
       setResendingIds(prev => { const next = new Set(prev); next.delete(user.id); return next })

@@ -40,8 +40,6 @@ export default function PortalLayout() {
     }
   }, [mobileMenuOpen])
 
-  useEffect(() => { setMobileMenuOpen(false) }, [location.pathname])
-
   return (
     <div className="min-h-screen flex flex-col bg-secondary">
       {/* Header — matches main site pattern */}
