@@ -22,6 +22,9 @@ Rails.application.routes.draw do
 
       # Admin/Employee routes (requires authentication)
       resources :clients, only: [:index, :show, :create, :update] do
+        collection do
+          post :bulk_import
+        end
         member do
           post :archive
           post :unarchive
