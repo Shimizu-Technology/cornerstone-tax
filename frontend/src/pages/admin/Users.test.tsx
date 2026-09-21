@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Users from './Users'
 
@@ -106,5 +106,27 @@ describe('Users', () => {
     fireEvent.click(screen.getByRole('button', { name: /End access, keep history/i }))
 
     await waitFor(() => expect(apiMocks.terminateUser).toHaveBeenCalledWith(3, expect.objectContaining({ termination_reason: 'Employment ended' })))
+  })
+
+  it('shows termination failures inside the active dialog', async () => {
+    apiMocks.terminateUser.mockResolvedValueOnce({ error: 'Lifecycle update failed' })
+    render(<Users />)
+
+    await screen.findAllByText('Dafne Owner')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Terminate' })[0])
+    fireEvent.click(screen.getByRole('button', { name: /End access, keep history/i }))
+
+    const dialog = screen.getByRole('dialog', { name: /Terminate Kami Employee/i })
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Lifecycle update failed')
+  })
+
+  it('keeps role and lifecycle controls unavailable until the signed-in user is known', async () => {
+    apiMocks.getCurrentUser.mockReturnValueOnce(new Promise(() => {}))
+    render(<Users />)
+
+    await screen.findAllByText('Dafne Owner')
+    expect(screen.getAllByText('Checking access…')).toHaveLength(4)
+    expect(screen.getByRole('combobox', { name: 'Role for Kami Employee' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Terminate' })).not.toBeInTheDocument()
   })
 })

@@ -10,7 +10,7 @@ module Api
 
         # GET /api/v1/admin/users
         def index
-          @users = User.includes(:client, :terminated_by, :time_entries, :schedules).order(created_at: :desc)
+          @users = users_with_history_counts.includes(:client, :terminated_by).order(created_at: :desc)
 
           # Filter by role
           if params[:role].present?
@@ -168,10 +168,11 @@ module Api
 
         # POST /api/v1/admin/users/:id/terminate
         def terminate
-          effective_on = parse_optional_date(params[:termination_effective_on])
+          permitted = termination_params
+          effective_on = parse_optional_date(permitted[:termination_effective_on])
           return if performed?
 
-          terminate_user(effective_on: effective_on, reason: params[:termination_reason])
+          terminate_user(effective_on: effective_on, reason: permitted[:termination_reason])
         end
 
         # POST /api/v1/admin/users/:id/reactivate
@@ -180,17 +181,22 @@ module Api
             return render json: { error: "This user is already active" }, status: :unprocessable_entity
           end
 
-          before = lifecycle_snapshot(@user)
-          @user.reactivate!
-          AuditLog.log(
-            auditable: @user,
-            action: "updated",
-            user: current_user,
-            changes_made: { employment_lifecycle: [ before, lifecycle_snapshot(@user) ] },
-            metadata: "Employment reactivated"
-          )
+          User.transaction do
+            @user.lock!
+            before = lifecycle_snapshot(@user)
+            @user.reactivate!
+            AuditLog.log(
+              auditable: @user,
+              action: "updated",
+              user: current_user,
+              changes_made: { employment_lifecycle: [ before, lifecycle_snapshot(@user) ] },
+              metadata: "Employment reactivated"
+            )
+          end
 
           render json: { user: serialize_user(@user.reload) }
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { error: e.record.errors.full_messages.join(", ") }, status: :unprocessable_entity
         end
 
         # POST /api/v1/admin/users/:id/resend_invite
@@ -217,9 +223,17 @@ module Api
         private
 
         def set_user
-          @user = User.includes(:client, :terminated_by, :time_entries, :schedules).find(params[:id])
+          @user = users_with_history_counts.includes(:client, :terminated_by).find(params[:id])
         rescue ActiveRecord::RecordNotFound
           render json: { error: "User not found" }, status: :not_found
+        end
+
+        def users_with_history_counts
+          User.select(
+            "users.*",
+            "(SELECT COUNT(*) FROM time_entries WHERE time_entries.user_id = users.id) AS retained_time_entries_count",
+            "(SELECT COUNT(*) FROM schedules WHERE schedules.user_id = users.id) AS retained_schedules_count"
+          )
         end
 
         def serialize_user(user)
@@ -243,8 +257,8 @@ module Api
               id: user.terminated_by.id,
               full_name: user.terminated_by.full_name
             } : nil,
-            time_entries_count: user.time_entries.size,
-            schedules_count: user.schedules.size,
+            time_entries_count: history_count(user, :retained_time_entries_count, :time_entries),
+            schedules_count: history_count(user, :retained_schedules_count, :schedules),
             created_at: user.created_at.iso8601,
             updated_at: user.updated_at.iso8601
           }
@@ -269,17 +283,32 @@ module Api
             return render json: { error: "This user is already terminated" }, status: :unprocessable_entity
           end
 
-          before = lifecycle_snapshot(@user)
-          @user.terminate!(by: current_user, effective_on: effective_on, reason: reason)
-          AuditLog.log(
-            auditable: @user,
-            action: "updated",
-            user: current_user,
-            changes_made: { employment_lifecycle: [ before, lifecycle_snapshot(@user) ] },
-            metadata: "Employment terminated; historical records retained"
-          )
+          User.transaction do
+            @user.lock!
+            before = lifecycle_snapshot(@user)
+            @user.terminate!(by: current_user, effective_on: effective_on, reason: reason)
+            AuditLog.log(
+              auditable: @user,
+              action: "updated",
+              user: current_user,
+              changes_made: { employment_lifecycle: [ before, lifecycle_snapshot(@user) ] },
+              metadata: "Employment terminated; historical records retained"
+            )
+          end
 
           render json: { user: serialize_user(@user.reload) }
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { error: e.record.errors.full_messages.join(", ") }, status: :unprocessable_entity
+        end
+
+        def history_count(user, count_attribute, association)
+          return user[count_attribute].to_i if user.has_attribute?(count_attribute)
+
+          user.public_send(association).count
+        end
+
+        def termination_params
+          params.permit(:termination_effective_on, :termination_reason)
         end
 
         def lifecycle_snapshot(user)

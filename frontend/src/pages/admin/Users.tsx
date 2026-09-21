@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FadeUp } from '../../components/ui/MotionComponents'
 import { api } from '../../lib/api'
 import type { AdminUser } from '../../lib/api'
-import { formatDateISO } from '../../lib/dateUtils'
+import { formatDate, formatDateISO } from '../../lib/dateUtils'
 
 type Tab = 'team' | 'clients'
 type TeamView = 'active' | 'terminated'
@@ -26,7 +26,7 @@ function HistorySummary({ user }: { user: AdminUser }) {
 }
 
 function focusableElements(container: HTMLElement) {
-  return container.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+  return container.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
 }
 
 export default function Users() {
@@ -36,8 +36,10 @@ export default function Users() {
   const [teamView, setTeamView] = useState<TeamView>('active')
   const [allUsers, setAllUsers] = useState<AdminUser[]>([])
   const [currentUserId, setCurrentUserId] = useState<number | null>(null)
+  const [currentUserState, setCurrentUserState] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [loading, setLoading] = useState(true)
   const [pageError, setPageError] = useState('')
+  const [dialogError, setDialogError] = useState('')
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [terminationTarget, setTerminationTarget] = useState<AdminUser | null>(null)
   const [terminationEffectiveOn, setTerminationEffectiveOn] = useState(formatDateISO(new Date()))
@@ -64,8 +66,13 @@ export default function Users() {
   useEffect(() => { void fetchUsers() }, [fetchUsers])
   useEffect(() => {
     void api.getCurrentUser().then(response => {
-      if (response.data) setCurrentUserId(response.data.user.id)
-    })
+      if (response.data) {
+        setCurrentUserId(response.data.user.id)
+        setCurrentUserState('ready')
+      } else {
+        setCurrentUserState('failed')
+      }
+    }).catch(() => setCurrentUserState('failed'))
   }, [])
 
   useEffect(() => {
@@ -98,7 +105,7 @@ export default function Users() {
     setInviteLastName('')
     setInviteEmail('')
     setInviteRole('employee')
-    setPageError('')
+    setDialogError('')
   }
 
   const closeInvite = () => {
@@ -110,7 +117,7 @@ export default function Users() {
     setTerminationTarget(null)
     setTerminationEffectiveOn(formatDateISO(new Date()))
     setTerminationReason('')
-    setPageError('')
+    setDialogError('')
   }
 
   const trapDialogFocus = (event: React.KeyboardEvent<HTMLDivElement>, close: () => void) => {
@@ -131,7 +138,7 @@ export default function Users() {
   const handleInvite = async (event: React.FormEvent) => {
     event.preventDefault()
     setInviting(true)
-    setPageError('')
+    setDialogError('')
     const response = await api.inviteUser({
       email: inviteEmail,
       first_name: inviteFirstName,
@@ -139,7 +146,7 @@ export default function Users() {
       role: inviteRole,
     })
     setInviting(false)
-    if (response.error) return setPageError(response.error)
+    if (response.error) return setDialogError(response.error)
     closeInvite()
     await fetchUsers()
   }
@@ -160,12 +167,13 @@ export default function Users() {
     event.preventDefault()
     if (!terminationTarget) return
     const target = terminationTarget
+    setDialogError('')
     await withPending(target.id, async () => {
       const response = await api.terminateUser(target.id, {
         termination_effective_on: terminationEffectiveOn || undefined,
         termination_reason: terminationReason.trim() || undefined,
       })
-      if (response.error) return setPageError(response.error)
+      if (response.error) return setDialogError(response.error)
       closeTermination()
       setTeamView('terminated')
       await fetchUsers()
@@ -191,6 +199,9 @@ export default function Users() {
 
   const rowActions = (user: AdminUser) => {
     const busy = pendingIds.has(user.id)
+    if (currentUserState !== 'ready') {
+      return <span className="inline-flex min-h-11 items-center px-3 text-sm font-medium text-gray-500">{currentUserState === 'loading' ? 'Checking access…' : 'Actions unavailable'}</span>
+    }
     if (user.id === currentUserId) {
       return <span className="inline-flex min-h-11 items-center px-3 text-sm font-medium text-gray-500">Signed in as you</span>
     }
@@ -208,7 +219,7 @@ export default function Users() {
             {busy ? 'Sending…' : 'Resend invite'}
           </button>
         )}
-        <button onClick={() => setTerminationTarget(user)} disabled={busy} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">
+        <button onClick={() => { setDialogError(''); setTerminationTarget(user) }} disabled={busy} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">
           {user.role === 'client' ? 'Deactivate' : 'Terminate'}
         </button>
       </div>
@@ -240,10 +251,10 @@ export default function Users() {
                     <td className="px-6 py-4"><p className="font-semibold text-gray-900">{user.full_name || user.email}</p><p className="text-sm text-gray-500">{user.email}</p></td>
                     <td className="px-6 py-4">
                       {isTeam && user.employment_status === 'active' ? (
-                        <select value={user.role} onChange={event => void handleRoleChange(user, event.target.value as 'admin' | 'employee')} disabled={updatingRoleIds.has(user.id) || user.id === currentUserId} className="min-h-11 rounded-lg border border-secondary-dark bg-secondary px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50" aria-label={`Role for ${user.full_name || user.email}`}><option value="admin">Admin</option><option value="employee">Employee</option></select>
+                        <select value={user.role} onChange={event => void handleRoleChange(user, event.target.value as 'admin' | 'employee')} disabled={currentUserState !== 'ready' || updatingRoleIds.has(user.id) || user.id === currentUserId} className="min-h-11 rounded-lg border border-secondary-dark bg-secondary px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50" aria-label={`Role for ${user.full_name || user.email}`}><option value="admin">Admin</option><option value="employee">Employee</option></select>
                       ) : <span className="text-sm capitalize text-gray-700">{user.role}</span>}
                     </td>
-                    <td className="px-6 py-4"><UserStatusBadge user={user} />{user.termination_effective_on && <p className="mt-1 text-xs text-gray-500">Effective {user.termination_effective_on}</p>}</td>
+                    <td className="px-6 py-4"><UserStatusBadge user={user} />{user.termination_effective_on && <p className="mt-1 text-xs text-gray-500">Effective {formatDate(user.termination_effective_on)}</p>}</td>
                     <td className="px-6 py-4"><HistorySummary user={user} /></td>
                     <td className="px-6 py-4 text-right">{rowActions(user)}</td>
                   </tr>
@@ -270,10 +281,10 @@ export default function Users() {
       <div className="space-y-6">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Access & history</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-primary-dark sm:text-3xl">User Management</h1><p className="mt-1 max-w-2xl text-gray-600">End access without erasing payroll, schedule, approval, or audit history.</p></div>
-          {activeTab === 'team' && <button onClick={() => setShowInviteModal(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 font-semibold text-white transition-colors hover:bg-primary-dark"><span aria-hidden="true">+</span> Invite team member</button>}
+          {activeTab === 'team' && <button onClick={() => { setDialogError(''); setShowInviteModal(true) }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 font-semibold text-white transition-colors hover:bg-primary-dark"><span aria-hidden="true">+</span> Invite team member</button>}
         </header>
 
-        {pageError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{pageError}</div>}
+        {pageError && !showInviteModal && !terminationTarget && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{pageError}</div>}
 
         <div className="grid grid-cols-2 gap-3 sm:max-w-lg sm:grid-cols-3">
           <div className="rounded-xl border border-secondary-dark bg-white p-4"><p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Active team</p><p className="mt-1 text-2xl font-bold text-primary-dark">{activeTeam.length}</p></div>
@@ -299,6 +310,7 @@ export default function Users() {
             <div ref={inviteModalRef} role="dialog" aria-modal="true" aria-labelledby="invite-title" onKeyDown={event => trapDialogFocus(event, closeInvite)} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4"><div><h2 id="invite-title" className="text-xl font-bold text-primary-dark">Invite team member</h2><p className="mt-1 text-sm text-gray-600">Their account becomes active after they accept the invite.</p></div><button onClick={closeInvite} aria-label="Close invite dialog" className="min-h-11 min-w-11 rounded-lg text-gray-500 hover:bg-secondary">×</button></div>
               <form onSubmit={event => void handleInvite(event)} className="mt-6 space-y-4">
+                {dialogError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{dialogError}</div>}
                 <div className="grid grid-cols-2 gap-3"><label className="text-sm font-medium text-gray-700">First name<input autoComplete="given-name" required value={inviteFirstName} onChange={event => setInviteFirstName(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-secondary-dark bg-secondary px-3 focus:outline-none focus:ring-2 focus:ring-primary/30" /></label><label className="text-sm font-medium text-gray-700">Last name<input autoComplete="family-name" value={inviteLastName} onChange={event => setInviteLastName(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-secondary-dark bg-secondary px-3 focus:outline-none focus:ring-2 focus:ring-primary/30" /></label></div>
                 <label className="block text-sm font-medium text-gray-700">Email<input type="email" autoComplete="email" required value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-secondary-dark bg-secondary px-3 focus:outline-none focus:ring-2 focus:ring-primary/30" /></label>
                 <label className="block text-sm font-medium text-gray-700">Role<select value={inviteRole} onChange={event => setInviteRole(event.target.value as 'admin' | 'employee')} className="mt-1 min-h-11 w-full rounded-xl border border-secondary-dark bg-secondary px-3 focus:outline-none focus:ring-2 focus:ring-primary/30"><option value="employee">Employee</option><option value="admin">Admin</option></select></label>
@@ -314,6 +326,7 @@ export default function Users() {
               <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-red-700">Preserve history</p><h2 id="termination-title" className="mt-1 text-xl font-bold text-primary-dark">{terminationTarget.role === 'client' ? 'Deactivate' : 'Terminate'} {terminationTarget.full_name || terminationTarget.email}</h2></div><button onClick={closeTermination} aria-label="Close termination dialog" className="min-h-11 min-w-11 rounded-lg text-gray-500 hover:bg-secondary">×</button></div>
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">Access ends immediately. The profile and all {terminationTarget.time_entries_count} time entries, {terminationTarget.schedules_count} shifts, approvals, and report history stay intact.</div>
               <form onSubmit={event => void handleTerminate(event)} className="mt-5 space-y-4">
+                {dialogError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{dialogError}</div>}
                 <label className="block text-sm font-medium text-gray-700">Effective date <span className="font-normal text-gray-500">(optional)</span><input type="date" value={terminationEffectiveOn} onChange={event => setTerminationEffectiveOn(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-secondary-dark px-3 focus:outline-none focus:ring-2 focus:ring-primary/30" /><span className="mt-1 block text-xs font-normal text-gray-500">Clear this if the authoritative date is unknown.</span></label>
                 <label className="block text-sm font-medium text-gray-700">Reason <span className="font-normal text-gray-500">(optional, internal)</span><textarea rows={3} maxLength={2000} value={terminationReason} onChange={event => setTerminationReason(event.target.value)} className="mt-1 w-full rounded-xl border border-secondary-dark px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30" /></label>
                 <div className="flex gap-3 pt-2"><button type="button" onClick={closeTermination} className="min-h-11 flex-1 rounded-xl border border-secondary-dark font-semibold text-gray-700 hover:bg-secondary">Cancel</button><button type="submit" disabled={pendingIds.has(terminationTarget.id)} className="min-h-11 flex-1 rounded-xl bg-red-700 font-semibold text-white hover:bg-red-800 disabled:opacity-50">{pendingIds.has(terminationTarget.id) ? 'Saving…' : 'End access, keep history'}</button></div>

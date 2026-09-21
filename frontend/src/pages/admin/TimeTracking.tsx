@@ -3,7 +3,7 @@ import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/Motio
 import { AnimatePresence, motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
-import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary } from '../../lib/api'
+import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary, TimeEntry as TimeEntryItem } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeIn } from '../../components/ui/FadeIn'
 import { formatDateISO } from '../../lib/dateUtils'
@@ -17,50 +17,6 @@ interface TimeCategory {
   id: number
   name: string
   description: string | null
-}
-
-interface TimeEntryItem {
-  id: number
-  work_date: string
-  start_time: string | null
-  end_time: string | null
-  formatted_start_time: string | null
-  formatted_end_time: string | null
-  hours: number
-  break_minutes: number | null
-  description: string | null
-  entry_method?: 'clock' | 'manual'
-  status?: 'clocked_in' | 'on_break' | 'completed'
-  approval_status?: 'pending' | 'approved' | 'denied' | null
-  overtime_status?: 'none' | 'pending' | 'approved' | 'denied' | null
-  attendance_status?: 'early' | 'on_time' | 'late' | null
-  admin_override?: boolean
-  clock_in_at?: string | null
-  clock_out_at?: string | null
-  approved_by?: { id: number; full_name: string } | null
-  approved_at?: string | null
-  approval_note?: string | null
-  user: {
-    id: number
-    email: string
-    display_name?: string
-    full_name?: string
-  } | null
-  time_category: {
-    id: number
-    name: string
-  } | null
-  client: {
-    id: number
-    name: string
-  } | null
-  tax_return: {
-    id: number
-    tax_year: number
-  } | null
-  locked_at: string | null
-  created_at: string
-  updated_at: string
 }
 
 // Break duration presets
@@ -323,7 +279,7 @@ export default function TimeTracking() {
       const response = await api.getTimeEntries(params as unknown as Parameters<typeof api.getTimeEntries>[0])
       
       if (response.data) {
-        setEntries(response.data.time_entries as unknown as TimeEntryItem[])
+        setEntries(response.data.time_entries)
         setEntrySummary({
           total_hours: response.data.summary.total_hours,
           total_break_hours: response.data.summary.total_break_hours || 0,
@@ -467,7 +423,7 @@ export default function TimeTracking() {
         setHoursReport(response.data)
         setSelectedReportEmployee((current) => current ? response.data!.employees.find((employee) => employee.id === current.id) ?? null : null)
 
-        const rows = response.data.employees.flatMap(employee =>
+        const rows: TimeEntryItem[] = response.data.employees.flatMap(employee =>
           employee.days.flatMap(day =>
             day.entries.map(entry => ({
               id: entry.id,
@@ -477,12 +433,33 @@ export default function TimeTracking() {
               formatted_start_time: entry.formatted_start_time,
               formatted_end_time: entry.formatted_end_time,
               hours: entry.total_hours,
+              regular_hours: entry.regular_hours,
+              overtime_hours: entry.overtime_hours,
               break_minutes: entry.break_minutes,
               description: entry.description,
-              entry_method: entry.entry_method as 'clock' | 'manual',
+              entry_method: entry.entry_method as TimeEntryItem['entry_method'],
               status: 'completed' as const,
-              approval_status: entry.approval_status,
-              overtime_status: entry.overtime_status,
+              admin_override: false,
+              attendance_status: null,
+              approval_status: entry.approval_status as TimeEntryItem['approval_status'],
+              overtime_status: entry.overtime_status as TimeEntryItem['overtime_status'],
+              approval_reasons: [],
+              clock_in_at: null,
+              clock_out_at: null,
+              approved_by: entry.approved_by,
+              approved_at: entry.approved_at,
+              approval_note: null,
+              overtime_approved_by: entry.overtime_approved_by,
+              overtime_approved_at: entry.overtime_approved_at,
+              overtime_note: null,
+              schedule: null,
+              breaks: entry.breaks.map(entryBreak => ({
+                id: entryBreak.id,
+                start_time: entryBreak.start_time || '',
+                end_time: entryBreak.end_time,
+                duration_minutes: entryBreak.duration_minutes,
+                active: entryBreak.end_time === null,
+              })),
               user: {
                 id: employee.id,
                 email: employee.email || '',
@@ -492,6 +469,9 @@ export default function TimeTracking() {
               time_category: entry.time_category,
               client: entry.client,
               tax_return: entry.tax_return,
+              service_type: entry.service_type ? { ...entry.service_type, color: entry.service_type.color ?? null } : null,
+              service_task: entry.service_task,
+              linked_operation_task: null,
               locked_at: entry.locked_at,
               created_at: '',
               updated_at: '',
@@ -499,7 +479,7 @@ export default function TimeTracking() {
           )
         )
 
-        setReportData(rows as unknown as TimeEntryItem[])
+        setReportData(rows)
         setReportSummary({
           total_hours: response.data.summary.total_hours,
           total_break_hours: response.data.summary.break_hours,
@@ -1718,7 +1698,7 @@ export default function TimeTracking() {
               void loadEntries()
               void loadPendingApprovalSummary()
             }}
-            canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry as unknown as TimeEntryItem) : false}
+            canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry) : false}
             clients={clients}
           />
         </div>

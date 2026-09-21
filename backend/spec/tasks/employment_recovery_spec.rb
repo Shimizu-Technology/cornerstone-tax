@@ -57,4 +57,31 @@ RSpec.describe "employment:recover_legacy_deleted_employee" do
     expect(entry.reload.user).to eq(employee)
     expect(schedule.reload.user).to eq(employee)
   end
+
+  it "refuses an existing profile unless email and Clerk ID identify the same employee" do
+    existing = create(:user, :employee, email: "legacy.employee@example.com", clerk_id: "different_clerk_id")
+    existing.terminate!(by: create(:user, :admin))
+    entry = create(:time_entry, user: nil, hours: 8.0)
+    schedule = Schedule.create!(
+      user: nil,
+      work_date: entry.work_date,
+      start_time: Time.utc(2000, 1, 1, 9),
+      end_time: Time.utc(2000, 1, 1, 17)
+    )
+    ENV.update(
+      "EMAIL" => existing.email,
+      "CLERK_ID" => "authoritative_clerk_id",
+      "FIRST_NAME" => "Legacy",
+      "LAST_NAME" => "Employee",
+      "TIME_ENTRY_IDS" => entry.id.to_s,
+      "SCHEDULE_IDS" => schedule.id.to_s,
+      "EXPECTED_HOURS" => "8.0"
+    )
+
+    expect { task.invoke }
+      .to raise_error(SystemExit)
+      .and output(/EMAIL and CLERK_ID must resolve to the same existing user/).to_stderr
+
+    expect(entry.reload.user).to be_nil
+  end
 end

@@ -91,23 +91,37 @@ class User < ApplicationRecord
   end
 
   def terminate!(by:, effective_on: nil, reason: nil)
-    update!(
-      employment_status: "terminated",
-      termination_effective_on: effective_on,
-      terminated_at: Time.current,
-      termination_reason: reason.presence,
-      terminated_by: by
-    )
+    with_lock do
+      unless employment_active?
+        errors.add(:employment_status, "is already terminated")
+        raise ActiveRecord::RecordInvalid, self
+      end
+
+      update!(
+        employment_status: "terminated",
+        termination_effective_on: effective_on,
+        terminated_at: Time.current,
+        termination_reason: reason.presence,
+        terminated_by: by
+      )
+    end
   end
 
   def reactivate!
-    update!(
-      employment_status: "active",
-      termination_effective_on: nil,
-      terminated_at: nil,
-      termination_reason: nil,
-      terminated_by: nil
-    )
+    with_lock do
+      unless terminated?
+        errors.add(:employment_status, "is already active")
+        raise ActiveRecord::RecordInvalid, self
+      end
+
+      update!(
+        employment_status: "active",
+        termination_effective_on: nil,
+        terminated_at: nil,
+        termination_reason: nil,
+        terminated_by: nil
+      )
+    end
   end
 
   def portal_active?

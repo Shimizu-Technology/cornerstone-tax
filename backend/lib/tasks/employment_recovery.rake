@@ -29,25 +29,33 @@ namespace :employment do
 
     existing_by_email = User.find_by("LOWER(email) = ?", email)
     existing_by_clerk = User.find_by(clerk_id: clerk_id)
-    if existing_by_email && existing_by_clerk && existing_by_email.id != existing_by_clerk.id
-      abort "EMAIL and CLERK_ID resolve to different users"
+    if existing_by_email || existing_by_clerk
+      unless existing_by_email && existing_by_clerk && existing_by_email.id == existing_by_clerk.id
+        abort "EMAIL and CLERK_ID must resolve to the same existing user"
+      end
     end
     employee = existing_by_email || existing_by_clerk
+    abort "Existing user is not an employee; refusing to relink staff history" if employee && !employee.employee?
     abort "Existing user is active; refusing to mutate it" if employee&.employment_active?
+
+    validate_records = lambda do |entries, schedules, owner|
+      abort "Expected #{entry_ids.length} time entries, found #{entries.length}" unless entries.length == entry_ids.length
+      abort "Expected #{schedule_ids.length} schedules, found #{schedules.length}" unless schedules.length == schedule_ids.length
+
+      allowed_user_ids = [ nil, owner&.id ]
+      conflicting_entries = entries.reject { |entry| allowed_user_ids.include?(entry.user_id) }
+      conflicting_schedules = schedules.reject { |schedule| allowed_user_ids.include?(schedule.user_id) }
+      abort "Time entries already belong to another user: #{conflicting_entries.map(&:id).join(',')}" if conflicting_entries.any?
+      abort "Schedules already belong to another user: #{conflicting_schedules.map(&:id).join(',')}" if conflicting_schedules.any?
+
+      actual_hours = entries.sum { |entry| BigDecimal(entry.hours.to_s) }
+      abort "Expected #{expected_hours.to_s('F')} hours, found #{actual_hours.to_s('F')}" unless actual_hours == expected_hours
+      actual_hours
+    end
 
     entries = TimeEntry.where(id: entry_ids).order(:id).to_a
     schedules = Schedule.where(id: schedule_ids).order(:id).to_a
-    abort "Expected #{entry_ids.length} time entries, found #{entries.length}" unless entries.length == entry_ids.length
-    abort "Expected #{schedule_ids.length} schedules, found #{schedules.length}" unless schedules.length == schedule_ids.length
-
-    allowed_user_ids = [ nil, employee&.id ]
-    conflicting_entries = entries.reject { |entry| allowed_user_ids.include?(entry.user_id) }
-    conflicting_schedules = schedules.reject { |schedule| allowed_user_ids.include?(schedule.user_id) }
-    abort "Time entries already belong to another user: #{conflicting_entries.map(&:id).join(',')}" if conflicting_entries.any?
-    abort "Schedules already belong to another user: #{conflicting_schedules.map(&:id).join(',')}" if conflicting_schedules.any?
-
-    actual_hours = entries.sum { |entry| BigDecimal(entry.hours.to_s) }
-    abort "Expected #{expected_hours.to_s('F')} hours, found #{actual_hours.to_s('F')}" unless actual_hours == expected_hours
+    actual_hours = validate_records.call(entries, schedules, employee)
 
     mode = ENV["APPLY"] == "true" ? "APPLY" : "DRY RUN"
     puts "#{mode}: #{email}"
@@ -61,6 +69,11 @@ namespace :employment do
     end
 
     ActiveRecord::Base.transaction do
+      employee = User.lock.find(employee.id) if employee
+      entries = TimeEntry.lock.where(id: entry_ids).order(:id).to_a
+      schedules = Schedule.lock.where(id: schedule_ids).order(:id).to_a
+      actual_hours = validate_records.call(entries, schedules, employee)
+
       employee ||= User.create!(
         email: email,
         clerk_id: clerk_id,

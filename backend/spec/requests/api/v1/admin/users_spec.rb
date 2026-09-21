@@ -35,6 +35,15 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
       expect(admin.reload).to be_employment_active
     end
+
+    it "rolls back the lifecycle change when its audit record cannot be written" do
+      allow(AuditLog).to receive(:log).and_raise("audit unavailable")
+
+      post "/api/v1/admin/users/#{employee.id}/terminate", headers: headers
+
+      expect(response).to have_http_status(:internal_server_error)
+      expect(employee.reload).to be_employment_active
+    end
   end
 
   describe "POST /api/v1/admin/users/:id/reactivate" do
@@ -51,14 +60,14 @@ RSpec.describe "Api::V1::Admin::Users", type: :request do
 
   describe "GET /api/v1/admin/users" do
     it "keeps terminated people visible with their history counts" do
-      create(:time_entry, user: employee)
+      create_list(:time_entry, 2, user: employee)
       employee.terminate!(by: admin)
 
       get "/api/v1/admin/users", headers: headers
 
       row = json[:users].find { |user| user[:id] == employee.id }
       expect(row[:employment_status]).to eq("terminated")
-      expect(row[:time_entries_count]).to eq(1)
+      expect(row[:time_entries_count]).to eq(2)
     end
   end
 

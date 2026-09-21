@@ -32,6 +32,18 @@ RSpec.describe User, type: :model do
       expect(User.active_staff).not_to include(employee)
     end
 
+    it "rejects duplicate lifecycle transitions without overwriting termination metadata" do
+      employee.terminate!(by: admin, reason: "Original reason")
+      terminated_at = employee.terminated_at
+
+      expect { employee.terminate!(by: create(:user, :admin), reason: "Replacement reason") }
+        .to raise_error(ActiveRecord::RecordInvalid)
+
+      employee.reload
+      expect(employee.termination_reason).to eq("Original reason")
+      expect(employee.terminated_at).to eq(terminated_at)
+    end
+
     it "blocks hard deletion" do
       expect(employee.destroy).to eq(false)
       expect(employee.errors.full_messages).to include("Users cannot be permanently deleted; terminate or deactivate the account instead")

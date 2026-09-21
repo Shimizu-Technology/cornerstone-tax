@@ -665,7 +665,7 @@ export interface TimeEntry {
     email: string;
     display_name: string;
     full_name: string;
-  };
+  } | null;
   time_category: {
     id: number;
     name: string;

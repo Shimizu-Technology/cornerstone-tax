@@ -85,11 +85,11 @@ export default function Dashboard() {
         const userMap = new Map<number, UserActivity>()
         
         for (const entry of result.data.time_entries) {
-          const userId = entry.user.id
+          const userId = entry.user?.id ?? -1
           if (!userMap.has(userId)) {
             userMap.set(userId, {
               userId,
-              displayName: entry.user.display_name || entry.user.email.split('@')[0],
+              displayName: entry.user ? entry.user.display_name || entry.user.email.split('@')[0] : 'Former employee',
               totalHours: 0,
               totalBreakMinutes: 0,
               entries: []
