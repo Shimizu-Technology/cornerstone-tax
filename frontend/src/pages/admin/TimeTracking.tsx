@@ -46,6 +46,17 @@ interface UserOption {
   termination_effective_on: string | null
 }
 
+const EMPTY_REPORT_SUMMARY = {
+  total_hours: 0,
+  total_break_hours: 0,
+  entry_count: 0,
+  regular_hours: 0,
+  overtime_hours: 0,
+  pending_count: 0,
+  denied_count: 0,
+  open_clock_count: 0,
+}
+
 // Icons
 const PlusIcon = () => (
   <svg className="h-5 w-5" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
@@ -173,18 +184,11 @@ export default function TimeTracking() {
     setSelectedReportEmployee(null)
   }, [])
   const [reportLoading, setReportLoading] = useState(false)
+  const [reportError, setReportError] = useState<string | null>(null)
   const [reportExporting, setReportExporting] = useState<HoursReportDownloadType | null>(null)
-  const [reportSummary, setReportSummary] = useState({
-    total_hours: 0,
-    total_break_hours: 0,
-    entry_count: 0,
-    regular_hours: 0,
-    overtime_hours: 0,
-    pending_count: 0,
-    denied_count: 0,
-    open_clock_count: 0,
-  })
+  const [reportSummary, setReportSummary] = useState(EMPTY_REPORT_SUMMARY)
   const [reportTruncated, setReportTruncated] = useState(false)
+  const reportRequestId = useRef(0)
   
   // Period lock state (CST-43)
   const [currentWeekLocked, setCurrentWeekLocked] = useState(false)
@@ -405,7 +409,15 @@ export default function TimeTracking() {
 
   // Load report data
   const loadReport = useCallback(async () => {
+    const requestId = ++reportRequestId.current
     setReportLoading(true)
+    setReportError(null)
+    setHoursReport(null)
+    setSelectedReportEmployee(null)
+    setReportData([])
+    setReportSummary(EMPTY_REPORT_SUMMARY)
+    setReportTruncated(false)
+
     try {
       const params: Parameters<typeof api.getHoursReport>[0] = {
         start_date: reportFilters.start_date,
@@ -418,6 +430,7 @@ export default function TimeTracking() {
       if (reportFilters.client_id) params.client_id = parseInt(reportFilters.client_id)
 
       const response = await api.getHoursReport(params)
+      if (requestId !== reportRequestId.current) return
 
       if (response.data) {
         setHoursReport(response.data)
@@ -491,13 +504,17 @@ export default function TimeTracking() {
           open_clock_count: response.data.summary.open_clock_count,
         })
         setReportTruncated(false)
-      } else if (response.error) {
-        setError(response.error)
+      } else {
+        setReportError(response.error || 'Unable to load this report')
       }
     } catch {
-      console.error('Failed to load report')
+      if (requestId === reportRequestId.current) {
+        setReportError('Unable to load this report')
+      }
     } finally {
-      setReportLoading(false)
+      if (requestId === reportRequestId.current) {
+        setReportLoading(false)
+      }
     }
   }, [reportFilters])
 
@@ -529,7 +546,11 @@ export default function TimeTracking() {
   
   useEffect(() => {
     if (activeTab === 'reports') {
-      loadReport()
+      void loadReport()
+    }
+
+    return () => {
+      reportRequestId.current += 1
     }
   }, [activeTab, loadReport])
 
@@ -793,7 +814,7 @@ export default function TimeTracking() {
 
   const downloadReport = async (type: HoursReportDownloadType, acknowledgeDraft = false) => {
     setReportExporting(type)
-    setError(null)
+    setReportError(null)
     try {
       const response = await api.downloadHoursReport(type, currentReportParams(), acknowledgeDraft)
       if (response.code === 'draft_acknowledgement_required' && !acknowledgeDraft) {
@@ -802,7 +823,7 @@ export default function TimeTracking() {
         return
       }
       if (response.error || !response.blob) {
-        setError(response.error || 'Unable to download report')
+        setReportError(response.error || 'Unable to download report')
         return
       }
       saveReportDownload(response.blob, response.filename || 'Cornerstone_Report')
@@ -1726,8 +1747,9 @@ export default function TimeTracking() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm text-text-muted mb-1">Start Date</label>
+                <label htmlFor="report-start-date" className="block text-sm text-text-muted mb-1">Start Date</label>
                 <input
+                  id="report-start-date"
                   type="date"
                   value={reportFilters.start_date}
                   onChange={(e) => setReportFilters({ ...reportFilters, start_date: e.target.value })}
@@ -1735,8 +1757,9 @@ export default function TimeTracking() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-text-muted mb-1">End Date</label>
+                <label htmlFor="report-end-date" className="block text-sm text-text-muted mb-1">End Date</label>
                 <input
+                  id="report-end-date"
                   type="date"
                   value={reportFilters.end_date}
                   onChange={(e) => setReportFilters({ ...reportFilters, end_date: e.target.value })}
@@ -1745,8 +1768,9 @@ export default function TimeTracking() {
               </div>
               {isAdmin && (
                 <div>
-                  <label className="block text-sm text-text-muted mb-1">Employee</label>
+                  <label htmlFor="report-employee" className="block text-sm text-text-muted mb-1">Employee</label>
                   <select
+                    id="report-employee"
                     value={reportFilters.user_id}
                     onChange={(e) => setReportFilters({ ...reportFilters, user_id: e.target.value })}
                     className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
@@ -1761,8 +1785,9 @@ export default function TimeTracking() {
                 </div>
               )}
               <div>
-                <label className="block text-sm text-text-muted mb-1">Category</label>
+                <label htmlFor="report-category" className="block text-sm text-text-muted mb-1">Category</label>
                 <select
+                  id="report-category"
                   value={reportFilters.time_category_id}
                   onChange={(e) => setReportFilters({ ...reportFilters, time_category_id: e.target.value })}
                   className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
@@ -1774,8 +1799,9 @@ export default function TimeTracking() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-text-muted mb-1">Client</label>
+                <label htmlFor="report-client" className="block text-sm text-text-muted mb-1">Client</label>
                 <select
+                  id="report-client"
                   value={reportFilters.client_id}
                   onChange={(e) => setReportFilters({ ...reportFilters, client_id: e.target.value })}
                   className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
@@ -1789,13 +1815,19 @@ export default function TimeTracking() {
             </div>
           </div>
 
+          {reportError && (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
+              {reportError}
+            </div>
+          )}
+
           {/* Summary Cards */}
           <StaggerContainer className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <StaggerItem>
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
                 <div className="text-sm text-text-muted">Work Hours</div>
                 <div className="text-3xl font-bold text-primary mt-1">
-                  {reportLoading ? '...' : reportSummary.total_hours.toFixed(1)}
+                  {reportLoading ? '...' : hoursReport ? reportSummary.total_hours.toFixed(1) : '—'}
                 </div>
               </div>
             </StaggerItem>
@@ -1803,7 +1835,7 @@ export default function TimeTracking() {
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
                 <div className="text-sm text-text-muted">Regular Hours</div>
                 <div className="text-3xl font-bold text-primary-dark mt-1">
-                  {reportLoading ? '...' : reportSummary.regular_hours.toFixed(1)}
+                  {reportLoading ? '...' : hoursReport ? reportSummary.regular_hours.toFixed(1) : '—'}
                 </div>
               </div>
             </StaggerItem>
@@ -1811,7 +1843,7 @@ export default function TimeTracking() {
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
                 <div className="text-sm text-text-muted">Overtime</div>
                 <div className="text-3xl font-bold text-orange-600 mt-1">
-                  {reportLoading ? '...' : reportSummary.overtime_hours.toFixed(1)}
+                  {reportLoading ? '...' : hoursReport ? reportSummary.overtime_hours.toFixed(1) : '—'}
                 </div>
               </div>
             </StaggerItem>
@@ -1819,7 +1851,7 @@ export default function TimeTracking() {
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
                 <div className="text-sm text-text-muted">Break Hours</div>
                 <div className="text-3xl font-bold text-text-muted mt-1">
-                  {reportLoading ? '...' : reportSummary.total_break_hours.toFixed(1)}
+                  {reportLoading ? '...' : hoursReport ? reportSummary.total_break_hours.toFixed(1) : '—'}
                 </div>
               </div>
             </StaggerItem>
@@ -1827,7 +1859,7 @@ export default function TimeTracking() {
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
                 <div className="text-sm text-text-muted">Total Entries</div>
                 <div className="text-3xl font-bold text-primary-dark mt-1">
-                  {reportLoading ? '...' : reportSummary.entry_count}
+                  {reportLoading ? '...' : hoursReport ? reportSummary.entry_count : '—'}
                 </div>
               </div>
             </StaggerItem>

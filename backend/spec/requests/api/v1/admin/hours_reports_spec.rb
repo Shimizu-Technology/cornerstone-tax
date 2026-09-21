@@ -128,6 +128,34 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       expect(json[:error]).to include("end_date")
     end
 
+    it "supports report ranges longer than 62 days" do
+      start_date = work_date - 1.year
+
+      get "/api/v1/admin/hours_report",
+          params: { start_date: start_date.iso8601, end_date: work_date.iso8601, user_id: employee.id },
+          headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:summary, :total_hours)).to eq(10.0)
+      expect(json.dig(:summary, :entries_count)).to eq(2)
+      expect(json.dig(:finalization, :selected_days)).to eq((work_date - start_date).to_i + 1)
+    end
+
+    it "counts overlapping finalization locks once across long ranges" do
+      start_date = work_date - 100.days
+      TimePeriodLock.create!(start_date: start_date, end_date: start_date + 9.days, locked_by: admin, locked_at: Time.current)
+      TimePeriodLock.create!(start_date: start_date + 5.days, end_date: start_date + 14.days, locked_by: admin, locked_at: Time.current)
+
+      get "/api/v1/admin/hours_report",
+          params: { start_date: start_date.iso8601, end_date: work_date.iso8601, user_id: employee.id },
+          headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:finalization, :status)).to eq("partially_finalized")
+      expect(json.dig(:finalization, :selected_days)).to eq(101)
+      expect(json.dig(:finalization, :finalized_days)).to eq(15)
+    end
+
     it "reports partial and complete finalization coverage without making it a report prerequisite" do
       week_start = work_date.beginning_of_week(:sunday)
       TimePeriodLock.create!(

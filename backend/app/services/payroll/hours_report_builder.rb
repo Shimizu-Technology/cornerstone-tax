@@ -5,7 +5,6 @@ require "set"
 module Payroll
   class HoursReportBuilder
     BUSINESS_TIMEZONE = TimeClockService::BUSINESS_TIMEZONE
-    MAX_RANGE_DAYS = 62
 
     attr_reader :params, :start_date, :end_date, :context_start_date, :context_end_date,
                 :daily_overtime_threshold, :weekly_overtime_threshold
@@ -15,7 +14,6 @@ module Payroll
       @start_date = parse_date!(params[:start_date], "start_date")
       @end_date = parse_date!(params[:end_date], "end_date")
       raise ArgumentError, "end_date must be on or after start_date" if @end_date < @start_date
-      raise ArgumentError, "date range may not exceed #{MAX_RANGE_DAYS} days" if (@end_date - @start_date).to_i > MAX_RANGE_DAYS
 
       @context_start_date = @start_date.beginning_of_week(:sunday)
       @context_end_date = @end_date.end_of_week(:sunday)
@@ -366,26 +364,26 @@ module Payroll
         .includes(:locked_by)
         .order(:start_date, :id)
         .to_a
-      dates = (start_date..end_date).to_a
-      locked_dates = dates.select { |date| locks.any? { |lock| date.between?(lock.start_date, lock.end_date) } }
-      status = if locked_dates.empty?
+      selected_days = (end_date - start_date).to_i + 1
+      finalized_days = finalized_days_count(locks)
+      status = if finalized_days.zero?
         "not_finalized"
-      elsif locked_dates.length == dates.length
+      elsif finalized_days == selected_days
         "finalized"
       else
         "partially_finalized"
       end
       label = case status
-      when "finalized" then "Finalized for all #{dates.length} selected days"
-      when "partially_finalized" then "Partially finalized (#{locked_dates.length} of #{dates.length} selected days)"
+      when "finalized" then "Finalized for all #{selected_days} selected days"
+      when "partially_finalized" then "Partially finalized (#{finalized_days} of #{selected_days} selected days)"
       else "Not finalized"
       end
 
       {
         status: status,
         label: label,
-        selected_days: dates.length,
-        finalized_days: locked_dates.length,
+        selected_days: selected_days,
+        finalized_days: finalized_days,
         locks: locks.map do |lock|
           {
             id: lock.id,
@@ -397,6 +395,22 @@ module Payroll
           }
         end
       }
+    end
+
+    def finalized_days_count(locks)
+      ranges = locks.map do |lock|
+        [ [ lock.start_date, start_date ].max, [ lock.end_date, end_date ].min ]
+      end.sort_by(&:first)
+
+      merged_ranges = ranges.each_with_object([]) do |(range_start, range_end), merged|
+        if merged.empty? || range_start > merged.last.last + 1.day
+          merged << [ range_start, range_end ]
+        else
+          merged.last[1] = [ merged.last.last, range_end ].max
+        end
+      end
+
+      merged_ranges.sum { |range_start, range_end| (range_end - range_start).to_i + 1 }
     end
 
     def summary(employees, period_entries)
