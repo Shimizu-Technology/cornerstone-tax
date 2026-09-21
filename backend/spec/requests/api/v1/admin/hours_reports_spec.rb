@@ -60,6 +60,68 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       expect(employee_report[:categories].first[:name]).to eq("Tax Prep")
       expect(employee_report[:clients].first[:name]).to eq("Casey Client")
       expect(employee_report[:days].first[:entries].size).to eq(2)
+      expect(employee_report[:days_worked]).to eq(1)
+      expect(employee_report[:first_work_date]).to eq(work_date.iso8601)
+      expect(employee_report[:last_work_date]).to eq(work_date.iso8601)
+    end
+
+    it "reports data-quality flags separately without removing approved hours" do
+      flagged_date = work_date + 1.day
+      long_entry = create_entry(
+        user: employee,
+        work_date: flagged_date,
+        start_time: "08:00",
+        end_time: "20:00",
+        time_category: nil,
+        client: nil,
+        description: nil
+      )
+      overlapping_entry = create_entry(
+        user: employee,
+        work_date: flagged_date,
+        start_time: "10:00",
+        end_time: "12:00",
+        time_category: category,
+        client: client,
+        description: "Verified client work"
+      )
+
+      get "/api/v1/admin/hours_report",
+          params: { start_date: work_date.iso8601, end_date: flagged_date.iso8601, user_id: employee.id },
+          headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:summary, :total_hours)).to eq(24.0)
+      expect(json[:ready]).to eq(true)
+      expect(json.dig(:quality, :status)).to eq("needs_review")
+      expect(json.dig(:quality, :flagged_entries_count)).to eq(2)
+      expect(json.dig(:quality, :uncategorized_count)).to eq(1)
+      expect(json.dig(:quality, :missing_client_count)).to eq(1)
+      expect(json.dig(:quality, :missing_description_count)).to eq(1)
+      expect(json.dig(:quality, :long_shift_count)).to eq(1)
+      expect(json.dig(:quality, :overlapping_entry_count)).to eq(2)
+
+      serialized_entries = json.dig(:employees, 0, :days).flat_map { |day| day[:entries] }
+      expect(serialized_entries.find { |entry| entry[:id] == long_entry.id }[:review_flags]).to contain_exactly(
+        "uncategorized", "missing_client", "missing_description", "long_shift", "overlap"
+      )
+      expect(serialized_entries.find { |entry| entry[:id] == overlapping_entry.id }[:review_flags]).to eq([ "overlap" ])
+    end
+
+    it "detects overlaps that cross midnight into the next work date" do
+      overnight_date = work_date + 1.day
+      first = create_entry(user: employee, work_date: overnight_date, start_time: "22:00", end_time: "02:00", time_category: category, client: client, description: "Overnight work")
+      second = create_entry(user: employee, work_date: overnight_date + 1.day, start_time: "01:00", end_time: "03:00", time_category: category, client: client, description: "Early work")
+
+      get "/api/v1/admin/hours_report",
+          params: { start_date: overnight_date.iso8601, end_date: (overnight_date + 1.day).iso8601, user_id: employee.id },
+          headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:quality, :overlapping_entry_count)).to eq(2)
+      flags_by_id = json.dig(:employees, 0, :days).flat_map { |day| day[:entries] }.to_h { |entry| [ entry[:id], entry[:review_flags] ] }
+      expect(flags_by_id[first.id]).to include("overlap")
+      expect(flags_by_id[second.id]).to include("overlap")
     end
 
     it "honors client and employee filters" do
@@ -220,6 +282,7 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       expect(json.dig(:summary, :denied_count)).to eq(1)
       expect(json.dig(:summary, :entries_count)).to eq(2)
       expect(json.dig(:employees, 0, :days).flatten.to_s).not_to include(denied.id.to_s)
+      expect(json.dig(:employees, 0, :excluded_entries).map { |entry| entry[:id] }).to include(denied.id)
     end
   end
 

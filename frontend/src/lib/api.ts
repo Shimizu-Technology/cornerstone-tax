@@ -694,6 +694,7 @@ export interface TimeEntry {
   locked_at: string | null;
   created_at: string;
   updated_at: string;
+  review_flags?: HoursReportReviewFlag[];
 }
 
 export interface ClockStatus {
@@ -855,12 +856,26 @@ export interface HoursReportEntry {
   overtime_approved_by: { id: number; full_name: string } | null;
   overtime_approved_at: string | null;
   locked_at: string | null;
+  review_flags: HoursReportReviewFlag[];
   time_category: { id: number; name: string } | null;
   client: { id: number; name: string } | null;
   tax_return: { id: number; tax_year: number } | null;
   service_type: { id: number; name: string; color?: string | null } | null;
   service_task: { id: number; name: string } | null;
   breaks: Array<{ id: number; start_time: string | null; end_time: string | null; duration_minutes: number | null }>;
+}
+
+export type HoursReportReviewFlag = 'uncategorized' | 'missing_client' | 'missing_description' | 'long_shift' | 'overlap';
+
+export interface HoursReportQuality {
+  status: 'clear' | 'needs_review';
+  flagged_entries_count: number;
+  uncategorized_count: number;
+  missing_client_count: number;
+  missing_description_count: number;
+  long_shift_count: number;
+  overlapping_entry_count: number;
+  long_shift_threshold_hours: number;
 }
 
 export interface HoursReportDay {
@@ -907,6 +922,9 @@ export interface HoursReportEmployee {
   overtime_hours: number;
   break_hours: number;
   entries_count: number;
+  days_worked: number;
+  first_work_date: string | null;
+  last_work_date: string | null;
   ready: boolean;
   issues: {
     pending_count: number;
@@ -915,6 +933,8 @@ export interface HoursReportEmployee {
     denied_overtime_count: number;
     open_clock_count: number;
   };
+  quality: HoursReportQuality;
+  excluded_entries: HoursReportEntry[];
   days: HoursReportDay[];
   categories: HoursReportGroup[];
   clients: HoursReportGroup[];
@@ -929,6 +949,7 @@ export interface HoursReportResponse {
   context_end_date: string;
   generated_at: string;
   ready: boolean;
+  quality: HoursReportQuality;
   finalization: {
     status: 'finalized' | 'partially_finalized' | 'not_finalized';
     label: string;
@@ -962,7 +983,7 @@ export interface HoursReportParams {
   end_date: string;
   user_id?: number;
   role?: 'admin' | 'employee';
-  status?: 'active' | 'current' | 'pending';
+  status?: 'active' | 'pending' | 'terminated';
   time_category_id?: number;
   client_id?: number;
   service_type_id?: number;

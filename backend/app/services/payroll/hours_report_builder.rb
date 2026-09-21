@@ -5,6 +5,7 @@ require "set"
 module Payroll
   class HoursReportBuilder
     BUSINESS_TIMEZONE = TimeClockService::BUSINESS_TIMEZONE
+    LONG_SHIFT_HOURS = 12
 
     attr_reader :params, :start_date, :end_date, :context_start_date, :context_end_date,
                 :daily_overtime_threshold, :weekly_overtime_threshold
@@ -29,6 +30,8 @@ module Payroll
       control_period_entries = control_entries.select { |entry| entry.work_date.between?(start_date, end_date) }
       employees = build_employee_reports(scoped_users, control_entries, report_entries)
 
+      quality = aggregate_quality(employees)
+
       {
         start_date: start_date.iso8601,
         end_date: end_date.iso8601,
@@ -41,6 +44,7 @@ module Payroll
           weekly_threshold_hours: weekly_overtime_threshold
         },
         ready: report_ready?(issues_for(control_period_entries)),
+        quality: quality,
         finalization: finalization_coverage,
         summary: summary(employees, control_period_entries),
         employees: employees
@@ -126,7 +130,9 @@ module Payroll
       overtime_allocations = allocate_overtime(user_context_entries)
       period_entries = user_report_entries.select { |entry| entry.work_date.between?(start_date, end_date) }
       countable_period_entries = period_entries.select { |entry| countable?(entry) }
-      days = build_days(countable_period_entries, overtime_allocations)
+      quality = quality_for(countable_period_entries)
+      review_flags_by_entry = quality.delete(:review_flags_by_entry)
+      days = build_days(countable_period_entries, overtime_allocations, review_flags_by_entry)
       categories = build_categories(countable_period_entries, overtime_allocations)
       clients = build_clients(countable_period_entries, overtime_allocations)
       services = build_services(countable_period_entries, overtime_allocations)
@@ -156,8 +162,13 @@ module Payroll
         overtime_hours: overtime_hours,
         break_hours: break_hours,
         entries_count: countable_period_entries.size,
+        days_worked: days.size,
+        first_work_date: days.first&.fetch(:work_date),
+        last_work_date: days.last&.fetch(:work_date),
         ready: report_ready?(issues),
         issues: issues,
+        quality: quality,
+        excluded_entries: control_period_entries.reject { |entry| countable?(entry) }.map { |entry| serialize_entry(entry, {}, []) },
         days: days,
         categories: categories,
         clients: clients,
@@ -205,7 +216,7 @@ module Payroll
       allocations
     end
 
-    def build_days(entries, allocations)
+    def build_days(entries, allocations, review_flags_by_entry)
       entries.group_by(&:work_date).sort_by { |date, _| date }.map do |date, day_entries|
         regular = day_entries.sum { |entry| allocations.fetch(entry.id, {})[:regular_hours].to_f }
         overtime = day_entries.sum { |entry| allocations.fetch(entry.id, {})[:overtime_hours].to_f }
@@ -215,7 +226,7 @@ module Payroll
           regular_hours: round_hours(regular),
           overtime_hours: round_hours(overtime),
           break_hours: round_hours(day_entries.sum { |entry| entry.break_minutes.to_i / 60.0 }),
-          entries: day_entries.map { |entry| serialize_entry(entry, allocations.fetch(entry.id, {})) }
+          entries: day_entries.map { |entry| serialize_entry(entry, allocations.fetch(entry.id, {}), review_flags_by_entry.fetch(entry.id, [])) }
         }
       end
     end
@@ -285,7 +296,7 @@ module Payroll
       end.compact
     end
 
-    def serialize_entry(entry, allocation)
+    def serialize_entry(entry, allocation, review_flags = [])
       {
         id: entry.id,
         work_date: entry.work_date.iso8601,
@@ -312,6 +323,7 @@ module Payroll
         } : nil,
         overtime_approved_at: entry.overtime_approved_at&.iso8601,
         locked_at: entry.locked_at&.iso8601,
+        review_flags: review_flags,
         time_category: entry.time_category ? {
           id: entry.time_category.id,
           name: entry.time_category.name
@@ -352,6 +364,78 @@ module Payroll
         denied_overtime_count: entries.count { |entry| entry.overtime_status == "denied" },
         open_clock_count: entries.count { |entry| entry.status.in?(%w[clocked_in on_break]) }
       }
+    end
+
+    def quality_for(entries)
+      flags_by_entry = entries.to_h do |entry|
+        flags = []
+        flags << "uncategorized" if entry.time_category_id.blank?
+        flags << "missing_client" if entry.client_id.blank?
+        flags << "missing_description" if entry.description.blank?
+        flags << "long_shift" if entry.hours.to_f >= LONG_SHIFT_HOURS
+        [ entry.id, flags ]
+      end
+
+      overlapping_entry_ids(entries).each do |entry_id|
+        flags_by_entry.fetch(entry_id, []) << "overlap"
+      end
+
+      counts = %w[uncategorized missing_client missing_description long_shift overlap].index_with do |flag|
+        flags_by_entry.count { |_entry, flags| flags.include?(flag) }
+      end
+
+      {
+        status: counts.values.any?(&:positive?) ? "needs_review" : "clear",
+        flagged_entries_count: flags_by_entry.count { |_entry, flags| flags.any? },
+        uncategorized_count: counts.fetch("uncategorized"),
+        missing_client_count: counts.fetch("missing_client"),
+        missing_description_count: counts.fetch("missing_description"),
+        long_shift_count: counts.fetch("long_shift"),
+        overlapping_entry_count: counts.fetch("overlap"),
+        long_shift_threshold_hours: LONG_SHIFT_HOURS,
+        review_flags_by_entry: flags_by_entry
+      }
+    end
+
+    def overlapping_entry_ids(entries)
+      intervals = entries.filter_map do |entry|
+        next unless entry.start_time.present? && entry.end_time.present?
+
+        day_offset = entry.work_date.jd * 24.hours.to_i
+        start_seconds = day_offset + entry.start_time.in_time_zone(BUSINESS_TIMEZONE).seconds_since_midnight
+        end_seconds = day_offset + entry.end_time.in_time_zone(BUSINESS_TIMEZONE).seconds_since_midnight
+        end_seconds += 24.hours.to_i if end_seconds <= start_seconds
+        [ entry.id, start_seconds, end_seconds ]
+      end.sort_by { |_id, start_seconds, end_seconds| [ start_seconds, end_seconds ] }
+
+      intervals.each_with_index.each_with_object(Set.new) do |((entry_id, start_seconds, end_seconds), index), flagged|
+        intervals.drop(index + 1).each do |(other_id, other_start, other_end)|
+          break if other_start >= end_seconds
+          next unless start_seconds < other_end && other_start < end_seconds
+
+          flagged << entry_id
+          flagged << other_id
+        end
+      end.to_a
+    end
+
+    def aggregate_quality(employees)
+      count_keys = %i[
+        flagged_entries_count
+        uncategorized_count
+        missing_client_count
+        missing_description_count
+        long_shift_count
+        overlapping_entry_count
+      ]
+      counts = count_keys.index_with do |key|
+        employees.sum { |employee| employee.dig(:quality, key).to_i }
+      end
+
+      counts.merge(
+        status: counts[:flagged_entries_count].positive? ? "needs_review" : "clear",
+        long_shift_threshold_hours: LONG_SHIFT_HOURS
+      )
     end
 
     def report_ready?(issues)
