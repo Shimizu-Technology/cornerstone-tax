@@ -72,6 +72,19 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       expect(json.dig(:summary, :total_hours)).to eq(10.0)
     end
 
+    it "retains terminated employees in historical reports" do
+      employee.terminate!(by: admin, effective_on: work_date + 1.day)
+
+      get "/api/v1/admin/hours_report",
+          params: { start_date: work_date.iso8601, end_date: work_date.iso8601, user_id: employee.id },
+          headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:employees, 0, :id)).to eq(employee.id)
+      expect(json.dig(:employees, 0, :status)).to eq("terminated")
+      expect(json.dig(:summary, :total_hours)).to eq(10.0)
+    end
+
     it "keeps boundary-week context hours out of period weekly breakdown totals" do
       period_date = work_date + 2.days
       create_entry(user: employee, work_date: period_date, start_time: "09:00", end_time: "13:00", time_category: category, client: client)

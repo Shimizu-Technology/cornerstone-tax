@@ -6,11 +6,11 @@ module Api
       class UsersController < BaseController
         before_action :authenticate_user!
         before_action :require_admin!
-        before_action :set_user, only: [:show, :update, :destroy, :resend_invite]
+        before_action :set_user, only: [ :show, :update, :destroy, :resend_invite, :terminate, :reactivate ]
 
         # GET /api/v1/admin/users
         def index
-          @users = User.includes(:client).order(created_at: :desc)
+          @users = users_with_history_counts.includes(:client, :terminated_by).order(created_at: :desc)
 
           # Filter by role
           if params[:role].present?
@@ -19,9 +19,11 @@ module Api
 
           # Filter by status
           if params[:status] == "active"
-            @users = @users.where.not(clerk_id: nil).where.not("clerk_id LIKE 'pending_%'")
+            @users = @users.active_employment.where.not(clerk_id: nil).where.not("clerk_id LIKE 'pending_%'")
           elsif params[:status] == "pending"
-            @users = @users.where("clerk_id IS NULL OR clerk_id LIKE 'pending_%'")
+            @users = @users.active_employment.where("clerk_id IS NULL OR clerk_id LIKE 'pending_%'")
+          elsif params[:status] == "terminated"
+            @users = @users.terminated
           end
 
           render json: {
@@ -68,7 +70,12 @@ module Api
             if client_id.blank?
               return render json: { error: "Client ID is required for client role" }, status: :unprocessable_entity
             end
-            unless Client.exists?(client_id)
+            begin
+              client_id = Integer(client_id.to_s, 10)
+            rescue ArgumentError
+              return render json: { error: "Client ID is invalid" }, status: :unprocessable_entity
+            end
+            unless Client.exists?(id: client_id)
               return render json: { error: "Client not found" }, status: :unprocessable_entity
             end
             existing_client_user = User.find_by(client_id: client_id)
@@ -84,6 +91,10 @@ module Api
           # Check if email already exists — re-invite if they never activated
           existing_user = User.find_by("LOWER(email) = ?", email)
           if existing_user
+            if existing_user.terminated?
+              return render json: { error: "This user is terminated. Reactivate the existing profile instead of inviting a duplicate." }, status: :unprocessable_entity
+            end
+
             if existing_user.clerk_id.present? && !existing_user.clerk_id.start_with?("pending_")
               return render json: { error: "A user with this email already exists and has an active account" }, status: :unprocessable_entity
             end
@@ -150,16 +161,42 @@ module Api
         end
 
         # DELETE /api/v1/admin/users/:id
+        # Legacy compatibility: preserve the record and history instead of deleting it.
         def destroy
-          # Prevent deleting yourself
-          if @user.id == current_user.id
-            return render json: { error: "You cannot delete your own account" }, status: :unprocessable_entity
+          terminate_user(effective_on: Date.current, reason: "Deactivated through the legacy remove action")
+        end
+
+        # POST /api/v1/admin/users/:id/terminate
+        def terminate
+          permitted = termination_params
+          effective_on = parse_optional_date(permitted[:termination_effective_on])
+          return if performed?
+
+          terminate_user(effective_on: effective_on, reason: permitted[:termination_reason])
+        end
+
+        # POST /api/v1/admin/users/:id/reactivate
+        def reactivate
+          if @user.employment_active?
+            return render json: { error: "This user is already active" }, status: :unprocessable_entity
           end
 
-          # Soft delete by clearing clerk_id and marking as inactive
-          # Or we can just destroy - for now let's just destroy
-          @user.destroy
-          head :no_content
+          User.transaction do
+            @user.lock!
+            before = lifecycle_snapshot(@user)
+            @user.reactivate!
+            AuditLog.log(
+              auditable: @user,
+              action: "updated",
+              user: current_user,
+              changes_made: { employment_lifecycle: [ before, lifecycle_snapshot(@user) ] },
+              metadata: "Employment reactivated"
+            )
+          end
+
+          render json: { user: serialize_user(@user.reload) }
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { error: e.record.errors.full_messages.join(", ") }, status: :unprocessable_entity
         end
 
         # POST /api/v1/admin/users/:id/resend_invite
@@ -186,9 +223,17 @@ module Api
         private
 
         def set_user
-          @user = User.includes(:client).find(params[:id])
+          @user = users_with_history_counts.includes(:client, :terminated_by).find(params[:id])
         rescue ActiveRecord::RecordNotFound
           render json: { error: "User not found" }, status: :not_found
+        end
+
+        def users_with_history_counts
+          User.select(
+            "users.*",
+            "(SELECT COUNT(*) FROM time_entries WHERE time_entries.user_id = users.id) AS retained_time_entries_count",
+            "(SELECT COUNT(*) FROM schedules WHERE schedules.user_id = users.id) AS retained_schedules_count"
+          )
         end
 
         def serialize_user(user)
@@ -202,8 +247,18 @@ module Api
             role: user.role,
             client_id: user.client_id,
             client_name: user.client&.full_name,
-            is_active: user.clerk_id.present? && !user.clerk_id.start_with?("pending_"),
-            is_pending: user.clerk_id.blank? || user.clerk_id.start_with?("pending_"),
+            is_active: user.employment_active? && user.clerk_id.present? && !user.clerk_id.start_with?("pending_"),
+            is_pending: user.employment_active? && (user.clerk_id.blank? || user.clerk_id.start_with?("pending_")),
+            employment_status: user.employment_status,
+            termination_effective_on: user.termination_effective_on&.iso8601,
+            terminated_at: user.terminated_at&.iso8601,
+            termination_reason: user.termination_reason,
+            terminated_by: user.terminated_by ? {
+              id: user.terminated_by.id,
+              full_name: user.terminated_by.full_name
+            } : nil,
+            time_entries_count: history_count(user, :retained_time_entries_count, :time_entries),
+            schedules_count: history_count(user, :retained_schedules_count, :schedules),
             created_at: user.created_at.iso8601,
             updated_at: user.updated_at.iso8601
           }
@@ -217,6 +272,62 @@ module Api
             Rails.logger.warn "Invitation email could not be sent to #{user.email}"
           end
           sent
+        end
+
+        def terminate_user(effective_on:, reason:)
+          if @user.id == current_user.id
+            return render json: { error: "You cannot terminate your own account" }, status: :unprocessable_entity
+          end
+
+          if @user.terminated?
+            return render json: { error: "This user is already terminated" }, status: :unprocessable_entity
+          end
+
+          User.transaction do
+            @user.lock!
+            before = lifecycle_snapshot(@user)
+            @user.terminate!(by: current_user, effective_on: effective_on, reason: reason)
+            AuditLog.log(
+              auditable: @user,
+              action: "updated",
+              user: current_user,
+              changes_made: { employment_lifecycle: [ before, lifecycle_snapshot(@user) ] },
+              metadata: "Employment terminated; historical records retained"
+            )
+          end
+
+          render json: { user: serialize_user(@user.reload) }
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { error: e.record.errors.full_messages.join(", ") }, status: :unprocessable_entity
+        end
+
+        def history_count(user, count_attribute, association)
+          return user[count_attribute].to_i if user.has_attribute?(count_attribute)
+
+          user.public_send(association).count
+        end
+
+        def termination_params
+          params.permit(:termination_effective_on, :termination_reason)
+        end
+
+        def lifecycle_snapshot(user)
+          {
+            employment_status: user.employment_status,
+            termination_effective_on: user.termination_effective_on&.iso8601,
+            terminated_at: user.terminated_at&.iso8601,
+            termination_reason: user.termination_reason,
+            terminated_by_id: user.terminated_by_id
+          }
+        end
+
+        def parse_optional_date(value)
+          return nil if value.blank?
+
+          Date.iso8601(value.to_s)
+        rescue Date::Error
+          render json: { error: "Termination date must be a valid date" }, status: :unprocessable_entity
+          nil
         end
       end
     end

@@ -1,691 +1,340 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FadeUp } from '../../components/ui/MotionComponents'
 import { api } from '../../lib/api'
 import type { AdminUser } from '../../lib/api'
-import { formatDateTime } from '../../lib/dateUtils'
-import { FadeUp } from '../../components/ui/MotionComponents'
+import { formatDate, formatDateISO } from '../../lib/dateUtils'
 
 type Tab = 'team' | 'clients'
+type TeamView = 'active' | 'terminated'
+
+function UserStatusBadge({ user }: { user: AdminUser }) {
+  if (user.employment_status === 'terminated') {
+    return <span className="inline-flex rounded-full border border-stone-300 bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-700">Terminated</span>
+  }
+  if (user.is_pending) {
+    return <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">Invite pending</span>
+  }
+  return <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">Active</span>
+}
+
+function HistorySummary({ user }: { user: AdminUser }) {
+  return (
+    <span className="text-xs text-gray-500">
+      {user.time_entries_count} time {user.time_entries_count === 1 ? 'entry' : 'entries'} · {user.schedules_count} {user.schedules_count === 1 ? 'shift' : 'shifts'}
+    </span>
+  )
+}
+
+function focusableElements(container: HTMLElement) {
+  return container.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+}
 
 export default function Users() {
   useEffect(() => { document.title = 'Users | Cornerstone Admin' }, [])
 
   const [activeTab, setActiveTab] = useState<Tab>('team')
+  const [teamView, setTeamView] = useState<TeamView>('active')
   const [allUsers, setAllUsers] = useState<AdminUser[]>([])
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
+  const [currentUserState, setCurrentUserState] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [loading, setLoading] = useState(true)
+  const [pageError, setPageError] = useState('')
+  const [dialogError, setDialogError] = useState('')
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [terminationTarget, setTerminationTarget] = useState<AdminUser | null>(null)
+  const [terminationEffectiveOn, setTerminationEffectiveOn] = useState(formatDateISO(new Date()))
+  const [terminationReason, setTerminationReason] = useState('')
   const [inviteFirstName, setInviteFirstName] = useState('')
   const [inviteLastName, setInviteLastName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'admin' | 'employee'>('employee')
   const [inviting, setInviting] = useState(false)
-  const [error, setError] = useState('')
-  const [resendingIds, setResendingIds] = useState<Set<number>>(new Set())
-  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set())
+  const [pendingIds, setPendingIds] = useState<Set<number>>(new Set())
   const [updatingRoleIds, setUpdatingRoleIds] = useState<Set<number>>(new Set())
-  const modalRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (showInviteModal && modalRef.current) {
-      const firstInput = modalRef.current.querySelector<HTMLElement>('input, select, textarea')
-      if (firstInput) setTimeout(() => firstInput.focus(), 0)
-    }
-  }, [showInviteModal])
+  const inviteModalRef = useRef<HTMLDivElement>(null)
+  const terminationModalRef = useRef<HTMLDivElement>(null)
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
-    try {
-      const response = await api.getAdminUsers()
+    setPageError('')
+    const response = await api.getAdminUsers()
+    if (response.data) setAllUsers(response.data.users)
+    else setPageError(response.error || 'Unable to load users')
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { void fetchUsers() }, [fetchUsers])
+  useEffect(() => {
+    void api.getCurrentUser().then(response => {
       if (response.data) {
-        setAllUsers(response.data.users)
+        setCurrentUserId(response.data.user.id)
+        setCurrentUserState('ready')
+      } else {
+        setCurrentUserState('failed')
       }
-    } catch (err) {
-      console.error('Failed to fetch users:', err)
-    } finally {
-      setLoading(false)
-    }
+    }).catch(() => setCurrentUserState('failed'))
   }, [])
 
   useEffect(() => {
-    fetchUsers()
-  }, [fetchUsers])
+    const modal = terminationTarget ? terminationModalRef.current : showInviteModal ? inviteModalRef.current : null
+    if (!modal) return
+    window.setTimeout(() => focusableElements(modal)[0]?.focus(), 0)
+  }, [showInviteModal, terminationTarget])
 
-  const teamUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'employee')
-  const clientUsers = allUsers.filter(u => u.role === 'client')
+  const teamUsers = useMemo(() => allUsers.filter(user => user.role === 'admin' || user.role === 'employee'), [allUsers])
+  const clientUsers = useMemo(() => allUsers.filter(user => user.role === 'client'), [allUsers])
+  const activeTeam = teamUsers.filter(user => user.employment_status === 'active')
+  const terminatedTeam = teamUsers.filter(user => user.employment_status === 'terminated')
+  const visibleTeam = teamView === 'active' ? activeTeam : terminatedTeam
 
-  const resetInviteForm = () => {
+  const withPending = async (userId: number, action: () => Promise<void>) => {
+    setPendingIds(previous => new Set(previous).add(userId))
+    try {
+      await action()
+    } finally {
+      setPendingIds(previous => {
+        const next = new Set(previous)
+        next.delete(userId)
+        return next
+      })
+    }
+  }
+
+  const resetInvite = () => {
     setInviteFirstName('')
     setInviteLastName('')
     setInviteEmail('')
     setInviteRole('employee')
-    setError('')
+    setDialogError('')
   }
 
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
+  const closeInvite = () => {
+    setShowInviteModal(false)
+    resetInvite()
+  }
+
+  const closeTermination = () => {
+    setTerminationTarget(null)
+    setTerminationEffectiveOn(formatDateISO(new Date()))
+    setTerminationReason('')
+    setDialogError('')
+  }
+
+  const trapDialogFocus = (event: React.KeyboardEvent<HTMLDivElement>, close: () => void) => {
+    if (event.key === 'Escape') close()
+    if (event.key !== 'Tab') return
+    const focusable = focusableElements(event.currentTarget)
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last?.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first?.focus()
+    }
+  }
+
+  const handleInvite = async (event: React.FormEvent) => {
+    event.preventDefault()
     setInviting(true)
+    setDialogError('')
+    const response = await api.inviteUser({
+      email: inviteEmail,
+      first_name: inviteFirstName,
+      last_name: inviteLastName || undefined,
+      role: inviteRole,
+    })
+    setInviting(false)
+    if (response.error) return setDialogError(response.error)
+    closeInvite()
+    await fetchUsers()
+  }
 
-    try {
-      const response = await api.inviteUser({
-        email: inviteEmail,
-        first_name: inviteFirstName,
-        last_name: inviteLastName || undefined,
-        role: inviteRole
+  const handleRoleChange = async (user: AdminUser, role: 'admin' | 'employee') => {
+    setUpdatingRoleIds(previous => new Set(previous).add(user.id))
+    const response = await api.updateUserRole(user.id, role)
+    setUpdatingRoleIds(previous => {
+      const next = new Set(previous)
+      next.delete(user.id)
+      return next
+    })
+    if (response.error) return setPageError(response.error)
+    await fetchUsers()
+  }
+
+  const handleTerminate = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!terminationTarget) return
+    const target = terminationTarget
+    setDialogError('')
+    await withPending(target.id, async () => {
+      const response = await api.terminateUser(target.id, {
+        termination_effective_on: terminationEffectiveOn || undefined,
+        termination_reason: terminationReason.trim() || undefined,
       })
-      if (response.error) {
-        setError(response.error)
-      } else {
-        setShowInviteModal(false)
-        resetInviteForm()
-        fetchUsers()
-      }
-    } catch {
-      setError('Failed to invite user')
-    } finally {
-      setInviting(false)
-    }
+      if (response.error) return setDialogError(response.error)
+      closeTermination()
+      setTeamView('terminated')
+      await fetchUsers()
+    })
   }
 
-  const handleRoleChange = async (userId: number, newRole: 'admin' | 'employee' | 'client') => {
-    setUpdatingRoleIds(prev => new Set(prev).add(userId))
-    try {
-      const response = await api.updateUserRole(userId, newRole)
-      if (response.error) {
-        alert(response.error)
-      } else {
-        fetchUsers()
-      }
-    } catch {
-      alert('Failed to update role')
-    } finally {
-      setUpdatingRoleIds(prev => { const next = new Set(prev); next.delete(userId); return next })
-    }
-  }
-
-  const handleDelete = async (user: AdminUser) => {
-    const label = user.role === 'client' ? 'client portal user' : 'team member'
-    if (!confirm(`Are you sure you want to remove ${user.display_name || user.email}? They will no longer be able to access the system as a ${label}.`)) {
-      return
-    }
-
-    setDeletingIds(prev => new Set(prev).add(user.id))
-    try {
-      const response = await api.deleteUser(user.id)
-      if (response.error) {
-        alert(response.error)
-      } else {
-        fetchUsers()
-      }
-    } catch {
-      alert('Failed to delete user')
-    } finally {
-      setDeletingIds(prev => { const next = new Set(prev); next.delete(user.id); return next })
-    }
+  const handleReactivate = async (user: AdminUser) => {
+    if (!window.confirm(`Reactivate ${user.full_name || user.email}? They will regain access with their existing sign-in.`)) return
+    await withPending(user.id, async () => {
+      const response = await api.reactivateUser(user.id)
+      if (response.error) return setPageError(response.error)
+      setTeamView('active')
+      await fetchUsers()
+    })
   }
 
   const handleResendInvite = async (user: AdminUser) => {
-    setResendingIds(prev => new Set(prev).add(user.id))
-    try {
+    await withPending(user.id, async () => {
       const response = await api.resendInvite(user.id)
-      if (response.error) {
-        alert(response.error)
-      } else {
-        alert(`Invitation re-sent to ${user.email}`)
-      }
-    } catch {
-      alert('Failed to resend invite')
-    } finally {
-      setResendingIds(prev => { const next = new Set(prev); next.delete(user.id); return next })
-    }
+      if (response.error) setPageError(response.error)
+    })
   }
+
+  const rowActions = (user: AdminUser) => {
+    const busy = pendingIds.has(user.id)
+    if (currentUserState !== 'ready') {
+      return <span className="inline-flex min-h-11 items-center px-3 text-sm font-medium text-gray-500">{currentUserState === 'loading' ? 'Checking access…' : 'Actions unavailable'}</span>
+    }
+    if (user.id === currentUserId) {
+      return <span className="inline-flex min-h-11 items-center px-3 text-sm font-medium text-gray-500">Signed in as you</span>
+    }
+    if (user.employment_status === 'terminated') {
+      return (
+        <button onClick={() => void handleReactivate(user)} disabled={busy} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-50">
+          {busy ? 'Reactivating…' : 'Reactivate'}
+        </button>
+      )
+    }
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-1">
+        {user.is_pending && (
+          <button onClick={() => void handleResendInvite(user)} disabled={busy} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-50">
+            {busy ? 'Sending…' : 'Resend invite'}
+          </button>
+        )}
+        <button onClick={() => { setDialogError(''); setTerminationTarget(user) }} disabled={busy} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">
+          {user.role === 'client' ? 'Deactivate' : 'Terminate'}
+        </button>
+      </div>
+    )
+  }
+
+  const userTable = (users: AdminUser[], isTeam: boolean) => (
+    <div className="overflow-hidden rounded-2xl border border-secondary-dark bg-white shadow-sm">
+      {loading ? (
+        <div className="p-10 text-center text-sm text-gray-500" role="status">Loading users…</div>
+      ) : users.length === 0 ? (
+        <div className="p-10 text-center">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-secondary text-primary" aria-hidden="true">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2m7-10a4 4 0 100-8 4 4 0 000 8zm13 10v-2a4 4 0 00-3-3.87m-1-12a4 4 0 010 7.75" /></svg>
+          </div>
+          <p className="font-medium text-primary-dark">{isTeam && teamView === 'terminated' ? 'No terminated team members' : 'No users in this view'}</p>
+          <p className="mt-1 text-sm text-gray-500">Historical profiles will remain here after access is ended.</p>
+        </div>
+      ) : (
+        <>
+          <div className="hidden overflow-x-auto sm:block">
+            <table className="w-full">
+              <thead className="border-b border-secondary-dark bg-secondary/50 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
+                <tr><th className="px-6 py-4">Person</th><th className="px-6 py-4">Role</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">History</th><th className="px-6 py-4 text-right">Actions</th></tr>
+              </thead>
+              <tbody className="divide-y divide-secondary-dark">
+                {users.map(user => (
+                  <tr key={user.id} className="transition-colors hover:bg-secondary/30">
+                    <td className="px-6 py-4"><p className="font-semibold text-gray-900">{user.full_name || user.email}</p><p className="text-sm text-gray-500">{user.email}</p></td>
+                    <td className="px-6 py-4">
+                      {isTeam && user.employment_status === 'active' ? (
+                        <select value={user.role} onChange={event => void handleRoleChange(user, event.target.value as 'admin' | 'employee')} disabled={currentUserState !== 'ready' || updatingRoleIds.has(user.id) || user.id === currentUserId} className="min-h-11 rounded-lg border border-secondary-dark bg-secondary px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50" aria-label={`Role for ${user.full_name || user.email}`}><option value="admin">Admin</option><option value="employee">Employee</option></select>
+                      ) : <span className="text-sm capitalize text-gray-700">{user.role}</span>}
+                    </td>
+                    <td className="px-6 py-4"><UserStatusBadge user={user} />{user.termination_effective_on && <p className="mt-1 text-xs text-gray-500">Effective {formatDate(user.termination_effective_on)}</p>}</td>
+                    <td className="px-6 py-4"><HistorySummary user={user} /></td>
+                    <td className="px-6 py-4 text-right">{rowActions(user)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="divide-y divide-secondary-dark sm:hidden">
+            {users.map(user => (
+              <article key={user.id} className="space-y-4 p-4">
+                <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-gray-900">{user.full_name || user.email}</p><p className="break-all text-sm text-gray-500">{user.email}</p></div><UserStatusBadge user={user} /></div>
+                <HistorySummary user={user} />
+                <div className="flex items-center justify-between gap-3"><span className="text-sm capitalize text-gray-700">{user.role}</span>{rowActions(user)}</div>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
 
   return (
     <FadeUp>
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark tracking-tight">User Management</h1>
-          <p className="text-gray-600 mt-1">
-            {activeTab === 'team' ? 'Invite and manage team members' : 'Manage client portal access'}
-          </p>
+      <div className="space-y-6">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Access & history</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-primary-dark sm:text-3xl">User Management</h1><p className="mt-1 max-w-2xl text-gray-600">End access without erasing payroll, schedule, approval, or audit history.</p></div>
+          {activeTab === 'team' && <button onClick={() => { setDialogError(''); setShowInviteModal(true) }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 font-semibold text-white transition-colors hover:bg-primary-dark"><span aria-hidden="true">+</span> Invite team member</button>}
+        </header>
+
+        {pageError && !showInviteModal && !terminationTarget && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{pageError}</div>}
+
+        <div className="grid grid-cols-2 gap-3 sm:max-w-lg sm:grid-cols-3">
+          <div className="rounded-xl border border-secondary-dark bg-white p-4"><p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Active team</p><p className="mt-1 text-2xl font-bold text-primary-dark">{activeTeam.length}</p></div>
+          <div className="rounded-xl border border-secondary-dark bg-white p-4"><p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Terminated</p><p className="mt-1 text-2xl font-bold text-primary-dark">{terminatedTeam.length}</p></div>
+          <div className="col-span-2 rounded-xl border border-secondary-dark bg-white p-4 sm:col-span-1"><p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Portal users</p><p className="mt-1 text-2xl font-bold text-primary-dark">{clientUsers.length}</p></div>
         </div>
-        {activeTab === 'team' && (
-          <button
-            onClick={() => setShowInviteModal(true)}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors font-medium"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Invite Team Member
-          </button>
-        )}
-      </div>
 
-      {/* Tabs */}
-      <div role="tablist" className="flex gap-1 bg-secondary/50 rounded-xl p-1 w-fit">
-        <button
-          role="tab"
-          id="tab-team"
-          aria-selected={activeTab === 'team'}
-          aria-controls="panel-team"
-          onClick={() => setActiveTab('team')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'team'
-              ? 'bg-white text-primary-dark shadow-sm'
-              : 'text-gray-600 hover:text-primary-dark'
-          }`}
-        >
-          Team
-          <span className="ml-1.5 text-xs text-gray-400">({teamUsers.length})</span>
-        </button>
-        <button
-          role="tab"
-          id="tab-clients"
-          aria-selected={activeTab === 'clients'}
-          aria-controls="panel-clients"
-          onClick={() => setActiveTab('clients')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'clients'
-              ? 'bg-white text-primary-dark shadow-sm'
-              : 'text-gray-600 hover:text-primary-dark'
-          }`}
-        >
-          Clients
-          <span className="ml-1.5 text-xs text-gray-400">({clientUsers.length})</span>
-        </button>
-      </div>
-
-      {/* Tab Panel — Team */}
-      <div
-        role="tabpanel"
-        id="panel-team"
-        aria-labelledby="tab-team"
-        hidden={activeTab !== 'team'}
-      >
-
-      {/* Desktop Table */}
-      <div className="hidden sm:block bg-white rounded-2xl border border-secondary-dark overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-2 text-gray-500">Loading users...</p>
-          </div>
-        ) : teamUsers.length === 0 ? (
-          <div className="p-8 text-center">
-            <div className="text-4xl mb-2">👥</div>
-            <p className="text-gray-500">No team members yet</p>
-            <button
-              onClick={() => setShowInviteModal(true)}
-              className="mt-4 text-primary hover:text-primary-dark font-medium"
-            >
-              Invite your first team member
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-secondary/50 border-b border-secondary-dark">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Role</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Joined</th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-secondary-dark">
-                {teamUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-secondary/30 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                          <span className="text-primary font-medium">
-                            {(user.first_name || user.email).charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{user.display_name || user.email.split('@')[0]}</p>
-                          <p className="text-sm text-gray-500">{user.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <select
-                        value={user.role}
-                        onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'employee')}
-                        disabled={updatingRoleIds.has(user.id)}
-                        className="px-3 py-1.5 bg-secondary border border-secondary-dark rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
-                        aria-label={`Role for ${user.display_name || user.email}`}
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="employee">Employee</option>
-                      </select>
-                    </td>
-                    <td className="px-6 py-4">
-                      {user.is_pending ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">Pending</span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">Active</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{formatDateTime(user.created_at)}</td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {user.is_pending && (
-                          <button
-                            onClick={() => handleResendInvite(user)}
-                            disabled={resendingIds.has(user.id)}
-                            className="text-primary hover:text-primary-dark text-sm font-medium disabled:opacity-50"
-                          >
-                            {resendingIds.has(user.id) ? 'Sending...' : 'Resend Invite'}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDelete(user)}
-                          disabled={deletingIds.has(user.id)}
-                          className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50"
-                        >
-                          {deletingIds.has(user.id) ? 'Removing...' : 'Remove'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Mobile Card View */}
-      <div className="sm:hidden space-y-4">
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-2 text-gray-500">Loading users...</p>
-          </div>
-        ) : teamUsers.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-secondary-dark p-8 text-center">
-            <div className="text-4xl mb-2">👥</div>
-            <p className="text-gray-500">No team members yet</p>
-            <button
-              onClick={() => setShowInviteModal(true)}
-              className="mt-4 text-primary hover:text-primary-dark font-medium"
-            >
-              Invite your first team member
-            </button>
-          </div>
-        ) : teamUsers.map((user) => (
-          <div key={user.id} className="bg-white rounded-2xl border border-secondary-dark p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <span className="text-primary font-medium">
-                    {(user.first_name || user.email).charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">{user.display_name || user.email.split('@')[0]}</p>
-                  <p className="text-sm text-gray-500 break-all">{user.email}</p>
-                  <p className="text-xs text-gray-400">Joined {formatDateTime(user.created_at)}</p>
-                </div>
-              </div>
-              {user.is_pending ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
-              ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>
-              )}
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <select
-                value={user.role}
-                onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'employee')}
-                disabled={updatingRoleIds.has(user.id)}
-                className="flex-1 px-3 py-2 bg-secondary border border-secondary-dark rounded-lg text-sm disabled:opacity-50"
-                aria-label={`Role for ${user.display_name || user.email}`}
-              >
-                <option value="admin">Admin</option>
-                <option value="employee">Employee</option>
-              </select>
-              <div className="flex items-center gap-2">
-                {user.is_pending && (
-                  <button
-                    onClick={() => handleResendInvite(user)}
-                    disabled={resendingIds.has(user.id)}
-                    className="px-3 py-2 text-primary hover:bg-primary/5 rounded-lg text-sm font-medium disabled:opacity-50"
-                  >
-                    {resendingIds.has(user.id) ? 'Sending...' : 'Resend Invite'}
-                  </button>
-                )}
-                <button
-                  onClick={() => handleDelete(user)}
-                  disabled={deletingIds.has(user.id)}
-                  className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium disabled:opacity-50"
-                >
-                  {deletingIds.has(user.id) ? 'Removing...' : 'Remove'}
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      </div>
-
-      {/* Tab Panel — Clients */}
-      <div
-        role="tabpanel"
-        id="panel-clients"
-        aria-labelledby="tab-clients"
-        hidden={activeTab !== 'clients'}
-      >
-
-      {/* Desktop Table */}
-      <div className="hidden sm:block bg-white rounded-2xl border border-secondary-dark overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-2 text-gray-500">Loading users...</p>
-          </div>
-        ) : clientUsers.length === 0 ? (
-          <div className="p-8 text-center">
-            <div className="text-4xl mb-2">🏢</div>
-            <p className="text-gray-500">No client portal users yet</p>
-            <p className="mt-2 text-sm text-gray-400">
-              Client portal invites are sent from individual client detail pages
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-secondary/50 border-b border-secondary-dark">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Linked Client</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Role</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Invited</th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-secondary-dark">
-                {clientUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-secondary/30 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-                          <span className="text-blue-600 font-medium">
-                            {(user.first_name || user.email).charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{user.display_name || user.email.split('@')[0]}</p>
-                          <p className="text-sm text-gray-500">{user.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-700">
-                      {user.client_name || <span className="text-gray-400 italic">No linked client</span>}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                        Client
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {user.is_pending ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">Pending</span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">Active</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{formatDateTime(user.created_at)}</td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {user.is_pending && (
-                          <button
-                            onClick={() => handleResendInvite(user)}
-                            disabled={resendingIds.has(user.id)}
-                            className="text-primary hover:text-primary-dark text-sm font-medium disabled:opacity-50"
-                          >
-                            {resendingIds.has(user.id) ? 'Sending...' : 'Resend Invite'}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDelete(user)}
-                          disabled={deletingIds.has(user.id)}
-                          className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50"
-                        >
-                          {deletingIds.has(user.id) ? 'Removing...' : 'Remove'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Mobile Card View */}
-      <div className="sm:hidden space-y-4">
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-2 text-gray-500">Loading users...</p>
-          </div>
-        ) : clientUsers.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-secondary-dark p-8 text-center">
-            <div className="text-4xl mb-2">🏢</div>
-            <p className="text-gray-500">No client portal users yet</p>
-            <p className="mt-2 text-sm text-gray-400">
-              Client portal invites are sent from individual client detail pages
-            </p>
-          </div>
-        ) : clientUsers.map((user) => (
-          <div key={user.id} className="bg-white rounded-2xl border border-secondary-dark p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-                  <span className="text-blue-600 font-medium">
-                    {(user.first_name || user.email).charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">{user.display_name || user.email.split('@')[0]}</p>
-                  <p className="text-sm text-gray-500 break-all">{user.email}</p>
-                  <p className="text-xs mt-0.5">
-                    {user.client_name
-                      ? <span className="text-blue-600">Client: {user.client_name}</span>
-                      : <span className="text-gray-400 italic">No linked client</span>}
-                  </p>
-                  <p className="text-xs text-gray-400">Invited {formatDateTime(user.created_at)}</p>
-                </div>
-              </div>
-              {user.is_pending ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
-              ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>
-              )}
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                Client
-              </span>
-              <div className="flex items-center gap-2">
-                {user.is_pending && (
-                  <button
-                    onClick={() => handleResendInvite(user)}
-                    disabled={resendingIds.has(user.id)}
-                    className="px-3 py-2 text-primary hover:bg-primary/5 rounded-lg text-sm font-medium disabled:opacity-50"
-                  >
-                    {resendingIds.has(user.id) ? 'Sending...' : 'Resend Invite'}
-                  </button>
-                )}
-                <button
-                  onClick={() => handleDelete(user)}
-                  disabled={deletingIds.has(user.id)}
-                  className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium disabled:opacity-50"
-                >
-                  {deletingIds.has(user.id) ? 'Removing...' : 'Remove'}
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      </div>
-
-      {/* Invite Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => { setShowInviteModal(false); resetInviteForm() }}>
-          <div
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="invite-modal-title"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setShowInviteModal(false)
-                resetInviteForm()
-              }
-              if (e.key === 'Tab') {
-                const modal = e.currentTarget
-                const focusable = modal.querySelectorAll<HTMLElement>(
-                  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-                )
-                const first = focusable[0]
-                const last = focusable[focusable.length - 1]
-                if (e.shiftKey) {
-                  if (document.activeElement === first) {
-                    e.preventDefault()
-                    last.focus()
-                  }
-                } else {
-                  if (document.activeElement === last) {
-                    e.preventDefault()
-                    first.focus()
-                  }
-                }
-              }
-            }}
-            ref={modalRef}
-          >
-            <div className="flex items-center justify-between mb-6">
-              <h2 id="invite-modal-title" className="text-xl font-bold text-primary-dark">Invite Team Member</h2>
-              <button
-                onClick={() => {
-                  setShowInviteModal(false)
-                  resetInviteForm()
-                }}
-                aria-label="Close" className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <form onSubmit={handleInvite} className="space-y-4">
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="invite-first-name" className="block text-sm font-medium text-gray-700 mb-1">
-                    First Name *
-                  </label>
-                  <input
-                    id="invite-first-name"
-                    type="text"
-                    value={inviteFirstName}
-                    onChange={(e) => setInviteFirstName(e.target.value)}
-                    placeholder="John"
-                    required
-                    className="w-full px-4 py-3 bg-secondary border border-secondary-dark rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="invite-last-name" className="block text-sm font-medium text-gray-700 mb-1">
-                    Last Name
-                  </label>
-                  <input
-                    id="invite-last-name"
-                    type="text"
-                    value={inviteLastName}
-                    onChange={(e) => setInviteLastName(e.target.value)}
-                    placeholder="Doe"
-                    className="w-full px-4 py-3 bg-secondary border border-secondary-dark rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="invite-email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address *
-                </label>
-                <input
-                  id="invite-email"
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="employee@example.com"
-                  required
-                  className="w-full px-4 py-3 bg-secondary border border-secondary-dark rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  They'll be able to sign up using this email
-                </p>
-              </div>
-
-              <div>
-                <label htmlFor="invite-role" className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
-                <select
-                  id="invite-role"
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value as 'admin' | 'employee')}
-                  className="w-full px-4 py-3 bg-secondary border border-secondary-dark rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="employee">Employee</option>
-                  <option value="admin">Admin</option>
-                </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  Admins can manage users and settings
-                </p>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowInviteModal(false)
-                    resetInviteForm()
-                  }}
-                  className="flex-1 px-4 py-3 border border-secondary-dark rounded-xl text-gray-700 hover:bg-secondary transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={inviting}
-                  className="flex-1 px-4 py-3 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors font-medium disabled:opacity-50"
-                >
-                  {inviting ? 'Inviting...' : 'Send Invite'}
-                </button>
-              </div>
-            </form>
-          </div>
+        <div role="tablist" aria-label="User type" className="flex w-fit gap-1 rounded-xl bg-secondary/60 p-1">
+          {(['team', 'clients'] as const).map(tab => <button key={tab} role="tab" aria-selected={activeTab === tab} onClick={() => setActiveTab(tab)} className={`min-h-11 rounded-lg px-4 text-sm font-semibold transition-colors ${activeTab === tab ? 'bg-white text-primary-dark shadow-sm' : 'text-gray-600 hover:text-primary-dark'}`}>{tab === 'team' ? `Team (${teamUsers.length})` : `Clients (${clientUsers.length})`}</button>)}
         </div>
-      )}
-    </div>
+
+        {activeTab === 'team' ? (
+          <section aria-label="Team members" className="space-y-4">
+            <div className="flex items-center gap-5 border-b border-secondary-dark">
+              {(['active', 'terminated'] as const).map(view => <button key={view} onClick={() => setTeamView(view)} className={`min-h-11 border-b-2 px-1 text-sm font-semibold capitalize ${teamView === view ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-primary-dark'}`}>{view} ({view === 'active' ? activeTeam.length : terminatedTeam.length})</button>)}
+            </div>
+            {userTable(visibleTeam, true)}
+          </section>
+        ) : userTable(clientUsers, false)}
+
+        {showInviteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={event => { if (event.target === event.currentTarget) closeInvite() }}>
+            <div ref={inviteModalRef} role="dialog" aria-modal="true" aria-labelledby="invite-title" onKeyDown={event => trapDialogFocus(event, closeInvite)} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4"><div><h2 id="invite-title" className="text-xl font-bold text-primary-dark">Invite team member</h2><p className="mt-1 text-sm text-gray-600">Their account becomes active after they accept the invite.</p></div><button onClick={closeInvite} aria-label="Close invite dialog" className="min-h-11 min-w-11 rounded-lg text-gray-500 hover:bg-secondary">×</button></div>
+              <form onSubmit={event => void handleInvite(event)} className="mt-6 space-y-4">
+                {dialogError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{dialogError}</div>}
+                <div className="grid grid-cols-2 gap-3"><label className="text-sm font-medium text-gray-700">First name<input autoComplete="given-name" required value={inviteFirstName} onChange={event => setInviteFirstName(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-secondary-dark bg-secondary px-3 focus:outline-none focus:ring-2 focus:ring-primary/30" /></label><label className="text-sm font-medium text-gray-700">Last name<input autoComplete="family-name" value={inviteLastName} onChange={event => setInviteLastName(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-secondary-dark bg-secondary px-3 focus:outline-none focus:ring-2 focus:ring-primary/30" /></label></div>
+                <label className="block text-sm font-medium text-gray-700">Email<input type="email" autoComplete="email" required value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-secondary-dark bg-secondary px-3 focus:outline-none focus:ring-2 focus:ring-primary/30" /></label>
+                <label className="block text-sm font-medium text-gray-700">Role<select value={inviteRole} onChange={event => setInviteRole(event.target.value as 'admin' | 'employee')} className="mt-1 min-h-11 w-full rounded-xl border border-secondary-dark bg-secondary px-3 focus:outline-none focus:ring-2 focus:ring-primary/30"><option value="employee">Employee</option><option value="admin">Admin</option></select></label>
+                <div className="flex gap-3 pt-2"><button type="button" onClick={closeInvite} className="min-h-11 flex-1 rounded-xl border border-secondary-dark font-semibold text-gray-700 hover:bg-secondary">Cancel</button><button type="submit" disabled={inviting} className="min-h-11 flex-1 rounded-xl bg-primary font-semibold text-white hover:bg-primary-dark disabled:opacity-50">{inviting ? 'Sending…' : 'Send invite'}</button></div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {terminationTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={event => { if (event.target === event.currentTarget) closeTermination() }}>
+            <div ref={terminationModalRef} role="dialog" aria-modal="true" aria-labelledby="termination-title" onKeyDown={event => trapDialogFocus(event, closeTermination)} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-red-700">Preserve history</p><h2 id="termination-title" className="mt-1 text-xl font-bold text-primary-dark">{terminationTarget.role === 'client' ? 'Deactivate' : 'Terminate'} {terminationTarget.full_name || terminationTarget.email}</h2></div><button onClick={closeTermination} aria-label="Close termination dialog" className="min-h-11 min-w-11 rounded-lg text-gray-500 hover:bg-secondary">×</button></div>
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">Access ends immediately. The profile and all {terminationTarget.time_entries_count} time entries, {terminationTarget.schedules_count} shifts, approvals, and report history stay intact.</div>
+              <form onSubmit={event => void handleTerminate(event)} className="mt-5 space-y-4">
+                {dialogError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{dialogError}</div>}
+                <label className="block text-sm font-medium text-gray-700">Effective date <span className="font-normal text-gray-500">(optional)</span><input type="date" value={terminationEffectiveOn} onChange={event => setTerminationEffectiveOn(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-secondary-dark px-3 focus:outline-none focus:ring-2 focus:ring-primary/30" /><span className="mt-1 block text-xs font-normal text-gray-500">Clear this if the authoritative date is unknown.</span></label>
+                <label className="block text-sm font-medium text-gray-700">Reason <span className="font-normal text-gray-500">(optional, internal)</span><textarea rows={3} maxLength={2000} value={terminationReason} onChange={event => setTerminationReason(event.target.value)} className="mt-1 w-full rounded-xl border border-secondary-dark px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30" /></label>
+                <div className="flex gap-3 pt-2"><button type="button" onClick={closeTermination} className="min-h-11 flex-1 rounded-xl border border-secondary-dark font-semibold text-gray-700 hover:bg-secondary">Cancel</button><button type="submit" disabled={pendingIds.has(terminationTarget.id)} className="min-h-11 flex-1 rounded-xl bg-red-700 font-semibold text-white hover:bg-red-800 disabled:opacity-50">{pendingIds.has(terminationTarget.id) ? 'Saving…' : 'End access, keep history'}</button></div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
     </FadeUp>
   )
 }

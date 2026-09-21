@@ -46,7 +46,7 @@ module Api
         if user.nil? && email.present?
           user = User.find_by("LOWER(email) = ?", email.downcase)
           
-          if user
+          if user && user.employment_active?
             # Link the clerk_id to this invited user
             user.update(clerk_id: clerk_id)
           end
@@ -67,6 +67,11 @@ module Api
             error: "Access denied. You haven't been invited to this system. Please contact an administrator." 
           }, status: :forbidden
         end
+        if user.terminated?
+          return render json: {
+            error: "This account has been terminated. Contact an administrator if you believe this is a mistake."
+          }, status: :forbidden
+        end
 
         # Always sync email from Clerk (in case user changed it in Clerk)
         if email.present? && email.downcase != user.email.downcase
@@ -84,6 +89,7 @@ module Api
             is_admin: user.admin?,
             is_staff: user.staff?,
             is_client: user.client?,
+            employment_status: user.employment_status,
             client_id: user.client_id,
             created_at: user.created_at
           }

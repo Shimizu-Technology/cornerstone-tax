@@ -5,8 +5,8 @@ module Api
     class SchedulesController < BaseController
       before_action :authenticate_user!
       before_action :require_staff!
-      before_action :require_admin!, only: [:create, :update, :destroy, :bulk_create]
-      before_action :set_schedule, only: [:show, :update, :destroy]
+      before_action :require_admin!, only: [ :create, :update, :destroy, :bulk_create ]
+      before_action :set_schedule, only: [ :show, :update, :destroy ]
 
       # GET /api/v1/schedules
       # All staff can view schedules
@@ -37,7 +37,15 @@ module Api
 
         render json: {
           schedules: @schedules.map { |schedule| serialize_schedule(schedule) },
-          users: User.staff.map { |u| { id: u.id, email: u.email, display_name: u.display_name, full_name: u.full_name } }
+          users: User.active_staff.map do |user|
+            {
+              id: user.id,
+              email: user.email,
+              display_name: user.display_name,
+              full_name: user.full_name,
+              employment_status: user.employment_status
+            }
+          end
         }
       end
 
@@ -61,6 +69,10 @@ module Api
 
       # POST /api/v1/schedules
       def create
+        unless User.active_staff.exists?(id: schedule_params[:user_id])
+          return render json: { error: "Selected user is not an active staff member" }, status: :unprocessable_entity
+        end
+
         @schedule = Schedule.new(schedule_params)
         @schedule.created_by = current_user
 
@@ -80,6 +92,11 @@ module Api
 
         ActiveRecord::Base.transaction do
           schedules_data.each do |schedule_data|
+            unless User.active_staff.exists?(id: schedule_data[:user_id])
+              errors << { user_id: schedule_data[:user_id], error: "Selected user is not an active staff member" }
+              next
+            end
+
             start_t = parse_time_as_utc(schedule_data[:start_time])
             end_t = parse_time_as_utc(schedule_data[:end_time])
 
@@ -117,7 +134,12 @@ module Api
 
       # PATCH /api/v1/schedules/:id
       def update
-        if @schedule.update(schedule_params)
+        attributes = schedule_params
+        if attributes[:user_id].present? && !User.active_staff.exists?(id: attributes[:user_id])
+          return render json: { error: "Selected user is not an active staff member" }, status: :unprocessable_entity
+        end
+
+        if @schedule.update(attributes)
           render json: { schedule: serialize_schedule(@schedule) }
         else
           render json: { error: @schedule.errors.full_messages.join(", ") }, status: :unprocessable_entity
@@ -137,7 +159,7 @@ module Api
         week_end = week_start + 6.days
 
         schedules = Schedule.for_date_range(week_start, week_end)
-        
+
         if params[:user_id].present?
           schedules = schedules.for_user(params[:user_id])
         end
@@ -176,7 +198,7 @@ module Api
 
       def parse_time_as_utc(val)
         return nil unless val.present? && val.is_a?(String) && val.match?(/\A\d{1,2}:\d{2}\z/)
-        h, m = val.split(':').map(&:to_i)
+        h, m = val.split(":").map(&:to_i)
         return nil unless h.between?(0, 23) && m.between?(0, 59)
         Time.utc(2000, 1, 1, h, m, 0)
       end
@@ -185,12 +207,13 @@ module Api
         {
           id: schedule.id,
           user_id: schedule.user_id,
-          user: {
+          user: schedule.user ? {
             id: schedule.user.id,
             email: schedule.user.email,
             display_name: schedule.user.display_name,
-            full_name: schedule.user.full_name
-          },
+            full_name: schedule.user.full_name,
+            employment_status: schedule.user.employment_status
+          } : nil,
           work_date: schedule.work_date.iso8601,
           start_time: schedule.start_time.utc.strftime("%H:%M"),
           end_time: schedule.end_time.utc.strftime("%H:%M"),

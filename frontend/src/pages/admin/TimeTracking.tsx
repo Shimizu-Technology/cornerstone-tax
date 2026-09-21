@@ -3,7 +3,7 @@ import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/Motio
 import { AnimatePresence, motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
-import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary } from '../../lib/api'
+import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary, TimeEntry as TimeEntryItem } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeIn } from '../../components/ui/FadeIn'
 import { formatDateISO } from '../../lib/dateUtils'
@@ -17,50 +17,6 @@ interface TimeCategory {
   id: number
   name: string
   description: string | null
-}
-
-interface TimeEntryItem {
-  id: number
-  work_date: string
-  start_time: string | null
-  end_time: string | null
-  formatted_start_time: string | null
-  formatted_end_time: string | null
-  hours: number
-  break_minutes: number | null
-  description: string | null
-  entry_method?: 'clock' | 'manual'
-  status?: 'clocked_in' | 'on_break' | 'completed'
-  approval_status?: 'pending' | 'approved' | 'denied' | null
-  overtime_status?: 'none' | 'pending' | 'approved' | 'denied' | null
-  attendance_status?: 'early' | 'on_time' | 'late' | null
-  admin_override?: boolean
-  clock_in_at?: string | null
-  clock_out_at?: string | null
-  approved_by?: { id: number; full_name: string } | null
-  approved_at?: string | null
-  approval_note?: string | null
-  user: {
-    id: number
-    email: string
-    display_name?: string
-    full_name?: string
-  }
-  time_category: {
-    id: number
-    name: string
-  } | null
-  client: {
-    id: number
-    name: string
-  } | null
-  tax_return: {
-    id: number
-    tax_year: number
-  } | null
-  locked_at: string | null
-  created_at: string
-  updated_at: string
 }
 
 // Break duration presets
@@ -86,6 +42,8 @@ interface UserOption {
   display_name?: string
   full_name?: string
   role: string
+  employment_status: 'active' | 'terminated'
+  termination_effective_on: string | null
 }
 
 // Icons
@@ -268,6 +226,7 @@ export default function TimeTracking() {
 
   // Owner display: "You" for self, real name for others
   const ownerLabel = (entry: TimeEntryItem): string => {
+    if (!entry.user) return 'Former employee'
     const name = entry.user.display_name || entry.user.full_name || entry.user.email.split('@')[0]
     if (currentUserId && entry.user.id === currentUserId) return 'You'
     return name
@@ -320,7 +279,7 @@ export default function TimeTracking() {
       const response = await api.getTimeEntries(params as unknown as Parameters<typeof api.getTimeEntries>[0])
       
       if (response.data) {
-        setEntries(response.data.time_entries as unknown as TimeEntryItem[])
+        setEntries(response.data.time_entries)
         setEntrySummary({
           total_hours: response.data.summary.total_hours,
           total_break_hours: response.data.summary.total_break_hours || 0,
@@ -342,7 +301,7 @@ export default function TimeTracking() {
       const [catResponse, clientResponse, userResponse, currentUserResponse] = await Promise.all([
         api.getTimeCategories(),
         api.getClients({ per_page: 100 }),
-        api.getUsers(),
+        api.getUsers({ include_terminated: true }),
         api.getCurrentUser()
       ])
 
@@ -365,7 +324,9 @@ export default function TimeTracking() {
           email: u.email,
           display_name: u.display_name,
           full_name: u.full_name,
-          role: u.role
+          role: u.role,
+          employment_status: u.employment_status,
+          termination_effective_on: u.termination_effective_on
         })))
       }
 
@@ -462,7 +423,7 @@ export default function TimeTracking() {
         setHoursReport(response.data)
         setSelectedReportEmployee((current) => current ? response.data!.employees.find((employee) => employee.id === current.id) ?? null : null)
 
-        const rows = response.data.employees.flatMap(employee =>
+        const rows: TimeEntryItem[] = response.data.employees.flatMap(employee =>
           employee.days.flatMap(day =>
             day.entries.map(entry => ({
               id: entry.id,
@@ -472,12 +433,33 @@ export default function TimeTracking() {
               formatted_start_time: entry.formatted_start_time,
               formatted_end_time: entry.formatted_end_time,
               hours: entry.total_hours,
+              regular_hours: entry.regular_hours,
+              overtime_hours: entry.overtime_hours,
               break_minutes: entry.break_minutes,
               description: entry.description,
-              entry_method: entry.entry_method as 'clock' | 'manual',
+              entry_method: entry.entry_method as TimeEntryItem['entry_method'],
               status: 'completed' as const,
-              approval_status: entry.approval_status,
-              overtime_status: entry.overtime_status,
+              admin_override: false,
+              attendance_status: null,
+              approval_status: entry.approval_status as TimeEntryItem['approval_status'],
+              overtime_status: entry.overtime_status as TimeEntryItem['overtime_status'],
+              approval_reasons: [],
+              clock_in_at: null,
+              clock_out_at: null,
+              approved_by: entry.approved_by,
+              approved_at: entry.approved_at,
+              approval_note: null,
+              overtime_approved_by: entry.overtime_approved_by,
+              overtime_approved_at: entry.overtime_approved_at,
+              overtime_note: null,
+              schedule: null,
+              breaks: entry.breaks.map(entryBreak => ({
+                id: entryBreak.id,
+                start_time: entryBreak.start_time || '',
+                end_time: entryBreak.end_time,
+                duration_minutes: entryBreak.duration_minutes,
+                active: entryBreak.end_time === null,
+              })),
               user: {
                 id: employee.id,
                 email: employee.email || '',
@@ -487,6 +469,9 @@ export default function TimeTracking() {
               time_category: entry.time_category,
               client: entry.client,
               tax_return: entry.tax_return,
+              service_type: entry.service_type ? { ...entry.service_type, color: entry.service_type.color ?? null } : null,
+              service_task: entry.service_task,
+              linked_operation_task: null,
               locked_at: entry.locked_at,
               created_at: '',
               updated_at: '',
@@ -494,7 +479,7 @@ export default function TimeTracking() {
           )
         )
 
-        setReportData(rows as unknown as TimeEntryItem[])
+        setReportData(rows)
         setReportSummary({
           total_hours: response.data.summary.total_hours,
           total_break_hours: response.data.summary.break_hours,
@@ -641,7 +626,7 @@ export default function TimeTracking() {
       description: entry.description || '',
       time_category_id: entry.time_category?.id.toString() || '',
       client_id: entry.client?.id.toString() || '',
-      user_id: entry.user.id.toString(),
+      user_id: entry.user?.id.toString() || '',
       break_minutes: entry.break_minutes
     })
     setShowModal(true)
@@ -708,7 +693,7 @@ export default function TimeTracking() {
   const canDeleteEntry = (entry: TimeEntryItem): boolean => {
     if (dateIsInLockedWeek(entry.work_date) || !!entry.locked_at) return false
     if (isAdmin) return true
-    return currentUserId === entry.user.id
+    return currentUserId === entry.user?.id
   }
 
   const handleDelete = async (entry: TimeEntryItem) => {
@@ -782,6 +767,7 @@ export default function TimeTracking() {
     return acc
   }, {} as Record<string, number>)
   const hoursSummaryRows = hoursReport?.employees ?? []
+  const activeUsers = users.filter(user => user.employment_status === 'active')
   const pendingApprovalCount = pendingApprovalSummary?.entry_count ?? 0
   const pendingOvertimeApprovalCount = pendingApprovalSummary?.pending_overtime_count ?? 0
 
@@ -1438,7 +1424,7 @@ export default function TimeTracking() {
               {editingEntry && (
                 <div className="mb-4">
                   <p className="text-sm text-primary-dark/70">
-                    Entry for: <span className="font-medium text-primary-dark">{editingEntry.user.full_name || editingEntry.user.display_name || editingEntry.user.email.split('@')[0]}</span>
+                    Entry for: <span className="font-medium text-primary-dark">{ownerLabel(editingEntry)}</span>
                   </p>
                   {editingEntry.locked_at && (
                     <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
@@ -1527,7 +1513,7 @@ export default function TimeTracking() {
                       className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                     >
                       <option value="">Select user...</option>
-                      {users.map(user => (
+                      {activeUsers.map(user => (
                         <option key={user.id} value={user.id}>
                           {(user.full_name || user.display_name || user.email)} ({user.role})
                         </option>
@@ -1712,7 +1698,7 @@ export default function TimeTracking() {
               void loadEntries()
               void loadPendingApprovalSummary()
             }}
-            canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry as unknown as TimeEntryItem) : false}
+            canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry) : false}
             clients={clients}
           />
         </div>
@@ -1767,7 +1753,9 @@ export default function TimeTracking() {
                   >
                     <option value="">All Employees</option>
                     {users.map(user => (
-                      <option key={user.id} value={user.id}>{user.display_name || user.email.split('@')[0]}</option>
+                      <option key={user.id} value={user.id}>
+                        {user.display_name || user.email.split('@')[0]}{user.employment_status === 'terminated' ? ' (terminated)' : ''}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -1944,7 +1932,10 @@ export default function TimeTracking() {
                     .map((employee) => (
                       <button key={employee.id} type="button" onClick={() => setSelectedReportEmployee(employee)} className="grid w-full grid-cols-[1fr_auto] gap-3 px-4 py-3 text-left transition hover:bg-cyan-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
                         <span className="min-w-0">
-                          <span className="block truncate font-medium text-primary-dark">{employee.full_name || employee.display_name || employee.email}</span>
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate font-medium text-primary-dark">{employee.full_name || employee.display_name || employee.email}</span>
+                            {employee.status === 'terminated' && <span className="shrink-0 rounded-full border border-stone-300 bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-700">Terminated</span>}
+                          </span>
                           <span className="mt-0.5 block text-xs text-text-muted">Regular {employee.regular_hours.toFixed(2)}h · Total {employee.total_hours.toFixed(2)}h</span>
                         </span>
                         {employee.overtime_hours > 0 ? (
@@ -2015,7 +2006,7 @@ export default function TimeTracking() {
                     reportData.slice(0, 100).map(entry => (
                       <tr key={entry.id} className="hover:bg-neutral-warm/20">
                         <td className="px-4 py-3 text-sm text-primary-dark whitespace-nowrap">{formatDate(entry.work_date)}</td>
-                        {isAdmin && <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{entry.user.display_name || entry.user.email.split('@')[0]}</td>}
+                        {isAdmin && <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{ownerLabel(entry)}</td>}
                         <td className="px-4 py-3 text-sm text-primary-dark whitespace-nowrap">
                           {entry.formatted_start_time && entry.formatted_end_time 
                             ? `${entry.formatted_start_time} - ${entry.formatted_end_time}`

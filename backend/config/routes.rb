@@ -187,6 +187,8 @@ Rails.application.routes.draw do
         resources :users, only: [:index, :show, :create, :update, :destroy] do
           member do
             post :resend_invite
+            post :terminate
+            post :reactivate
           end
         end
 

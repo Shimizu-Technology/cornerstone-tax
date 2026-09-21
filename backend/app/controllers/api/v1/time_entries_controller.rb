@@ -261,7 +261,7 @@ module Api
       def clock_in
         if current_user.admin? && params[:user_id].present?
           admin_override = current_user
-          target_user = User.staff.find(params[:user_id])
+          target_user = User.active_staff.find(params[:user_id])
         elsif current_user.admin? && params[:admin_override].present?
           admin_override = current_user
           target_user = current_user
@@ -645,7 +645,7 @@ module Api
 
       def resolve_clock_target_user
         if current_user.admin? && params[:user_id].present?
-          User.staff.find(params[:user_id])
+          User.active_staff.find(params[:user_id])
         else
           current_user
         end
@@ -843,7 +843,7 @@ module Api
           return nil
         end
 
-        user = User.staff.find_by(id: requested_user_id)
+        user = User.active_staff.find_by(id: requested_user_id)
         unless user
           render json: { error: "Selected user is invalid" }, status: :unprocessable_entity
           return nil

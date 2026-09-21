@@ -39,6 +39,10 @@ module ClerkAuthenticatable
       render_unauthorized("Unable to authenticate user")
       return
     end
+
+    if @current_user.terminated?
+      render_forbidden("This account has been terminated. Contact an administrator if you believe this is a mistake.")
+    end
   end
 
   def authenticate_user_optional
@@ -50,7 +54,7 @@ module ClerkAuthenticatable
     return unless decoded
 
     clerk_id = decoded["sub"]
-    @current_user = User.find_by(clerk_id: clerk_id)
+    @current_user = User.active_employment.find_by(clerk_id: clerk_id)
   end
 
   def current_user
@@ -97,6 +101,8 @@ module ClerkAuthenticatable
     user = User.find_by(clerk_id: clerk_id)
     
     if user
+      return user if user.terminated?
+
       # Only update if we have new info and it's different
       updates = {}
       if email.present? && user.email.to_s.include?("@placeholder.local") && email.downcase != user.email.to_s.downcase
@@ -114,6 +120,8 @@ module ClerkAuthenticatable
       user = User.find_by("LOWER(email) = ?", email.downcase)
 
       if user
+        return user if user.terminated?
+
         user.update(clerk_id: clerk_id)
         return user
       end
