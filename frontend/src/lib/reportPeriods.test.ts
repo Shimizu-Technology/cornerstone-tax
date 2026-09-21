@@ -17,4 +17,9 @@ describe('report periods', () => {
     const params = new URLSearchParams('start_date=2025-01-01&end_date=2026-09-22')
     expect(reportPeriodFromSearchParams(params, { start: '2026-09-01', end: '2026-09-22' })).toEqual({ start: '2025-01-01', end: '2026-09-22' })
   })
+
+  it('uses the Guam business date around UTC day boundaries', () => {
+    const utcMondayAfternoon = new Date('2026-09-21T15:30:00Z')
+    expect(reportPeriodForPreset('this_month', utcMondayAfternoon)).toEqual({ start: '2026-09-01', end: '2026-09-22' })
+  })
 })
