@@ -38,6 +38,16 @@ const successfulReport = {
   filters: {},
   overtime_policy: { daily_threshold_hours: 8, weekly_threshold_hours: 40 },
   ready: true,
+  quality: {
+    status: 'clear',
+    flagged_entries_count: 0,
+    uncategorized_count: 0,
+    missing_client_count: 0,
+    missing_description_count: 0,
+    long_shift_count: 0,
+    overlapping_entry_count: 0,
+    long_shift_threshold_hours: 12,
+  },
   finalization: {
     status: 'not_finalized',
     label: 'Not finalized',
@@ -61,9 +71,9 @@ const successfulReport = {
   employees: [],
 }
 
-function renderPage() {
+function renderPage(initialEntry = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <TimeTracking />
     </MemoryRouter>
   )
@@ -89,7 +99,7 @@ describe('TimeTracking reports', () => {
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Reports' }))
 
-    expect(await screen.findByText('130.3')).toBeInTheDocument()
+    expect(await screen.findByText('130.30h')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('End Date'), { target: { value: '2026-12-31' } })
 
@@ -100,8 +110,7 @@ describe('TimeTracking reports', () => {
       }))
     })
     expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load report')
-    expect(screen.queryByText('130.3')).not.toBeInTheDocument()
-    expect(screen.getAllByText('—')).toHaveLength(5)
+    expect(screen.queryByText('130.30h')).not.toBeInTheDocument()
   })
 
   it('does not let an older long-running report replace newer filter results', async () => {
@@ -123,14 +132,27 @@ describe('TimeTracking reports', () => {
     await waitFor(() => expect(apiMocks.getHoursReport).toHaveBeenCalledTimes(1))
 
     fireEvent.change(screen.getByLabelText('End Date'), { target: { value: '2026-12-31' } })
-    expect(await screen.findByText('55.5')).toBeInTheDocument()
+    expect(await screen.findByText('55.50h')).toBeInTheDocument()
 
     await act(async () => {
       resolveFirstReport({ data: successfulReport })
       await firstReport
     })
 
-    expect(screen.getByText('55.5')).toBeInTheDocument()
-    expect(screen.queryByText('130.3')).not.toBeInTheDocument()
+    expect(screen.getByText('55.50h')).toBeInTheDocument()
+    expect(screen.queryByText('130.30h')).not.toBeInTheDocument()
+  })
+
+  it('opens a shareable reports URL with its period, status, and section restored', async () => {
+    apiMocks.getHoursReport.mockResolvedValue({ data: successfulReport })
+
+    renderPage('/admin/time?tab=reports&start_date=2026-01-25&end_date=2026-09-21&status=terminated&report_view=people')
+
+    expect(await screen.findByRole('button', { name: /People/ })).toHaveAttribute('aria-current', 'page')
+    await waitFor(() => expect(apiMocks.getHoursReport).toHaveBeenCalledWith(expect.objectContaining({
+      start_date: '2026-01-25',
+      end_date: '2026-09-21',
+      status: 'terminated',
+    })))
   })
 })

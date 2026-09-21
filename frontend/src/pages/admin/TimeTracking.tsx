@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
+import { FadeUp } from '../../components/ui/MotionComponents'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
@@ -7,10 +7,11 @@ import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, H
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeIn } from '../../components/ui/FadeIn'
 import { formatDateISO } from '../../lib/dateUtils'
+import { reportPeriodForPreset, reportPeriodFromSearchParams } from '../../lib/reportPeriods'
 import ClockInOutCard from '../../components/time-tracking/ClockInOutCard'
 import ApprovalQueue from '../../components/time-tracking/ApprovalQueue'
 import WhosWorking from '../../components/time-tracking/WhosWorking'
-import ReportExportActions from '../../components/time-tracking/ReportExportActions'
+import HoursReportWorkspace, { type HoursReportFilters, type ReportView } from '../../components/time-tracking/HoursReportWorkspace'
 
 // Local types to avoid Vite caching issues
 interface TimeCategory {
@@ -29,6 +30,36 @@ const BREAK_PRESETS = [
   { label: 'Custom', minutes: -1 }, // -1 indicates custom
 ]
 
+const EMPTY_REPORT_QUALITY = {
+  status: 'clear' as const,
+  flagged_entries_count: 0,
+  uncategorized_count: 0,
+  missing_client_count: 0,
+  missing_description_count: 0,
+  long_shift_count: 0,
+  overlapping_entry_count: 0,
+  long_shift_threshold_hours: 12,
+}
+
+function normalizeHoursReport(report: HoursReportResponse): HoursReportResponse {
+  return {
+    ...report,
+    quality: report.quality || EMPTY_REPORT_QUALITY,
+    employees: report.employees.map(employee => ({
+      ...employee,
+      days_worked: employee.days_worked ?? employee.days.length,
+      first_work_date: employee.first_work_date ?? employee.days[0]?.work_date ?? null,
+      last_work_date: employee.last_work_date ?? employee.days[employee.days.length - 1]?.work_date ?? null,
+      quality: employee.quality || EMPTY_REPORT_QUALITY,
+      excluded_entries: employee.excluded_entries || [],
+      days: employee.days.map(day => ({
+        ...day,
+        entries: day.entries.map(entry => ({ ...entry, review_flags: entry.review_flags || [] })),
+      })),
+    })),
+  }
+}
+
 interface ClientOption {
   id: number
   first_name: string
@@ -44,17 +75,6 @@ interface UserOption {
   role: string
   employment_status: 'active' | 'terminated'
   termination_effective_on: string | null
-}
-
-const EMPTY_REPORT_SUMMARY = {
-  total_hours: 0,
-  total_break_hours: 0,
-  entry_count: 0,
-  regular_hours: 0,
-  overtime_hours: 0,
-  pending_count: 0,
-  denied_count: 0,
-  open_clock_count: 0,
 }
 
 // Icons
@@ -143,6 +163,7 @@ export default function TimeTracking() {
   useEffect(() => { document.title = 'Time Tracking | Cornerstone Admin' }, [])
 
   const [searchParams, setSearchParams] = useSearchParams()
+  const initialReportPeriod = reportPeriodFromSearchParams(searchParams, reportPeriodForPreset('this_month'))
   const [entries, setEntries] = useState<TimeEntryItem[]>([])
   const [entrySummary, setEntrySummary] = useState({ total_hours: 0, total_break_hours: 0, entry_count: 0 })
   const [categories, setCategories] = useState<TimeCategory[]>([])
@@ -155,7 +176,8 @@ export default function TimeTracking() {
   const [error, setError] = useState<string | null>(null)
   
   // Tab: entries, approvals, or reports
-  const [activeTab, setActiveTab] = useState<'entries' | 'approvals' | 'reports'>('entries')
+  const requestedTab = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState<'entries' | 'approvals' | 'reports'>(requestedTab === 'reports' || requestedTab === 'approvals' ? requestedTab : 'entries')
   
   // View mode: 'day' or 'week'
   const [viewMode, setViewMode] = useState<'day' | 'week'>('week')
@@ -170,13 +192,18 @@ export default function TimeTracking() {
   const [showDenied, setShowDenied] = useState(false)
   
   // Report filters
-  const [reportFilters, setReportFilters] = useState({
-    start_date: formatDateISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), // First of month
-    end_date: formatDateISO(new Date()),
-    user_id: '',
-    time_category_id: '',
-    client_id: '',
+  const [reportFilters, setReportFilters] = useState<HoursReportFilters>({
+    start_date: initialReportPeriod.start,
+    end_date: initialReportPeriod.end,
+    user_id: searchParams.get('user_id') || '',
+    time_category_id: searchParams.get('time_category_id') || '',
+    client_id: searchParams.get('client_id') || '',
+    status: searchParams.get('status') || '',
+    entry_method: searchParams.get('entry_method') || '',
+    overtime_status: searchParams.get('overtime_status') || '',
   })
+  const requestedReportView = searchParams.get('report_view')
+  const [reportView, setReportView] = useState<ReportView>(requestedReportView === 'people' || requestedReportView === 'daily' || requestedReportView === 'review' ? requestedReportView : 'overview')
   const [reportData, setReportData] = useState<TimeEntryItem[]>([])
   const [hoursReport, setHoursReport] = useState<HoursReportResponse | null>(null)
   const [selectedReportEmployee, setSelectedReportEmployee] = useState<HoursReportEmployee | null>(null)
@@ -186,8 +213,6 @@ export default function TimeTracking() {
   const [reportLoading, setReportLoading] = useState(false)
   const [reportError, setReportError] = useState<string | null>(null)
   const [reportExporting, setReportExporting] = useState<HoursReportDownloadType | null>(null)
-  const [reportSummary, setReportSummary] = useState(EMPTY_REPORT_SUMMARY)
-  const [reportTruncated, setReportTruncated] = useState(false)
   const reportRequestId = useRef(0)
   
   // Period lock state (CST-43)
@@ -415,8 +440,6 @@ export default function TimeTracking() {
     setHoursReport(null)
     setSelectedReportEmployee(null)
     setReportData([])
-    setReportSummary(EMPTY_REPORT_SUMMARY)
-    setReportTruncated(false)
 
     try {
       const params: Parameters<typeof api.getHoursReport>[0] = {
@@ -428,15 +451,19 @@ export default function TimeTracking() {
       if (reportFilters.user_id) params.user_id = parseInt(reportFilters.user_id)
       if (reportFilters.time_category_id) params.time_category_id = parseInt(reportFilters.time_category_id)
       if (reportFilters.client_id) params.client_id = parseInt(reportFilters.client_id)
+      if (reportFilters.status) params.status = reportFilters.status as HoursReportParams['status']
+      if (reportFilters.entry_method) params.entry_method = reportFilters.entry_method as HoursReportParams['entry_method']
+      if (reportFilters.overtime_status) params.overtime_status = reportFilters.overtime_status as HoursReportParams['overtime_status']
 
       const response = await api.getHoursReport(params)
       if (requestId !== reportRequestId.current) return
 
       if (response.data) {
-        setHoursReport(response.data)
-        setSelectedReportEmployee((current) => current ? response.data!.employees.find((employee) => employee.id === current.id) ?? null : null)
+        const normalizedReport = normalizeHoursReport(response.data)
+        setHoursReport(normalizedReport)
+        setSelectedReportEmployee((current) => current ? normalizedReport.employees.find((employee) => employee.id === current.id) ?? null : null)
 
-        const rows: TimeEntryItem[] = response.data.employees.flatMap(employee =>
+        const rows: TimeEntryItem[] = normalizedReport.employees.flatMap(employee =>
           employee.days.flatMap(day =>
             day.entries.map(entry => ({
               id: entry.id,
@@ -488,22 +515,12 @@ export default function TimeTracking() {
               locked_at: entry.locked_at,
               created_at: '',
               updated_at: '',
+              review_flags: entry.review_flags,
             }))
           )
         )
 
         setReportData(rows)
-        setReportSummary({
-          total_hours: response.data.summary.total_hours,
-          total_break_hours: response.data.summary.break_hours,
-          entry_count: response.data.summary.entries_count,
-          regular_hours: response.data.summary.regular_hours,
-          overtime_hours: response.data.summary.overtime_hours,
-          pending_count: response.data.summary.pending_count + response.data.summary.pending_overtime_count,
-          denied_count: response.data.summary.denied_count + response.data.summary.denied_overtime_count,
-          open_clock_count: response.data.summary.open_clock_count,
-        })
-        setReportTruncated(false)
       } else {
         setReportError(response.error || 'Unable to load this report')
       }
@@ -517,6 +534,29 @@ export default function TimeTracking() {
       }
     }
   }, [reportFilters])
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams)
+    if (activeTab === 'entries') next.delete('tab')
+    else next.set('tab', activeTab)
+
+    const reportKeys: Array<keyof HoursReportFilters> = [
+      'start_date', 'end_date', 'user_id', 'time_category_id', 'client_id', 'status', 'entry_method', 'overtime_status',
+    ]
+    if (activeTab === 'reports') {
+      reportKeys.forEach(key => {
+        const value = reportFilters[key]
+        if (value) next.set(key, value)
+        else next.delete(key)
+      })
+      next.set('report_view', reportView)
+    } else {
+      reportKeys.forEach(key => next.delete(key))
+      next.delete('report_view')
+    }
+
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true })
+  }, [activeTab, reportFilters, reportView, searchParams, setSearchParams])
 
   useEffect(() => {
     loadEntries()
@@ -704,6 +744,7 @@ export default function TimeTracking() {
       setRequiresCorrectionReason(false)
       await loadEntries()
       await loadPendingApprovalSummary()
+      if (activeTab === 'reports') await loadReport()
     } catch {
       setError('Failed to save time entry')
     } finally {
@@ -773,21 +814,6 @@ export default function TimeTracking() {
   const deniedHours = entries.filter(e => e.approval_status === 'denied').reduce((sum, e) => sum + e.hours, 0)
   const visibleTotalHours = showDenied ? entrySummary.total_hours : entrySummary.total_hours - deniedHours
 
-  // Calculate report summaries by category and user
-  const reportByCategory = reportData.reduce((acc, entry) => {
-    const catName = entry.time_category?.name || 'Uncategorized'
-    if (!acc[catName]) acc[catName] = 0
-    acc[catName] += entry.hours
-    return acc
-  }, {} as Record<string, number>)
-
-  const reportByClient = reportData.reduce((acc, entry) => {
-    const clientName = entry.client?.name || 'No Client'
-    if (!acc[clientName]) acc[clientName] = 0
-    acc[clientName] += entry.hours
-    return acc
-  }, {} as Record<string, number>)
-  const hoursSummaryRows = hoursReport?.employees ?? []
   const activeUsers = users.filter(user => user.employment_status === 'active')
   const pendingApprovalCount = pendingApprovalSummary?.entry_count ?? 0
   const pendingOvertimeApprovalCount = pendingApprovalSummary?.pending_overtime_count ?? 0
@@ -799,6 +825,9 @@ export default function TimeTracking() {
     ...(reportFilters.user_id ? { user_id: parseInt(reportFilters.user_id, 10) } : {}),
     ...(reportFilters.time_category_id ? { time_category_id: parseInt(reportFilters.time_category_id, 10) } : {}),
     ...(reportFilters.client_id ? { client_id: parseInt(reportFilters.client_id, 10) } : {}),
+    ...(reportFilters.status ? { status: reportFilters.status as HoursReportParams['status'] } : {}),
+    ...(reportFilters.entry_method ? { entry_method: reportFilters.entry_method as HoursReportParams['entry_method'] } : {}),
+    ...(reportFilters.overtime_status ? { overtime_status: reportFilters.overtime_status as HoursReportParams['overtime_status'] } : {}),
   })
 
   const saveReportDownload = (blob: Blob, filename: string) => {
@@ -1727,347 +1756,32 @@ export default function TimeTracking() {
 
       {/* Reports Tab */}
       {activeTab === 'reports' && isAdmin && (
-        <div className="space-y-6">
-          {/* Report Filters */}
-          <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-            <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-primary-dark">Payroll Hours Report</h3>
-                <p className="mt-1 max-w-2xl text-xs leading-relaxed text-text-muted">
-                  Filter the point-in-time ledger, then download a share-ready PDF or an internal spreadsheet export. Week finalization is reported separately and is never required to export.
-                </p>
-              </div>
-              <ReportExportActions
-                employeeSelected={Boolean(reportFilters.user_id)}
-                hasResults={hoursSummaryRows.length > 0}
-                loading={reportLoading}
-                exporting={reportExporting}
-                onExport={(type) => void downloadReport(type)}
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label htmlFor="report-start-date" className="block text-sm text-text-muted mb-1">Start Date</label>
-                <input
-                  id="report-start-date"
-                  type="date"
-                  value={reportFilters.start_date}
-                  onChange={(e) => setReportFilters({ ...reportFilters, start_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-              <div>
-                <label htmlFor="report-end-date" className="block text-sm text-text-muted mb-1">End Date</label>
-                <input
-                  id="report-end-date"
-                  type="date"
-                  value={reportFilters.end_date}
-                  onChange={(e) => setReportFilters({ ...reportFilters, end_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-              {isAdmin && (
-                <div>
-                  <label htmlFor="report-employee" className="block text-sm text-text-muted mb-1">Employee</label>
-                  <select
-                    id="report-employee"
-                    value={reportFilters.user_id}
-                    onChange={(e) => setReportFilters({ ...reportFilters, user_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="">All Employees</option>
-                    {users.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.display_name || user.email.split('@')[0]}{user.employment_status === 'terminated' ? ' (terminated)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div>
-                <label htmlFor="report-category" className="block text-sm text-text-muted mb-1">Category</label>
-                <select
-                  id="report-category"
-                  value={reportFilters.time_category_id}
-                  onChange={(e) => setReportFilters({ ...reportFilters, time_category_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">All Categories</option>
-                  {categories.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="report-client" className="block text-sm text-text-muted mb-1">Client</label>
-                <select
-                  id="report-client"
-                  value={reportFilters.client_id}
-                  onChange={(e) => setReportFilters({ ...reportFilters, client_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">All Clients</option>
-                  {clients.map(client => (
-                    <option key={client.id} value={client.id}>{client.name || `${client.first_name} ${client.last_name}`}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {reportError && (
-            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
-              {reportError}
-            </div>
-          )}
-
-          {/* Summary Cards */}
-          <StaggerContainer className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StaggerItem>
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-                <div className="text-sm text-text-muted">Work Hours</div>
-                <div className="text-3xl font-bold text-primary mt-1">
-                  {reportLoading ? '...' : hoursReport ? reportSummary.total_hours.toFixed(1) : '—'}
-                </div>
-              </div>
-            </StaggerItem>
-            <StaggerItem>
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-                <div className="text-sm text-text-muted">Regular Hours</div>
-                <div className="text-3xl font-bold text-primary-dark mt-1">
-                  {reportLoading ? '...' : hoursReport ? reportSummary.regular_hours.toFixed(1) : '—'}
-                </div>
-              </div>
-            </StaggerItem>
-            <StaggerItem>
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-                <div className="text-sm text-text-muted">Overtime</div>
-                <div className="text-3xl font-bold text-orange-600 mt-1">
-                  {reportLoading ? '...' : hoursReport ? reportSummary.overtime_hours.toFixed(1) : '—'}
-                </div>
-              </div>
-            </StaggerItem>
-            <StaggerItem>
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-                <div className="text-sm text-text-muted">Break Hours</div>
-                <div className="text-3xl font-bold text-text-muted mt-1">
-                  {reportLoading ? '...' : hoursReport ? reportSummary.total_break_hours.toFixed(1) : '—'}
-                </div>
-              </div>
-            </StaggerItem>
-            <StaggerItem>
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-                <div className="text-sm text-text-muted">Total Entries</div>
-                <div className="text-3xl font-bold text-primary-dark mt-1">
-                  {reportLoading ? '...' : hoursReport ? reportSummary.entry_count : '—'}
-                </div>
-              </div>
-            </StaggerItem>
-          </StaggerContainer>
-
-          {hoursReport && (
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              <div className={`rounded-xl border px-4 py-3 ${
-                hoursReport.ready
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                  : 'border-amber-200 bg-amber-50 text-amber-900'
-              }`}>
-                <div className="font-semibold">
-                  {hoursReport.ready
-                    ? hoursReport.summary.denied_count + hoursReport.summary.denied_overtime_count > 0
-                      ? 'Complete with exclusions'
-                      : 'Complete as of the generated time'
-                    : 'Draft - entries need review'}
-                </div>
-                <p className="mt-1 text-sm leading-relaxed">
-                  {hoursReport.ready
-                    ? hoursReport.summary.denied_count + hoursReport.summary.denied_overtime_count > 0
-                      ? `${hoursReport.summary.denied_count + hoursReport.summary.denied_overtime_count} denied item(s) are excluded from totals and remain visible for attention.`
-                      : 'No pending approvals or open clocks were found in this period.'
-                    : [
-                        hoursReport.summary.pending_count > 0 ? `${hoursReport.summary.pending_count} pending approval` : null,
-                        hoursReport.summary.pending_overtime_count > 0 ? `${hoursReport.summary.pending_overtime_count} pending overtime review` : null,
-                        hoursReport.summary.open_clock_count > 0 ? `${hoursReport.summary.open_clock_count} open clock` : null,
-                      ].filter(Boolean).join(', ') + '. A clearly marked draft can still be exported after confirmation.'}
-                </p>
-              </div>
-              <div className="rounded-xl border border-neutral-warm bg-secondary/35 px-4 py-3 text-primary-dark">
-                <div className="font-semibold">Finalization coverage</div>
-                <p className="mt-1 text-sm leading-relaxed">{hoursReport.finalization.label}</p>
-                <p className="mt-1 text-xs text-text-muted">Finalization locks entries against changes; it does not control whether a point-in-time report can be downloaded.</p>
-              </div>
-            </div>
-          )}
-
-          {hoursReport && (hoursReport.context_start_date !== hoursReport.start_date || hoursReport.context_end_date !== hoursReport.end_date) && (
-            <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
-              OT is calculated with {hoursReport.overtime_policy.daily_threshold_hours.toFixed(2)}h daily and {hoursReport.overtime_policy.weekly_threshold_hours.toFixed(2)}h Sunday–Saturday weekly thresholds. This report uses context from {formatDate(hoursReport.context_start_date)} through {formatDate(hoursReport.context_end_date)} so split weeks calculate correctly.
-            </div>
-          )}
-
-          {reportTruncated && !reportLoading && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
-              <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-              </svg>
-              <div>
-                <p className="text-sm font-medium text-amber-800">
-                  Showing {reportData.length} of {reportSummary.entry_count} entries
-                </p>
-                <p className="text-xs text-amber-600 mt-0.5">
-                  The detail table below is capped at 500 rows. Summary totals above reflect all {reportSummary.entry_count} entries. Narrow your date range or filters to see all rows.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Summary Tables */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* By Category */}
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
-              <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
-                <h3 className="font-semibold text-primary-dark">Hours by Category</h3>
-              </div>
-              <div className="divide-y divide-neutral-warm">
-                {reportLoading ? (
-                  <div className="p-4 text-center text-text-muted">Loading...</div>
-                ) : Object.entries(reportByCategory).length === 0 ? (
-                  <div className="p-4 text-center text-text-muted">No data</div>
-                ) : (
-                  Object.entries(reportByCategory)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([name, hours]) => (
-                      <div key={name} className="px-4 py-3 flex justify-between items-center">
-                        <span className="text-primary-dark">{name}</span>
-                        <span className="font-semibold text-primary">{hours.toFixed(1)}h</span>
-                      </div>
-                    ))
-                )}
-              </div>
-            </div>
-
-            {/* By Employee */}
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
-              <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
-                <h3 className="font-semibold text-primary-dark">Hours by Employee</h3>
-                <p className="mt-0.5 text-xs text-text-muted">Click a row or an orange OT pill to inspect daily and weekly overtime context.</p>
-              </div>
-              <div className="divide-y divide-neutral-warm">
-                {reportLoading ? (
-                  <div className="p-4 text-center text-text-muted">Loading...</div>
-                ) : hoursSummaryRows.length === 0 ? (
-                  <div className="p-4 text-center text-text-muted">No data</div>
-                ) : (
-                  hoursSummaryRows
-                    .slice()
-                    .sort((a, b) => b.total_hours - a.total_hours)
-                    .map((employee) => (
-                      <button key={employee.id} type="button" onClick={() => setSelectedReportEmployee(employee)} className="grid w-full grid-cols-[1fr_auto] gap-3 px-4 py-3 text-left transition hover:bg-cyan-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
-                        <span className="min-w-0">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className="truncate font-medium text-primary-dark">{employee.full_name || employee.display_name || employee.email}</span>
-                            {employee.status === 'terminated' && <span className="shrink-0 rounded-full border border-stone-300 bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-700">Terminated</span>}
-                          </span>
-                          <span className="mt-0.5 block text-xs text-text-muted">Regular {employee.regular_hours.toFixed(2)}h · Total {employee.total_hours.toFixed(2)}h</span>
-                        </span>
-                        {employee.overtime_hours > 0 ? (
-                          <span className="inline-flex items-center self-center rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-700">
-                            {employee.overtime_hours.toFixed(2)}h OT
-                          </span>
-                        ) : (
-                          <span className="self-center text-sm font-semibold text-primary">{employee.total_hours.toFixed(1)}h</span>
-                        )}
-                      </button>
-                    ))
-                )}
-              </div>
-            </div>
-
-            {/* By Client */}
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
-              <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
-                <h3 className="font-semibold text-primary-dark">Hours by Client</h3>
-              </div>
-              <div className="divide-y divide-neutral-warm max-h-[300px] overflow-y-auto">
-                {reportLoading ? (
-                  <div className="p-4 text-center text-text-muted">Loading...</div>
-                ) : Object.entries(reportByClient).length === 0 ? (
-                  <div className="p-4 text-center text-text-muted">No data</div>
-                ) : (
-                  Object.entries(reportByClient)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([name, hours]) => (
-                      <div key={name} className="px-4 py-3 flex justify-between items-center">
-                        <span className="text-primary-dark truncate max-w-[150px]">{name}</span>
-                        <span className="font-semibold text-primary">{hours.toFixed(1)}h</span>
-                      </div>
-                    ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Detailed Entries Table */}
-          <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
-            <div className="px-4 py-3 border-b border-neutral-warm bg-neutral-warm/30">
-              <h3 className="font-semibold text-primary-dark">Detailed Entries</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-neutral-warm/50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Date</th>
-                    {isAdmin && <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Employee</th>}
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Time</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Category</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Client</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-text-muted uppercase">Hours</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase">Description</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-warm">
-                  {reportLoading ? (
-                    <tr>
-                      <td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-text-muted">Loading...</td>
-                    </tr>
-                  ) : reportData.length === 0 ? (
-                    <tr>
-                      <td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-text-muted">No entries found</td>
-                    </tr>
-                  ) : (
-                    reportData.slice(0, 100).map(entry => (
-                      <tr key={entry.id} className="hover:bg-neutral-warm/20">
-                        <td className="px-4 py-3 text-sm text-primary-dark whitespace-nowrap">{formatDate(entry.work_date)}</td>
-                        {isAdmin && <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{ownerLabel(entry)}</td>}
-                        <td className="px-4 py-3 text-sm text-primary-dark whitespace-nowrap">
-                          {entry.formatted_start_time && entry.formatted_end_time 
-                            ? `${entry.formatted_start_time} - ${entry.formatted_end_time}`
-                            : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-text-muted">{entry.time_category?.name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{entry.client?.name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-primary font-semibold text-right">{entry.hours.toFixed(1)}</td>
-                        <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[200px]">{entry.description || '-'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-              {reportData.length > 100 && (
-                <div className="px-4 py-3 text-center text-sm text-text-muted border-t border-neutral-warm">
-                  Showing first 100 entries of {reportData.length} total
-                </div>
-              )}
-            </div>
-          </div>
-
+        <>
+          <HoursReportWorkspace
+            filters={reportFilters}
+            onFiltersChange={setReportFilters}
+            report={hoursReport}
+            entries={reportData}
+            loading={reportLoading}
+            error={reportError}
+            users={users}
+            categories={categories}
+            clients={clients.map(client => ({ id: client.id, name: client.name || `${client.first_name} ${client.last_name}`.trim() }))}
+            exporting={reportExporting}
+            onExport={(type) => void downloadReport(type)}
+            onOpenEmployee={setSelectedReportEmployee}
+            onEditEntry={openEditEntry}
+            view={reportView}
+            onViewChange={setReportView}
+          />
           <EmployeeReportDrawer
             employee={selectedReportEmployee}
             overtimePolicy={hoursReport?.overtime_policy ?? null}
             onClose={handleCloseEmployeeReportDrawer}
           />
-        </div>
+        </>
       )}
+
     </div>
   )
 }
