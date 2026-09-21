@@ -6,7 +6,7 @@ class WhosWorkingQuery
   class << self
     def call
       today = Time.current.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).to_date
-      staff_users = User.staff.order(:first_name, :last_name).to_a
+      staff_users = User.active_staff.order(:first_name, :last_name).to_a
       staff_ids = staff_users.map(&:id)
 
       today_schedules = Schedule.where(user_id: staff_ids, work_date: today).index_by(&:user_id)

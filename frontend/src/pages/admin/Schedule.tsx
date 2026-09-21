@@ -11,6 +11,7 @@ interface UserOption {
   email: string
   display_name?: string
   full_name?: string
+  employment_status?: 'active' | 'terminated'
 }
 
 // Fallback presets in case API fails
@@ -393,7 +394,7 @@ export default function Schedule() {
                   </div>
                   <div className="divide-y divide-neutral-warm">
                     {daySchedules.map(schedule => {
-                      const user = getUserById(schedule.user_id)
+                      const user = getUserById(schedule.user_id) || schedule.user || undefined
                       return (
                         <div key={schedule.id} className="px-4 sm:px-5 py-4 hover:bg-secondary/20 transition-colors">
                           {/* Mobile: Stack layout, Desktop: Row layout */}
@@ -406,8 +407,9 @@ export default function Schedule() {
                                 </span>
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-primary-dark truncate">
-                                  {getUserDisplayName(user)}
+                                <p className="flex items-center gap-2 font-medium text-primary-dark">
+                                  <span className="truncate">{getUserDisplayName(user)}</span>
+                                  {user?.employment_status === 'terminated' && <span className="shrink-0 rounded-full border border-stone-300 bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-700">Terminated</span>}
                                 </p>
                                 <p className="text-sm text-text-muted">
                                   {schedule.formatted_time_range}
@@ -421,7 +423,7 @@ export default function Schedule() {
                             </div>
                             
                             {/* Actions - larger touch targets on mobile */}
-                            <div className="flex items-center gap-2 sm:gap-3 ml-13 sm:ml-0">
+                            {user?.employment_status !== 'terminated' && <div className="flex items-center gap-2 sm:gap-3 ml-13 sm:ml-0">
                               <button
                                 onClick={() => handleLogShift(schedule)}
                                 className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium rounded-lg transition-colors min-h-[44px] sm:min-h-0"
@@ -441,7 +443,7 @@ export default function Schedule() {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                 </svg>
                               </button>
-                            </div>
+                            </div>}
                           </div>
                         </div>
                       )

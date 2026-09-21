@@ -78,6 +78,7 @@ async function fetchApi<T>(
         return {
           error: data.error || 'Authentication required',
           errors: data.errors || ['Please sign in to continue'],
+          status: response.status,
         };
       }
       // CST-28: Handle 403 Forbidden properly
@@ -85,6 +86,7 @@ async function fetchApi<T>(
         return {
           error: data.error || 'Access denied',
           errors: data.errors || ['You do not have permission to perform this action'],
+          status: response.status,
         };
       }
       return {
@@ -488,6 +490,7 @@ export interface CurrentUser {
   is_admin: boolean;
   is_staff: boolean;
   is_client: boolean;
+  employment_status: 'active' | 'terminated';
   client_id: number | null;
   created_at: string;
 }
@@ -500,6 +503,8 @@ export interface UserSummary {
   display_name: string;
   full_name: string;
   role: string;
+  employment_status: 'active' | 'terminated';
+  termination_effective_on: string | null;
 }
 
 export interface AdminWorkflowStage extends WorkflowStage {
@@ -521,6 +526,13 @@ export interface AdminUser {
   client_name: string | null;
   is_active: boolean;
   is_pending: boolean;
+  employment_status: 'active' | 'terminated';
+  termination_effective_on: string | null;
+  terminated_at: string | null;
+  termination_reason: string | null;
+  terminated_by: { id: number; full_name: string } | null;
+  time_entries_count: number;
+  schedules_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -990,7 +1002,8 @@ export interface Schedule {
     email: string;
     display_name: string;
     full_name: string;
-  };
+    employment_status: 'active' | 'terminated';
+  } | null;
   work_date: string;
   start_time: string;
   end_time: string;
@@ -1014,6 +1027,7 @@ export interface SchedulesResponse {
     email: string;
     display_name: string;
     full_name: string;
+    employment_status: 'active' | 'terminated';
   }>;
 }
 
@@ -1853,8 +1867,10 @@ export const api = {
     }),
 
   // Users (for assignment dropdowns)
-  getUsers: () =>
-    fetchApi<{ users: UserSummary[] }>('/api/v1/users'),
+  getUsers: (params?: { include_terminated?: boolean }) => {
+    const query = params?.include_terminated ? '?include_terminated=true' : '';
+    return fetchApi<{ users: UserSummary[] }>(`/api/v1/users${query}`);
+  },
 
   // Admin: Workflow Stages
   getAdminWorkflowStages: () =>
@@ -1930,6 +1946,17 @@ export const api = {
   deleteUser: (id: number) =>
     fetchApi<void>(`/api/v1/admin/users/${id}`, {
       method: 'DELETE',
+    }),
+
+  terminateUser: (id: number, data: { termination_effective_on?: string; termination_reason?: string }) =>
+    fetchApi<{ user: AdminUser }>(`/api/v1/admin/users/${id}/terminate`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  reactivateUser: (id: number) =>
+    fetchApi<{ user: AdminUser }>(`/api/v1/admin/users/${id}/reactivate`, {
+      method: 'POST',
     }),
 
   resendInvite: (id: number) =>

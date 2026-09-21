@@ -66,9 +66,11 @@ module Payroll
 
       case params[:status].to_s
       when "active"
-        scope = scope.where.not("clerk_id LIKE 'pending_%'")
+        scope = scope.active_employment.where.not("clerk_id LIKE 'pending_%'")
       when "pending"
-        scope = scope.where("clerk_id LIKE 'pending_%'")
+        scope = scope.active_employment.where("clerk_id LIKE 'pending_%'")
+      when "terminated"
+        scope = scope.terminated
       end
 
       scope
@@ -426,6 +428,7 @@ module Payroll
     end
 
     def user_status(user)
+      return "terminated" if user.terminated?
       return "pending" if user.clerk_id.blank? || user.clerk_id.start_with?("pending_")
 
       "active"

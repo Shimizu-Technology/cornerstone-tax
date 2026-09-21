@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_17_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_21_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -532,7 +532,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_17_010000) do
     t.index ["tax_return_id"], name: "index_time_entries_on_tax_return_id"
     t.index ["time_category_id"], name: "index_time_entries_on_time_category_id"
     t.index ["user_id"], name: "index_time_entries_on_user_id"
-    t.index ["user_id"], name: "index_time_entries_one_active_per_user", unique: true, where: "((status)::text = ANY ((ARRAY['clocked_in'::character varying, 'on_break'::character varying])::text[]))"
+    t.index ["user_id"], name: "index_time_entries_one_active_per_user", unique: true, where: "((status)::text = ANY (ARRAY[('clocked_in'::character varying)::text, ('on_break'::character varying)::text]))"
     t.index ["work_date"], name: "index_time_entries_on_work_date"
   end
 
@@ -580,16 +580,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_17_010000) do
     t.bigint "client_id"
     t.datetime "created_at", null: false
     t.string "email", null: false
+    t.string "employment_status", default: "active", null: false
     t.string "first_name"
     t.string "last_name"
     t.string "phone"
     t.string "role", default: "client"
+    t.datetime "terminated_at"
+    t.bigint "terminated_by_id"
+    t.date "termination_effective_on"
+    t.text "termination_reason"
     t.datetime "updated_at", null: false
     t.index ["clerk_id"], name: "index_users_on_clerk_id", unique: true
     t.index ["client_id"], name: "index_users_on_client_id_unique", unique: true, where: "(client_id IS NOT NULL)"
     t.index ["email"], name: "index_users_on_email"
+    t.index ["employment_status"], name: "index_users_on_employment_status"
     t.index ["role"], name: "index_users_on_role"
-    t.check_constraint "role::text = ANY (ARRAY['admin'::character varying, 'employee'::character varying, 'client'::character varying]::text[])", name: "check_valid_role"
+    t.index ["terminated_by_id"], name: "index_users_on_terminated_by_id"
+    t.check_constraint "employment_status::text = ANY (ARRAY['active'::character varying, 'terminated'::character varying]::text[])", name: "check_valid_employment_status"
+    t.check_constraint "role::text = ANY (ARRAY['admin'::character varying::text, 'employee'::character varying::text, 'client'::character varying::text])", name: "check_valid_role"
   end
 
   create_table "workflow_events", force: :cascade do |t|
@@ -678,6 +686,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_17_010000) do
   add_foreign_key "transmittals", "tax_returns"
   add_foreign_key "transmittals", "users", column: "created_by_id"
   add_foreign_key "users", "clients"
+  add_foreign_key "users", "users", column: "terminated_by_id"
   add_foreign_key "workflow_events", "tax_returns"
   add_foreign_key "workflow_events", "users"
 end

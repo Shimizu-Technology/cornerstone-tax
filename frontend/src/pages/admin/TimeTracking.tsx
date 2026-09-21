@@ -45,7 +45,7 @@ interface TimeEntryItem {
     email: string
     display_name?: string
     full_name?: string
-  }
+  } | null
   time_category: {
     id: number
     name: string
@@ -86,6 +86,8 @@ interface UserOption {
   display_name?: string
   full_name?: string
   role: string
+  employment_status: 'active' | 'terminated'
+  termination_effective_on: string | null
 }
 
 // Icons
@@ -268,6 +270,7 @@ export default function TimeTracking() {
 
   // Owner display: "You" for self, real name for others
   const ownerLabel = (entry: TimeEntryItem): string => {
+    if (!entry.user) return 'Former employee'
     const name = entry.user.display_name || entry.user.full_name || entry.user.email.split('@')[0]
     if (currentUserId && entry.user.id === currentUserId) return 'You'
     return name
@@ -342,7 +345,7 @@ export default function TimeTracking() {
       const [catResponse, clientResponse, userResponse, currentUserResponse] = await Promise.all([
         api.getTimeCategories(),
         api.getClients({ per_page: 100 }),
-        api.getUsers(),
+        api.getUsers({ include_terminated: true }),
         api.getCurrentUser()
       ])
 
@@ -365,7 +368,9 @@ export default function TimeTracking() {
           email: u.email,
           display_name: u.display_name,
           full_name: u.full_name,
-          role: u.role
+          role: u.role,
+          employment_status: u.employment_status,
+          termination_effective_on: u.termination_effective_on
         })))
       }
 
@@ -641,7 +646,7 @@ export default function TimeTracking() {
       description: entry.description || '',
       time_category_id: entry.time_category?.id.toString() || '',
       client_id: entry.client?.id.toString() || '',
-      user_id: entry.user.id.toString(),
+      user_id: entry.user?.id.toString() || '',
       break_minutes: entry.break_minutes
     })
     setShowModal(true)
@@ -708,7 +713,7 @@ export default function TimeTracking() {
   const canDeleteEntry = (entry: TimeEntryItem): boolean => {
     if (dateIsInLockedWeek(entry.work_date) || !!entry.locked_at) return false
     if (isAdmin) return true
-    return currentUserId === entry.user.id
+    return currentUserId === entry.user?.id
   }
 
   const handleDelete = async (entry: TimeEntryItem) => {
@@ -782,6 +787,7 @@ export default function TimeTracking() {
     return acc
   }, {} as Record<string, number>)
   const hoursSummaryRows = hoursReport?.employees ?? []
+  const activeUsers = users.filter(user => user.employment_status === 'active')
   const pendingApprovalCount = pendingApprovalSummary?.entry_count ?? 0
   const pendingOvertimeApprovalCount = pendingApprovalSummary?.pending_overtime_count ?? 0
 
@@ -1438,7 +1444,7 @@ export default function TimeTracking() {
               {editingEntry && (
                 <div className="mb-4">
                   <p className="text-sm text-primary-dark/70">
-                    Entry for: <span className="font-medium text-primary-dark">{editingEntry.user.full_name || editingEntry.user.display_name || editingEntry.user.email.split('@')[0]}</span>
+                    Entry for: <span className="font-medium text-primary-dark">{ownerLabel(editingEntry)}</span>
                   </p>
                   {editingEntry.locked_at && (
                     <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
@@ -1527,7 +1533,7 @@ export default function TimeTracking() {
                       className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                     >
                       <option value="">Select user...</option>
-                      {users.map(user => (
+                      {activeUsers.map(user => (
                         <option key={user.id} value={user.id}>
                           {(user.full_name || user.display_name || user.email)} ({user.role})
                         </option>
@@ -1767,7 +1773,9 @@ export default function TimeTracking() {
                   >
                     <option value="">All Employees</option>
                     {users.map(user => (
-                      <option key={user.id} value={user.id}>{user.display_name || user.email.split('@')[0]}</option>
+                      <option key={user.id} value={user.id}>
+                        {user.display_name || user.email.split('@')[0]}{user.employment_status === 'terminated' ? ' (terminated)' : ''}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -1944,7 +1952,10 @@ export default function TimeTracking() {
                     .map((employee) => (
                       <button key={employee.id} type="button" onClick={() => setSelectedReportEmployee(employee)} className="grid w-full grid-cols-[1fr_auto] gap-3 px-4 py-3 text-left transition hover:bg-cyan-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
                         <span className="min-w-0">
-                          <span className="block truncate font-medium text-primary-dark">{employee.full_name || employee.display_name || employee.email}</span>
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate font-medium text-primary-dark">{employee.full_name || employee.display_name || employee.email}</span>
+                            {employee.status === 'terminated' && <span className="shrink-0 rounded-full border border-stone-300 bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-700">Terminated</span>}
+                          </span>
                           <span className="mt-0.5 block text-xs text-text-muted">Regular {employee.regular_hours.toFixed(2)}h · Total {employee.total_hours.toFixed(2)}h</span>
                         </span>
                         {employee.overtime_hours > 0 ? (
@@ -2015,7 +2026,7 @@ export default function TimeTracking() {
                     reportData.slice(0, 100).map(entry => (
                       <tr key={entry.id} className="hover:bg-neutral-warm/20">
                         <td className="px-4 py-3 text-sm text-primary-dark whitespace-nowrap">{formatDate(entry.work_date)}</td>
-                        {isAdmin && <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{entry.user.display_name || entry.user.email.split('@')[0]}</td>}
+                        {isAdmin && <td className="px-4 py-3 text-sm text-text-muted truncate max-w-[150px]">{ownerLabel(entry)}</td>}
                         <td className="px-4 py-3 text-sm text-primary-dark whitespace-nowrap">
                           {entry.formatted_start_time && entry.formatted_end_time 
                             ? `${entry.formatted_start_time} - ${entry.formatted_end_time}`

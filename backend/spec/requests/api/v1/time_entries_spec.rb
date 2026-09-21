@@ -67,6 +67,17 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
       expect(json.dig(:time_entry, :user, :id)).to eq(other_employee.id)
     end
 
+    it "does not allow new entries for a terminated employee" do
+      other_employee.terminate!(by: admin)
+
+      post "/api/v1/time_entries",
+           params: valid_params.deep_merge(time_entry: { user_id: other_employee.id }),
+           headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to eq("Selected user is invalid")
+    end
+
     it "blocks non-admin from creating for another user" do
       post "/api/v1/time_entries",
            params: valid_params.deep_merge(time_entry: { user_id: other_employee.id }),

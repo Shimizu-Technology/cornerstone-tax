@@ -9,7 +9,12 @@ module Api
       # GET /api/v1/users
       # Returns list of staff users (for assignment dropdowns)
       def index
-        users = User.staff.order(:first_name, :last_name)
+        users = if current_user.admin? && ActiveModel::Type::Boolean.new.cast(params[:include_terminated])
+          User.staff
+        else
+          User.active_staff
+        end
+        users = users.order(:first_name, :last_name)
 
         render json: {
           users: users.map do |user|
@@ -20,7 +25,9 @@ module Api
               last_name: user.last_name,
               display_name: user.display_name,
               full_name: user.full_name,
-              role: user.role
+              role: user.role,
+              employment_status: user.employment_status,
+              termination_effective_on: user.termination_effective_on&.iso8601
             }
           end
         }

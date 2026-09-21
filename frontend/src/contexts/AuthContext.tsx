@@ -113,6 +113,10 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
         setUserRole(role)
         setCachedRole(clerkUserId, role)
         setRoleFetched(true)
+      } else if (response.status === 403) {
+        setUserRole(null)
+        setCachedRole(clerkUserId, null)
+        setRoleFetched(true)
       } else {
         throw new Error('No user in response')
       }

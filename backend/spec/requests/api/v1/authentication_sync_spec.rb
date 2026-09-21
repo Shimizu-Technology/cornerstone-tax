@@ -40,4 +40,24 @@ RSpec.describe "Authenticated API user sync", type: :request do
     expect(response).to have_http_status(:ok)
     expect(user.reload.email).to eq("admin-corrected@example.com")
   end
+
+  it "denies terminated users without relinking or mutating their identity" do
+    admin = create(:user, :admin)
+    user = create(:user, email: "former@example.com", first_name: "Former")
+    user.terminate!(by: admin)
+
+    allow(ClerkAuth).to receive(:verify).and_return(
+      {
+        "sub" => user.clerk_id,
+        "email" => "former@example.com",
+        "first_name" => "Changed"
+      }
+    )
+
+    get "/api/v1/service_types", headers: { "Authorization" => "Bearer real-token" }
+
+    expect(response).to have_http_status(:forbidden)
+    expect(JSON.parse(response.body).fetch("error")).to include("terminated")
+    expect(user.reload.first_name).to eq("Former")
+  end
 end
