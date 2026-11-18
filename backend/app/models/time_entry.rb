@@ -6,6 +6,10 @@ class TimeEntry < ApplicationRecord
   ATTENDANCE_STATUSES = %w[early on_time late].freeze
   APPROVAL_STATUSES = %w[pending approved denied].freeze
   OVERTIME_STATUSES = %w[none pending approved denied].freeze
+  # Optional accounting period the work applies to (e.g. July 2026 bank rec).
+  # period_start is always the first day of the month, quarter or year.
+  PERIOD_TYPES = %w[month quarter year].freeze
+  QUARTER_START_MONTHS = [ 1, 4, 7, 10 ].freeze
 
   belongs_to :user, optional: true
   belongs_to :client, optional: true
@@ -31,6 +35,10 @@ class TimeEntry < ApplicationRecord
   validates :end_time, presence: true, if: -> { status == "completed" }
   validate :end_time_after_start_time
   validate :service_task_matches_service_type
+  validates :period_type, inclusion: { in: PERIOD_TYPES }, allow_nil: true
+  validate :period_fields_consistent
+
+  before_validation :normalize_blank_period
 
   before_validation :calculate_hours_from_times, if: -> { start_time.present? && end_time.present? }
   before_validation :set_zero_hours_if_clocked_in, if: -> { status.in?(%w[clocked_in on_break]) }
@@ -43,6 +51,14 @@ class TimeEntry < ApplicationRecord
   scope :pending_approval, -> { where(approval_status: "pending") }
   scope :approved, -> { where(approval_status: [ "approved", nil ]) }
   scope :denied, -> { where(approval_status: "denied") }
+  # Filter by work period. Either part may be omitted: a type alone matches
+  # every entry with that kind of period, a start alone matches any type.
+  scope :for_work_period, lambda { |type, start|
+    scope = all
+    scope = scope.where(period_type: type) if type.present?
+    scope = scope.where(period_start: start) if start.present?
+    scope
+  }
   scope :clock_entries, -> { where(entry_method: "clock") }
   scope :manual_entries, -> { where(entry_method: "manual") }
   # Clock entries have nil approval_status (they don't go through the approval
@@ -127,6 +143,48 @@ class TimeEntry < ApplicationRecord
     self.hours = [ duration_hours, 0 ].max.round(2)
   end
 
+  # "July 2026", "3rd Quarter 2026", "2026", or nil when no period is set.
+  def period_label
+    self.class.period_label_for(period_type, period_start)
+  end
+
+  def self.period_label_for(type, start)
+    return nil if type.blank? || start.blank?
+
+    case type.to_s
+    when "month" then start.strftime("%B %Y")
+    when "quarter"
+      quarter = (start.month - 1) / 3 + 1
+      "#{quarter}#{quarter_ordinal_suffix(quarter)} Quarter #{start.year}"
+    when "year" then start.year.to_s
+    end
+  end
+
+  def self.quarter_ordinal_suffix(quarter)
+    { 1 => "st", 2 => "nd", 3 => "rd" }.fetch(quarter, "th")
+  end
+
+  def self.period_start_aligned?(type, start)
+    return false if start.blank? || start.day != 1
+
+    case type.to_s
+    when "month" then true
+    when "quarter" then QUARTER_START_MONTHS.include?(start.month)
+    when "year" then start.month == 1
+    else false
+    end
+  end
+
+  # The work category staff picked. New entries use the two-level service
+  # type/task lists; older entries may only have a legacy time category, which
+  # is shown as-is (marked legacy) and never rewritten.
+  def category_label
+    return service_type.name if service_type
+    return "#{time_category.name} (legacy)" if time_category
+
+    nil
+  end
+
   def formatted_start_time
     start_time&.in_time_zone(TimeClockService::BUSINESS_TIMEZONE)&.strftime("%I:%M %p")&.sub(/^0/, "")
   end
@@ -163,6 +221,23 @@ class TimeEntry < ApplicationRecord
 
     unless service_task&.service_type_id == service_type_id
       errors.add(:service_task, "must belong to the selected service type")
+    end
+  end
+
+  def normalize_blank_period
+    self.period_type = period_type.presence
+    self.period_start = nil if period_start.blank?
+  end
+
+  def period_fields_consistent
+    if period_type.present? != period_start.present?
+      errors.add(:period_start, "and period type must both be set or both be blank")
+      return
+    end
+    return if period_type.blank? || !PERIOD_TYPES.include?(period_type)
+
+    unless self.class.period_start_aligned?(period_type, period_start)
+      errors.add(:period_start, "must be the first day of the selected #{period_type}")
     end
   end
 
