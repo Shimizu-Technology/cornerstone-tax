@@ -318,6 +318,19 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
         ])
       end
 
+      it "keeps the same task in different periods on separate rows" do
+        create_entry(user: employee, work_date: detail_date, start_time: "12:00", end_time: "12:30", client: business,
+                     service_type: bookkeeping, service_task: bank_rec, period_type: "month", period_start: Date.new(2026, 8, 1))
+        create_entry(user: employee, work_date: detail_date, start_time: "13:00", end_time: "14:00", client: business,
+                     service_type: bookkeeping, service_task: bank_rec, period_type: "quarter", period_start: Date.new(2026, 7, 1))
+
+        rows = report_for[:employees].first[:work_breakdown].select { |row| row[:task_name] == "Bank Reconciliation" }
+
+        expect(rows.map { |row| row.values_at(:period_label, :total_hours) }).to contain_exactly(
+          [ "July 2026", 2.0 ], [ "August 2026", 0.5 ], [ "3rd Quarter 2026", 1.0 ]
+        )
+      end
+
       it "serializes the period and unified category on each entry and does not flag it uncategorized" do
         entry = report_for[:employees].first[:days].first[:entries].find { |row| row[:id] == july_rec.id }
 
@@ -326,7 +339,12 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       end
 
       it "filters by task and period" do
-        expect(report_for(service_task_id: data_entry.id)[:summary][:entries_count]).to eq(1)
+        by_task = report_for(service_task_id: data_entry.id)
+        expect(by_task.dig(:employees, 0, :days, 0, :entries).map { |row| row[:id] }).to eq([ november_entry.id ])
+
+        q3_entry = create_entry(user: employee, work_date: detail_date, start_time: "13:00", end_time: "14:00", client: business,
+                                service_type: bookkeeping, service_task: bank_rec, period_type: "quarter", period_start: Date.new(2026, 7, 1))
+        expect(report_for(period_type: "quarter", period_start: "2026-07-01").dig(:employees, 0, :days, 0, :entries).map { |row| row[:id] }).to eq([ q3_entry.id ])
 
         filtered = report_for(period_type: "month", period_start: "2026-07-01")
         expect(filtered.dig(:employees, 0, :days, 0, :entries).map { |row| row[:id] }).to eq([ july_rec.id ])
@@ -354,6 +372,16 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
         expect(json.dig(:employees, 0, :categories, 0, :name)).to eq("Tax Prep")
       end
 
+      it "labels task and period positions in PDF rows" do
+        pdf = Reports::PayrollHoursPdf.allocate
+
+        expect(pdf.send(:work_label, { category_label: "Bookkeeping", service_task: { name: "Bank Reconciliation" }, period_label: "July 2026" }))
+          .to eq("Bookkeeping / Bank Reconciliation / July 2026")
+        expect(pdf.send(:work_label, { category_label: "Bookkeeping", period_label: "July 2026" })).to eq("Bookkeeping / No task / July 2026")
+        expect(pdf.send(:work_label, { category_label: "Bookkeeping", service_task: { name: "July 2026" } })).to eq("Bookkeeping / July 2026")
+        expect(Reports::EmployeeTimesheetPdf.allocate.send(:work_label, { period_label: "2026" })).to eq("Uncategorized / No task / 2026")
+      end
+
       it "exports client, category, task and period columns in the detailed CSV" do
         get "/api/v1/admin/hours_report/detailed_csv",
             params: { start_date: detail_date.iso8601, end_date: detail_date.iso8601, user_id: employee.id },
@@ -361,9 +389,11 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
 
         expect(response).to have_http_status(:ok)
         rows = CSV.parse(response.body, headers: true)
-        expect(rows.headers).to include("Client", "Category", "Task", "Period", "Comments")
-        expect(rows.headers.index("Client")).to be < rows.headers.index("Category")
-        expect(rows.headers.index("Task")).to be < rows.headers.index("Period")
+        expect(rows.headers).to eq([
+          "Export Reference", "Employee", "Date", "Start", "End", "Break Minutes",
+          "Client", "Category", "Task", "Period", "Tax Year", "Entry Method", "Regular Hours", "Overtime Hours",
+          "Total Hours", "Approval Status", "Approved By", "Approved At", "Finalized", "Comments"
+        ])
         first = rows.find { |row| row["Task"] == "Bank Reconciliation" }
         expect(first.to_h.slice("Client", "Category", "Period")).to eq("Client" => "MoSa's", "Category" => "Bookkeeping", "Period" => "July 2026")
       end

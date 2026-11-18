@@ -37,6 +37,7 @@ class TimeEntry < ApplicationRecord
   validate :service_task_matches_service_type
   validates :period_type, inclusion: { in: PERIOD_TYPES }, allow_nil: true
   validate :period_fields_consistent
+  validate :selected_work_records_exist
 
   before_validation :normalize_blank_period
 
@@ -226,10 +227,17 @@ class TimeEntry < ApplicationRecord
 
   def normalize_blank_period
     self.period_type = period_type.presence
-    self.period_start = nil if period_start.blank?
+    # Only clear genuinely blank input; a value that failed to cast to a date
+    # is kept so validation can reject it instead of silently dropping it.
+    self.period_start = nil if period_start_before_type_cast.blank?
   end
 
   def period_fields_consistent
+    if period_start_before_type_cast.present? && !period_start.is_a?(Date)
+      errors.add(:period_start, "must be a valid date (YYYY-MM-DD)")
+      return
+    end
+
     if period_type.present? != period_start.present?
       errors.add(:period_start, "and period type must both be set or both be blank")
       return
@@ -238,6 +246,17 @@ class TimeEntry < ApplicationRecord
 
     unless self.class.period_start_aligned?(period_type, period_start)
       errors.add(:period_start, "must be the first day of the selected #{period_type}")
+    end
+  end
+
+  # Optional references are not validated by belongs_to; catch a client,
+  # category or task that was removed after the form loaded (422, not a
+  # foreign-key 500).
+  def selected_work_records_exist
+    { client: :client_id, service_type: :service_type_id, service_task: :service_task_id }.each do |association, column|
+      next if self[column].blank? || !will_save_change_to_attribute?(column)
+
+      errors.add(association, "no longer exists") if public_send(association).nil?
     end
   end
 

@@ -4,7 +4,8 @@ class TimeClockService
   BUSINESS_TIMEZONE = "Guam"
 
   # Optional work details staff can add when clocking out (same fields as a
-  # manual entry: client, category, task, period).
+  # manual entry: client, category, task, period). A key that is present
+  # replaces the stored value (blank clears it); an omitted key is kept.
   CLOCK_OUT_WORK_FIELDS = %i[client_id service_type_id service_task_id period_type period_start].freeze
 
   class ClockError < StandardError; end
@@ -49,11 +50,18 @@ class TimeClockService
     end
 
     # ── Clock Out ──
-    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil, description: nil, work_details: {})
+    # expected_entry_id: the active entry the clock-out form was opened for.
+    # When given, a different (or no) active entry is rejected unchanged.
+    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil, description: nil, work_details: {}, expected_entry_id: nil)
       entry = active_entry_for(user)
       raise ClockError, "Not currently clocked in" unless entry
+      ensure_expected_entry!(entry, expected_entry_id)
 
       ActiveRecord::Base.transaction do
+        # Re-read under a row lock so two clock-outs cannot both complete it.
+        entry.lock!
+        raise ClockError, "This clock-in has already ended. Refresh to see your current status." unless entry.active?
+
         if entry.status == "on_break"
           active_break = entry.active_break
           active_break&.close!
@@ -87,7 +95,7 @@ class TimeClockService
         end
 
         entry.description = description if description.present?
-        entry.assign_attributes(work_details.slice(*CLOCK_OUT_WORK_FIELDS).compact_blank) if work_details.present?
+        apply_clock_out_work_details(entry, work_details)
         entry.status = "completed"
         entry.break_minutes = entry.total_break_minutes
         entry.calculate_hours_from_times
@@ -100,6 +108,8 @@ class TimeClockService
       end
 
       entry
+    rescue ActiveRecord::InvalidForeignKey
+      raise ClockError, "The selected client, category or task no longer exists. Choose another and try again."
     end
 
     # ── Start Break ──
@@ -150,6 +160,17 @@ class TimeClockService
         clocked_in: entry.present?,
         status: entry&.status,
         entry_id: entry&.id,
+        work_date: entry&.work_date&.iso8601,
+        # Saved work details, so the clock-out form starts from them.
+        work_details: entry ? {
+          client: entry.client && { id: entry.client.id, name: entry.client.display_name },
+          service_type: entry.service_type && { id: entry.service_type.id, name: entry.service_type.name },
+          service_task: entry.service_task && { id: entry.service_task.id, name: entry.service_task.name },
+          time_category: entry.time_category && { id: entry.time_category.id, name: entry.time_category.name },
+          period_type: entry.period_type,
+          period_start: entry.period_start&.iso8601,
+          description: entry.description
+        } : nil,
         clock_in_at: entry&.clock_in_at,
         elapsed_minutes: entry ? ((Time.current - entry.clock_in_at) / 60).round : nil,
         break_minutes: entry&.total_break_minutes || 0,
@@ -249,6 +270,27 @@ class TimeClockService
     end
 
     # ── Helpers ──
+
+    def ensure_expected_entry!(entry, expected_entry_id)
+      return if expected_entry_id.blank?
+      return if entry.id == expected_entry_id.to_i
+
+      raise ClockError, "Your clock-in changed since this form was opened. Refresh and try again."
+    end
+
+    def apply_clock_out_work_details(entry, work_details)
+      details = work_details.to_h.symbolize_keys.slice(*CLOCK_OUT_WORK_FIELDS).transform_values(&:presence)
+      return if details.empty?
+
+      # A new category without a task drops the old task from the old category.
+      if details.key?(:service_type_id) && !details.key?(:service_task_id) &&
+         details[:service_type_id].to_s != entry.service_type_id.to_s
+        details[:service_task_id] = nil
+      end
+      details[:service_task_id] = nil if details.key?(:service_type_id) && details[:service_type_id].nil?
+
+      entry.assign_attributes(details)
+    end
 
     def active_entry_for(user)
       TimeEntry.clocked_in.for_user(user).order(created_at: :desc).first

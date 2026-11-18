@@ -75,6 +75,32 @@ RSpec.describe TimeEntry, type: :model do
         entry.update_columns(period_type: "month", period_start: nil)
       }.to raise_error(ActiveRecord::StatementInvalid, /check_time_entries_period_pair/)
     end
+
+    it "has the database reject misaligned periods that bypass validation" do
+      entry = create(:time_entry, user: user)
+      write = lambda do |type, start|
+        TimeEntry.transaction(requires_new: true) { entry.update_columns(period_type: type, period_start: start) }
+      end
+
+      expect { write.call("quarter", Date.new(2026, 8, 1)) }.to raise_error(ActiveRecord::StatementInvalid, /check_time_entries_period_alignment/)
+      expect { write.call("year", Date.new(2026, 7, 1)) }.to raise_error(ActiveRecord::StatementInvalid, /check_time_entries_period_alignment/)
+      expect { write.call("month", Date.new(2026, 7, 2)) }.to raise_error(ActiveRecord::StatementInvalid, /check_time_entries_period_alignment/)
+      expect { write.call("quarter", Date.new(2026, 10, 1)) }.not_to raise_error
+    end
+
+    it "rejects a period start that is not a date instead of raising" do
+      entry = build_entry(period_type: "month", period_start: 123)
+
+      expect(entry).not_to be_valid
+      expect(entry.errors[:period_start]).to include("must be a valid date (YYYY-MM-DD)")
+    end
+
+    it "rejects a malformed period start instead of dropping it" do
+      entry = build_entry(period_type: nil, period_start: "not-a-date")
+
+      expect(entry).not_to be_valid
+      expect(entry.errors[:period_start]).to include("must be a valid date (YYYY-MM-DD)")
+    end
   end
 
   describe "#category_label" do
@@ -91,6 +117,15 @@ RSpec.describe TimeEntry, type: :model do
 
     it "is nil for uncategorized work" do
       expect(build_entry.category_label).to be_nil
+    end
+  end
+
+  describe "selected work records" do
+    it "reports a client that no longer exists as a validation error" do
+      entry = build_entry(client_id: Client.maximum(:id).to_i + 1000)
+
+      expect(entry).not_to be_valid
+      expect(entry.errors[:client]).to include("no longer exists")
     end
   end
 

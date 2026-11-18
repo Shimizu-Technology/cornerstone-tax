@@ -616,15 +616,104 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
       expect(entry[:period_label]).to eq("July 2026")
     end
 
-    it "keeps the clock running when clock-out work details are invalid" do
+    it "keeps the clock and its open break when clock-out work details are invalid, then allows a retry" do
       post "/api/v1/time_entries/clock_in", headers: auth_headers_for[employee]
+      post "/api/v1/time_entries/start_break", headers: auth_headers_for[employee]
+      entry = TimeEntry.clocked_in.find_by!(user: employee)
+      expect(entry.active_break).to be_present
 
       post "/api/v1/time_entries/clock_out",
            params: { service_type_id: bookkeeping.id, service_task_id: payroll_processing.id },
            headers: auth_headers_for[employee]
 
       expect(response).to have_http_status(:unprocessable_entity)
+      expect(entry.reload.status).to eq("on_break")
+      expect(entry.active_break).to be_present
+
+      post "/api/v1/time_entries/clock_out",
+           params: { service_type_id: payroll.id, service_task_id: payroll_processing.id },
+           headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:ok)
+      expect(entry.reload.status).to eq("completed")
+      expect(entry.active_break).to be_nil
+    end
+
+    it "rejects a clock-out aimed at a different clock-in and leaves the active entry untouched" do
+      post "/api/v1/time_entries/clock_in", headers: auth_headers_for[employee]
+      entry = TimeEntry.clocked_in.find_by!(user: employee)
+
+      post "/api/v1/time_entries/clock_out",
+           params: { time_entry_id: entry.id + 999, client_id: business_client.id },
+           headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("changed since this form was opened")
+      expect(entry.reload).to have_attributes(status: "clocked_in", client_id: nil)
+
+      post "/api/v1/time_entries/clock_out", params: { time_entry_id: entry.id }, headers: auth_headers_for[employee]
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "drops a stale task when clock-out changes the category, and clears an explicitly emptied client" do
+      post "/api/v1/time_entries/clock_in", headers: auth_headers_for[employee]
+      entry = TimeEntry.clocked_in.find_by!(user: employee)
+      entry.update!(client: business_client, service_type: bookkeeping, service_task: bank_rec)
+
+      post "/api/v1/time_entries/clock_out",
+           params: { time_entry_id: entry.id, client_id: nil, service_type_id: payroll.id }.to_json,
+           headers: auth_headers_for[employee].merge("Content-Type" => "application/json")
+
+      expect(response).to have_http_status(:ok)
+      expect(entry.reload).to have_attributes(client_id: nil, service_type_id: payroll.id, service_task_id: nil)
+    end
+
+    it "keeps saved work details when clock-out omits them" do
+      post "/api/v1/time_entries/clock_in", headers: auth_headers_for[employee]
+      entry = TimeEntry.clocked_in.find_by!(user: employee)
+      entry.update!(client: business_client, service_type: bookkeeping, service_task: bank_rec)
+
+      post "/api/v1/time_entries/clock_out", headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:ok)
+      expect(entry.reload).to have_attributes(client_id: business_client.id, service_task_id: bank_rec.id)
+    end
+
+    it "returns 422 instead of 500 when the chosen client was removed" do
+      post "/api/v1/time_entries/clock_in", headers: auth_headers_for[employee]
+      missing_id = Client.maximum(:id).to_i + 1000
+
+      post "/api/v1/time_entries/clock_out", params: { client_id: missing_id }, headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("Client no longer exists")
       expect(TimeEntry.clocked_in.where(user: employee)).to exist
+    end
+
+    it "returns saved work details in the clock status for the clock-out form" do
+      post "/api/v1/time_entries/clock_in", headers: auth_headers_for[employee]
+      entry = TimeEntry.clocked_in.find_by!(user: employee)
+      entry.update!(client: business_client, service_type: bookkeeping, service_task: bank_rec, period_type: "month", period_start: Date.new(2026, 7, 1))
+
+      get "/api/v1/time_entries/current_status", headers: auth_headers_for[employee]
+
+      expect(json[:entry_id]).to eq(entry.id)
+      expect(json[:work_date]).to eq(entry.work_date.iso8601)
+      expect(json[:work_details]).to include(
+        client: { id: business_client.id, name: "MoSa's Joint" },
+        service_task: { id: bank_rec.id, name: "Bank Reconciliation" },
+        period_type: "month",
+        period_start: "2026-07-01"
+      )
+    end
+
+    it "returns 422 for a non-date period start" do
+      post "/api/v1/time_entries",
+           params: manual_entry_params(period_start: 123).to_json,
+           headers: auth_headers_for[employee].merge("Content-Type" => "application/json")
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("must be a valid date")
     end
   end
 

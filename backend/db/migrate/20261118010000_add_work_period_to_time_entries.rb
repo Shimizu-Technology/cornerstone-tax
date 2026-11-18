@@ -21,5 +21,12 @@ class AddWorkPeriodToTimeEntries < ActiveRecord::Migration[8.1]
     add_check_constraint :time_entries,
                          "(period_type IS NULL) = (period_start IS NULL)",
                          name: "check_time_entries_period_pair"
+    # Month: day 1. Quarter: day 1 of Jan/Apr/Jul/Oct. Year: Jan 1.
+    add_check_constraint :time_entries,
+                         "period_start IS NULL OR (EXTRACT(DAY FROM period_start) = 1 AND (" \
+                         "period_type = 'month' OR " \
+                         "(period_type = 'quarter' AND EXTRACT(MONTH FROM period_start) IN (1, 4, 7, 10)) OR " \
+                         "(period_type = 'year' AND EXTRACT(MONTH FROM period_start) = 1)))",
+                         name: "check_time_entries_period_alignment"
   end
 end

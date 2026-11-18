@@ -19,7 +19,8 @@ RSpec.describe "Api::V1::Clients", type: :request do
 
   describe "GET /api/v1/clients/options" do
     it "lists active clients by business name or First Last, sorted by that label" do
-      Client.create!(first_name: "Maria", last_name: "Santos", client_type: "business", business_name: "MoSa's Joint")
+      # Contact "Aaron Abel" sorts before Jose by person, after him by business name.
+      Client.create!(first_name: "Aaron", last_name: "Abel", client_type: "business", business_name: "MoSa's Joint")
       Client.create!(first_name: "Jose", last_name: "Cruz")
       Client.create!(first_name: "Old", last_name: "Client", archived_at: Time.current)
 
@@ -28,13 +29,21 @@ RSpec.describe "Api::V1::Clients", type: :request do
       expect(response).to have_http_status(:ok)
       body = JSON.parse(response.body, symbolize_names: true)
       expect(body[:clients].map { |client| client[:name] }).to eq([ "Jose Cruz", "MoSa's Joint" ])
-      expect(body[:clients].last).to include(client_type: "business", business_name: "MoSa's Joint", first_name: "Maria")
+      expect(body[:clients].last).to include(client_type: "business", business_name: "MoSa's Joint", first_name: "Aaron")
     end
 
-    it "requires staff" do
+    it "requires authentication" do
       get "/api/v1/clients/options"
 
       expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "forbids signed-in portal clients" do
+      portal_user = create(:user, role: "client")
+
+      get "/api/v1/clients/options", headers: auth_headers_for(portal_user)
+
+      expect(response).to have_http_status(:forbidden)
     end
   end
 

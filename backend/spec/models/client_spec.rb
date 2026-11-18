@@ -72,6 +72,14 @@ RSpec.describe Client, type: :model do
       expect(client.display_name).to eq('Ana Reyes')
     end
 
+    it 'ignores a whitespace-only business name in both the label and the sort' do
+      Client.create!(first_name: 'Zoe', last_name: 'Reyes', client_type: 'business', business_name: "\t\n")
+      Client.create!(first_name: 'Amy', last_name: 'Cruz')
+      Client.create!(first_name: 'Bo', last_name: 'Lee', client_type: 'business', business_name: "  Mango Cafe\t")
+
+      expect(Client.order_by_display_name.map(&:display_name)).to eq([ 'Amy Cruz', 'Mango Cafe', 'Zoe Reyes' ])
+    end
+
     it 'sorts by the same label in SQL' do
       Client.create!(first_name: 'Zed', last_name: 'Aguon', client_type: 'business', business_name: 'Beta Corp')
       Client.create!(first_name: 'Amy', last_name: 'Cruz')

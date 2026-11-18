@@ -288,13 +288,14 @@ module Api
       def clock_out
         target_user = resolve_clock_target_user
         admin_override = (current_user.admin? && target_user.id != current_user.id) ? current_user : nil
-        permitted = params.permit(:corrected_end_time, :description, *TimeClockService::CLOCK_OUT_WORK_FIELDS)
+        permitted = params.permit(:corrected_end_time, :description, :time_entry_id, *TimeClockService::CLOCK_OUT_WORK_FIELDS)
         entry = TimeClockService.clock_out(
           user: target_user,
           admin_override_by: admin_override,
           corrected_end_time: permitted[:corrected_end_time],
           description: permitted[:description],
-          work_details: permitted.slice(*TimeClockService::CLOCK_OUT_WORK_FIELDS).to_h.symbolize_keys
+          work_details: permitted.slice(*TimeClockService::CLOCK_OUT_WORK_FIELDS).to_h.symbolize_keys,
+          expected_entry_id: permitted[:time_entry_id]
         )
         render json: { time_entry: serialize_time_entry(eager_reload(entry)) }
       rescue TimeClockService::ClockError => e
