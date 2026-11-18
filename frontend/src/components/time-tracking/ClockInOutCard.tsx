@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
 import type { ClockStatus } from '../../lib/api'
+import TimeEntryWorkFields from './TimeEntryWorkFields'
+import { EMPTY_WORK_FIELDS, useTimeEntryWorkOptions, workFieldsFromEntry, workFieldsPayload, type WorkFieldsValue } from './timeEntryWorkForm'
 
 interface ClockInOutCardProps {
   onStatusChange?: () => void
@@ -20,7 +22,11 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
   const [breakElapsed, setBreakElapsed] = useState(0)
   const [showClockOutModal, setShowClockOutModal] = useState(false)
   const [correctionTime, setCorrectionTime] = useState('')
-  const [clockOutDescription, setClockOutDescription] = useState('')
+  const [clockOutWork, setClockOutWork] = useState<WorkFieldsValue>(EMPTY_WORK_FIELDS)
+  // Which clock-in the draft belongs to; a failed clock-out keeps the draft
+  // for a retry on the same entry.
+  const [clockOutDraftEntryId, setClockOutDraftEntryId] = useState<number | null>(null)
+  const workOptions = useTimeEntryWorkOptions(showClockOutModal)
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const isOnBreakRef = useRef(false)
@@ -155,7 +161,10 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
     } else {
       setCorrectionTime('')
     }
-    setClockOutDescription('')
+    if (!status?.entry_id || status.entry_id !== clockOutDraftEntryId) {
+      setClockOutWork(status?.work_details ? workFieldsFromEntry(status.work_details) : EMPTY_WORK_FIELDS)
+      setClockOutDraftEntryId(status?.entry_id ?? null)
+    }
     setShowClockOutModal(true)
   }
 
@@ -168,12 +177,14 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
         const guamDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Guam', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
         return `${guamDate}T${correctionTime}:00`
       })() : undefined
-      const desc = clockOutDescription.trim() || undefined
-      const result = await api.clockOut(correctedEnd, desc)
+      const { description, ...workDetails } = workFieldsPayload(clockOutWork)
+      const result = await api.clockOut(correctedEnd, description.trim() || undefined, workDetails, status?.entry_id)
       if (result?.error) {
         setError(result.error)
         await fetchStatus()
       } else {
+        setClockOutWork(EMPTY_WORK_FIELDS)
+        setClockOutDraftEntryId(null)
         await fetchStatus()
         onStatusChange?.()
       }
@@ -446,7 +457,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
       {/* Clock-out modal: description + optional time correction */}
       {showClockOutModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowClockOutModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-5">
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                 <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -464,18 +475,20 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
 
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1.5">
-                  What did you work on today?
-                </label>
-                <textarea
-                  value={clockOutDescription}
-                  onChange={e => setClockOutDescription(e.target.value)}
-                  placeholder="e.g. Worked on Ms. Tajalle's 1040, filed Mr. Cruz's extension..."
-                  rows={3}
-                  className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none placeholder:text-gray-400"
-                  autoFocus
+                <h4 className="text-sm font-medium text-gray-700">What did you work on?</h4>
+                <p className="text-xs text-gray-400 mt-0.5 mb-3">All optional, but it helps keep track of client time.</p>
+                <TimeEntryWorkFields
+                  idPrefix="clock-out"
+                  value={clockOutWork}
+                  onChange={setClockOutWork}
+                  clients={workOptions.clients}
+                  serviceTypes={workOptions.serviceTypes}
+                  current={status?.work_details}
+                  referenceDate={status?.work_date || undefined}
+                  loadError={workOptions.error}
+                  onRetry={workOptions.retry}
+                  commentsPlaceholder="e.g. Worked on Ms. Tajalle's 1040, filed Mr. Cruz's extension..."
                 />
-                <p className="text-xs text-gray-400 mt-1">Optional, but helps keep track of your day</p>
               </div>
 
               {correctionTime && (
@@ -524,7 +537,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
                 {correctionTime ? `Clock Out at ${fmt12(correctionTime)}` : 'Clock Out'}
               </button>
               <button
-                onClick={() => setShowClockOutModal(false)}
+                onClick={() => { setShowClockOutModal(false); setClockOutDraftEntryId(null) }}
                 className="min-h-[44px] px-5 border border-gray-300 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 transition-colors"
               >
                 Cancel

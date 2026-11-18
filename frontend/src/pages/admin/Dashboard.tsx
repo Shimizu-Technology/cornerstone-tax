@@ -6,6 +6,7 @@ import QuickCreateClientModal from '../../components/admin/QuickCreateClientModa
 import WhosWorking from '../../components/time-tracking/WhosWorking'
 import { SkeletonStats, SkeletonCard, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeUp, StaggerContainer, StaggerItem } from '../../components/ui/MotionComponents'
+import { workCategoryText } from '../../lib/timeEntryWork'
 
 interface DashboardStats {
   totalClients: number
@@ -417,10 +418,11 @@ export default function Dashboard() {
                               </span>
                               <div className="flex-1 min-w-0">
                                 <span className="text-gray-600">
-                                  {entry.time_category?.name || 'General'}
                                   {entry.client && (
-                                    <span className="text-primary-dark"> • {entry.client.name}</span>
+                                    <span className="text-primary-dark">{entry.client.name} • </span>
                                   )}
+                                  {workCategoryText(entry, 'General')}
+                                  {entry.service_task && ` • ${entry.service_task.name}`}
                                 </span>
                                 {entry.description && (
                                   <div className="mt-1">

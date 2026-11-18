@@ -284,6 +284,120 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       expect(json.dig(:employees, 0, :days).flatten.to_s).not_to include(denied.id.to_s)
       expect(json.dig(:employees, 0, :excluded_entries).map { |entry| entry[:id] }).to include(denied.id)
     end
+
+    context "with client, category, task and period" do
+      let(:bookkeeping) { ServiceType.create!(name: "Bookkeeping") }
+      let(:bank_rec) { ServiceTask.create!(service_type: bookkeeping, name: "Bank Reconciliation") }
+      let(:data_entry) { ServiceTask.create!(service_type: bookkeeping, name: "Payroll Data Entry") }
+      let(:business) { Client.create!(first_name: "Maria", last_name: "Santos", client_type: "business", business_name: "MoSa's") }
+      let(:detail_date) { work_date + 2.days }
+
+      let!(:july_rec) do
+        create_entry(user: employee, work_date: detail_date, start_time: "08:00", end_time: "10:00", client: business,
+                     service_type: bookkeeping, service_task: bank_rec, period_type: "month", period_start: Date.new(2026, 7, 1))
+      end
+      let!(:november_entry) do
+        create_entry(user: employee, work_date: detail_date, start_time: "10:00", end_time: "11:30", client: business,
+                     service_type: bookkeeping, service_task: data_entry, period_type: "month", period_start: Date.new(2026, 11, 1))
+      end
+
+      def report_for(extra = {})
+        get "/api/v1/admin/hours_report",
+            params: { start_date: detail_date.iso8601, end_date: detail_date.iso8601, user_id: employee.id }.merge(extra),
+            headers: auth_headers_for[admin]
+        expect(response).to have_http_status(:ok)
+        json
+      end
+
+      it "breaks hours down by client, category, task and period" do
+        breakdown = report_for[:employees].first[:work_breakdown]
+
+        expect(breakdown.map { |row| row.values_at(:client_name, :category_name, :task_name, :period_label, :total_hours) }).to eq([
+          [ "MoSa's", "Bookkeeping", "Bank Reconciliation", "July 2026", 2.0 ],
+          [ "MoSa's", "Bookkeeping", "Payroll Data Entry", "November 2026", 1.5 ]
+        ])
+      end
+
+      it "keeps the same task in different periods on separate rows" do
+        create_entry(user: employee, work_date: detail_date, start_time: "12:00", end_time: "12:30", client: business,
+                     service_type: bookkeeping, service_task: bank_rec, period_type: "month", period_start: Date.new(2026, 8, 1))
+        create_entry(user: employee, work_date: detail_date, start_time: "13:00", end_time: "14:00", client: business,
+                     service_type: bookkeeping, service_task: bank_rec, period_type: "quarter", period_start: Date.new(2026, 7, 1))
+
+        rows = report_for[:employees].first[:work_breakdown].select { |row| row[:task_name] == "Bank Reconciliation" }
+
+        expect(rows.map { |row| row.values_at(:period_label, :total_hours) }).to contain_exactly(
+          [ "July 2026", 2.0 ], [ "August 2026", 0.5 ], [ "3rd Quarter 2026", 1.0 ]
+        )
+      end
+
+      it "serializes the period and unified category on each entry and does not flag it uncategorized" do
+        entry = report_for[:employees].first[:days].first[:entries].find { |row| row[:id] == july_rec.id }
+
+        expect(entry).to include(category_label: "Bookkeeping", period_type: "month", period_start: "2026-07-01", period_label: "July 2026")
+        expect(entry[:review_flags]).not_to include("uncategorized")
+      end
+
+      it "filters by task and period" do
+        by_task = report_for(service_task_id: data_entry.id)
+        expect(by_task.dig(:employees, 0, :days, 0, :entries).map { |row| row[:id] }).to eq([ november_entry.id ])
+
+        q3_entry = create_entry(user: employee, work_date: detail_date, start_time: "13:00", end_time: "14:00", client: business,
+                                service_type: bookkeeping, service_task: bank_rec, period_type: "quarter", period_start: Date.new(2026, 7, 1))
+        expect(report_for(period_type: "quarter", period_start: "2026-07-01").dig(:employees, 0, :days, 0, :entries).map { |row| row[:id] }).to eq([ q3_entry.id ])
+
+        filtered = report_for(period_type: "month", period_start: "2026-07-01")
+        expect(filtered.dig(:employees, 0, :days, 0, :entries).map { |row| row[:id] }).to eq([ july_rec.id ])
+        expect(filtered[:filters]).to include(period_type: "month", period_start: "2026-07-01")
+      end
+
+      it "rejects an unsupported period filter" do
+        get "/api/v1/admin/hours_report",
+            params: { start_date: detail_date.iso8601, end_date: detail_date.iso8601, period_type: "week" },
+            headers: auth_headers_for[admin]
+
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+
+      it "groups legacy time-category entries under their old category" do
+        legacy_date = detail_date + 1.day
+        create_entry(user: employee, work_date: legacy_date, start_time: "08:00", end_time: "09:00", time_category: category)
+
+        get "/api/v1/admin/hours_report",
+            params: { start_date: legacy_date.iso8601, end_date: legacy_date.iso8601, user_id: employee.id },
+            headers: auth_headers_for[admin]
+
+        row = json.dig(:employees, 0, :work_breakdown, 0)
+        expect(row).to include(category_name: "Tax Prep (legacy)", legacy_category: true, task_name: "No task", period_label: "No period", client_name: "No client")
+        expect(json.dig(:employees, 0, :categories, 0, :name)).to eq("Tax Prep")
+      end
+
+      it "labels task and period positions in PDF rows" do
+        pdf = Reports::PayrollHoursPdf.allocate
+
+        expect(pdf.send(:work_label, { category_label: "Bookkeeping", service_task: { name: "Bank Reconciliation" }, period_label: "July 2026" }))
+          .to eq("Bookkeeping / Bank Reconciliation / July 2026")
+        expect(pdf.send(:work_label, { category_label: "Bookkeeping", period_label: "July 2026" })).to eq("Bookkeeping / No task / July 2026")
+        expect(pdf.send(:work_label, { category_label: "Bookkeeping", service_task: { name: "July 2026" } })).to eq("Bookkeeping / July 2026")
+        expect(Reports::EmployeeTimesheetPdf.allocate.send(:work_label, { period_label: "2026" })).to eq("Uncategorized / No task / 2026")
+      end
+
+      it "exports client, category, task and period columns in the detailed CSV" do
+        get "/api/v1/admin/hours_report/detailed_csv",
+            params: { start_date: detail_date.iso8601, end_date: detail_date.iso8601, user_id: employee.id },
+            headers: auth_headers_for[admin]
+
+        expect(response).to have_http_status(:ok)
+        rows = CSV.parse(response.body, headers: true)
+        expect(rows.headers).to eq([
+          "Export Reference", "Employee", "Date", "Start", "End", "Break Minutes",
+          "Client", "Category", "Task", "Period", "Tax Year", "Entry Method", "Regular Hours", "Overtime Hours",
+          "Total Hours", "Approval Status", "Approved By", "Approved At", "Finalized", "Comments"
+        ])
+        first = rows.find { |row| row["Task"] == "Bank Reconciliation" }
+        expect(first.to_h.slice("Client", "Category", "Period")).to eq("Client" => "MoSa's", "Category" => "Bookkeeping", "Period" => "July 2026")
+      end
+    end
   end
 
   describe "report exports" do
@@ -400,7 +514,7 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       expect(response.media_type).to eq("text/csv")
       rows = CSV.parse(response.body, headers: true)
       expect(rows.length).to eq(1)
-      expect(rows.first["Description"]).to start_with("'=")
+      expect(rows.first["Comments"]).to start_with("'=")
       expect(rows.first["Export Reference"]).to eq(ReportExport.last.public_id)
       expect(rows.first["Client"]).to eq("Casey Client")
     end

@@ -88,6 +88,7 @@ module Payroll
       scope = scope.where(client_id: params[:client_id]) if params[:client_id].present?
       scope = scope.where(service_type_id: params[:service_type_id]) if params[:service_type_id].present?
       scope = scope.where(service_task_id: params[:service_task_id]) if params[:service_task_id].present?
+      scope = scope.for_work_period(period_type_filter, period_start_filter) if period_type_filter || period_start_filter
       scope = scope.where(entry_method: params[:entry_method]) if params[:entry_method].present?
       scope = scope.where(approval_status: approval_status_value(params[:approval_status])) if params[:approval_status].present?
       scope = scope.where(overtime_status: params[:overtime_status]) if params[:overtime_status].present?
@@ -101,6 +102,21 @@ module Payroll
         .where(user_id: user_ids, work_date: range)
         .includes(:user, :time_category, :time_entry_breaks, :client, :tax_return, :service_type, :service_task, :approved_by, :overtime_approved_by)
         .order(:work_date, :start_time, :created_at, :id)
+    end
+
+    def period_type_filter
+      return @period_type_filter if defined?(@period_type_filter)
+      return @period_type_filter = nil if params[:period_type].blank?
+      raise ArgumentError, "period_type is not supported" unless TimeEntry::PERIOD_TYPES.include?(params[:period_type].to_s)
+
+      @period_type_filter = params[:period_type].to_s
+    end
+
+    def period_start_filter
+      return @period_start_filter if defined?(@period_start_filter)
+      return @period_start_filter = nil if params[:period_start].blank?
+
+      @period_start_filter = parse_date!(params[:period_start], "period_start")
     end
 
     def approval_status_value(value)
@@ -136,6 +152,7 @@ module Payroll
       categories = build_categories(countable_period_entries, overtime_allocations)
       clients = build_clients(countable_period_entries, overtime_allocations)
       services = build_services(countable_period_entries, overtime_allocations)
+      work_breakdown = build_work_breakdown(countable_period_entries, overtime_allocations)
       weeks = build_weeks(user_context_entries, countable_period_entries, overtime_allocations)
       # Readiness is a control concern, not a display filter. Pending entries
       # and open clocks keep the report in draft even when hidden by a visible
@@ -173,6 +190,7 @@ module Payroll
         categories: categories,
         clients: clients,
         services: services,
+        work_breakdown: work_breakdown,
         weeks: weeks
       }
     end
@@ -244,8 +262,41 @@ module Payroll
       grouped_summary(entries.group_by(&:client), allocations) do |client|
         {
           id: client&.id,
-          name: client ? client_name(client) : "No client"
+          name: client ? client.display_name : "No client"
         }
+      end
+    end
+
+    # Hours grouped by client -> category -> task -> period, the order staff
+    # log work in. Legacy entries group under their old category name.
+    def build_work_breakdown(entries, allocations)
+      grouped = entries.group_by do |entry|
+        [ entry.client_id, entry.service_type_id, entry.service_type_id ? nil : entry.time_category_id, entry.service_task_id, entry.period_type, entry.period_start ]
+      end
+
+      grouped.map do |_key, group_entries|
+        sample = group_entries.first
+        regular = group_entries.sum { |entry| allocations.fetch(entry.id, {})[:regular_hours].to_f }
+        overtime = group_entries.sum { |entry| allocations.fetch(entry.id, {})[:overtime_hours].to_f }
+        {
+          client_id: sample.client_id,
+          client_name: sample.client ? sample.client.display_name : "No client",
+          service_type_id: sample.service_type_id,
+          time_category_id: sample.service_type_id ? nil : sample.time_category_id,
+          category_name: sample.category_label || "Uncategorized",
+          legacy_category: sample.service_type.nil? && sample.time_category.present?,
+          service_task_id: sample.service_task_id,
+          task_name: sample.service_task&.name || "No task",
+          period_type: sample.period_type,
+          period_start: sample.period_start&.iso8601,
+          period_label: sample.period_label || "No period",
+          total_hours: round_hours(group_entries.sum { |entry| entry.hours.to_f }),
+          regular_hours: round_hours(regular),
+          overtime_hours: round_hours(overtime),
+          entries_count: group_entries.size
+        }
+      end.sort_by do |row|
+        [ row[:client_id] ? 0 : 1, row[:client_name].downcase, row[:category_name].downcase, row[:task_name].downcase, row[:period_start].to_s ]
       end
     end
 
@@ -330,7 +381,7 @@ module Payroll
         } : nil,
         client: entry.client ? {
           id: entry.client.id,
-          name: client_name(entry.client)
+          name: entry.client.display_name
         } : nil,
         tax_return: entry.tax_return ? {
           id: entry.tax_return.id,
@@ -345,6 +396,10 @@ module Payroll
           id: entry.service_task.id,
           name: entry.service_task.name
         } : nil,
+        category_label: entry.category_label,
+        period_type: entry.period_type,
+        period_start: entry.period_start&.iso8601,
+        period_label: entry.period_label,
         breaks: entry.time_entry_breaks.sort_by(&:start_time).map do |entry_break|
           {
             id: entry_break.id,
@@ -369,7 +424,7 @@ module Payroll
     def quality_for(entries)
       flags_by_entry = entries.to_h do |entry|
         flags = []
-        flags << "uncategorized" if entry.time_category_id.blank?
+        flags << "uncategorized" if entry.service_type_id.blank? && entry.time_category_id.blank?
         flags << "missing_client" if entry.client_id.blank?
         flags << "missing_description" if entry.description.blank?
         flags << "long_shift" if entry.hours.to_f >= LONG_SHIFT_HOURS
@@ -518,7 +573,7 @@ module Payroll
     end
 
     def serialized_filters
-      params.to_h.slice(:user_id, :role, :status, :time_category_id, :client_id, :service_type_id, :service_task_id, :entry_method, :approval_status, :overtime_status, :include_empty)
+      params.to_h.slice(:user_id, :role, :status, :time_category_id, :client_id, :service_type_id, :service_task_id, :period_type, :period_start, :entry_method, :approval_status, :overtime_status, :include_empty)
     end
 
     def countable?(entry)
@@ -530,10 +585,6 @@ module Payroll
       return "pending" if user.clerk_id.blank? || user.clerk_id.start_with?("pending_")
 
       "active"
-    end
-
-    def client_name(client)
-      client.business_name.presence || [ client.first_name, client.last_name ].compact.join(" ").strip.presence || "Client ##{client.id}"
     end
 
     def sum(rows, key)

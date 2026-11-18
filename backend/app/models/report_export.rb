@@ -108,7 +108,8 @@ class ReportExport < ApplicationRecord
               "id", "work_date", "start_time", "end_time", "total_hours", "regular_hours",
               "overtime_hours", "break_minutes", "description", "entry_method",
               "status", "approval_status", "overtime_status", "approved_at", "overtime_approved_at",
-              "locked_at", "time_category", "client", "tax_return", "service_type", "service_task", "breaks"
+              "locked_at", "time_category", "client", "tax_return", "service_type", "service_task",
+              "category_label", "period_type", "period_start", "period_label", "breaks"
             ).merge("employee_id" => employee_id, "employee_name" => employee_name)
           end
         else
@@ -179,7 +180,7 @@ class ReportExport < ApplicationRecord
           },
           "client" => entry.client && {
             "id" => entry.client.id,
-            "name" => client_name(entry.client)
+            "name" => entry.client.display_name
           },
           "tax_return" => entry.tax_return && {
             "id" => entry.tax_return.id,
@@ -193,6 +194,9 @@ class ReportExport < ApplicationRecord
             "id" => entry.service_task.id,
             "name" => entry.service_task.name
           },
+          "period_type" => entry.period_type,
+          "period_start" => entry.period_start&.iso8601,
+          "period_label" => entry.period_label,
           "breaks" => entry.time_entry_breaks.sort_by(&:start_time).map do |entry_break|
             {
               "id" => entry_break.id,
@@ -204,10 +208,6 @@ class ReportExport < ApplicationRecord
           "snapshot_role" => "ledger_dependency"
         }
       end
-  end
-
-  private_class_method def self.client_name(client)
-    client.business_name.presence || [ client.first_name, client.last_name ].compact.join(" ").strip.presence || "Client ##{client.id}"
   end
 
   private_class_method def self.report_ready?(report)

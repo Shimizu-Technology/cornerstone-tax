@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_21_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_18_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -509,6 +509,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_010000) do
     t.bigint "overtime_approved_by_id"
     t.text "overtime_note"
     t.string "overtime_status"
+    t.date "period_start"
+    t.string "period_type"
     t.bigint "schedule_id"
     t.bigint "service_task_id"
     t.bigint "service_type_id"
@@ -525,6 +527,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_010000) do
     t.index ["entry_method"], name: "index_time_entries_on_entry_method"
     t.index ["overtime_approved_by_id"], name: "index_time_entries_on_overtime_approved_by_id"
     t.index ["overtime_status"], name: "index_time_entries_on_overtime_status"
+    t.index ["period_start", "period_type"], name: "index_time_entries_on_work_period"
     t.index ["schedule_id"], name: "index_time_entries_on_schedule_id"
     t.index ["service_task_id"], name: "index_time_entries_on_service_task_id"
     t.index ["service_type_id"], name: "index_time_entries_on_service_type_id"
@@ -534,6 +537,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_010000) do
     t.index ["user_id"], name: "index_time_entries_on_user_id"
     t.index ["user_id"], name: "index_time_entries_one_active_per_user", unique: true, where: "((status)::text = ANY (ARRAY[('clocked_in'::character varying)::text, ('on_break'::character varying)::text]))"
     t.index ["work_date"], name: "index_time_entries_on_work_date"
+    t.check_constraint "(period_type IS NULL) = (period_start IS NULL)", name: "check_time_entries_period_pair"
+    t.check_constraint "period_start IS NULL OR EXTRACT(day FROM period_start) = 1::numeric AND (period_type::text = 'month'::text OR period_type::text = 'quarter'::text AND (EXTRACT(month FROM period_start) = ANY (ARRAY[1::numeric, 4::numeric, 7::numeric, 10::numeric])) OR period_type::text = 'year'::text AND EXTRACT(month FROM period_start) = 1::numeric)", name: "check_time_entries_period_alignment"
+    t.check_constraint "period_type IS NULL OR (period_type::text = ANY (ARRAY['month'::character varying, 'quarter'::character varying, 'year'::character varying]::text[]))", name: "check_time_entries_period_type"
   end
 
   create_table "time_entry_breaks", force: :cascade do |t|

@@ -47,7 +47,6 @@ describe('EditTimeEntryModal', () => {
       <EditTimeEntryModal
         isOpen
         entry={entry}
-        categories={[]}
         canDelete
         onClose={vi.fn()}
         onSaved={vi.fn()}
@@ -60,6 +59,11 @@ describe('EditTimeEntryModal', () => {
     await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
     expect(apiMock.updateTimeEntry.mock.calls[0][1]).not.toHaveProperty('breaks')
     expect(apiMock.updateTimeEntry.mock.calls[0][1]).toMatchObject({ break_minutes: 30 })
+    // Untouched work details are not sent, so a concurrent edit is never overwritten,
+    // and the legacy category is never rewritten.
+    for (const key of ['client_id', 'service_type_id', 'service_task_id', 'period_type', 'period_start', 'description', 'time_category_id']) {
+      expect(apiMock.updateTimeEntry.mock.calls[0][1]).not.toHaveProperty(key)
+    }
   })
 
   it('collects and resubmits a correction reason for an exported entry', async () => {
@@ -76,7 +80,6 @@ describe('EditTimeEntryModal', () => {
       <EditTimeEntryModal
         isOpen
         entry={entry}
-        categories={[]}
         canDelete
         onClose={vi.fn()}
         onSaved={onSaved}
@@ -114,7 +117,6 @@ describe('EditTimeEntryModal', () => {
       <EditTimeEntryModal
         isOpen
         entry={entry}
-        categories={[]}
         canDelete
         onClose={vi.fn()}
         onSaved={vi.fn()}
@@ -129,5 +131,49 @@ describe('EditTimeEntryModal', () => {
 
     await waitFor(() => expect(onDeleted).toHaveBeenCalled())
     expect(apiMock.deleteTimeEntry).toHaveBeenLastCalledWith(3, 'Duplicate confirmed by payroll.')
+  })
+
+  it('sends only the work details the user changed, keeping the period pair together', async () => {
+    const withPeriod = { ...entry, client: { id: 6, name: 'Jose Cruz' }, period_type: 'month', period_start: '2026-07-01', description: 'Bank rec' }
+    render(
+      <EditTimeEntryModal
+        isOpen
+        entry={withPeriod}
+        clients={[{ id: 6, name: 'Jose Cruz' }]}
+        canDelete
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+        onDeleted={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Period month'), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: /update/i }))
+
+    await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
+    const payload = apiMock.updateTimeEntry.mock.calls[0][1]
+    expect(payload).toMatchObject({ period_type: 'month', period_start: '2026-08-01' })
+    expect(payload).not.toHaveProperty('client_id')
+    expect(payload).not.toHaveProperty('description')
+  })
+
+  it('shows a catalog load error with a retry inside the form', () => {
+    const onRetryCatalog = vi.fn()
+    render(
+      <EditTimeEntryModal
+        isOpen
+        entry={entry}
+        canDelete
+        catalogError="Couldn't load categories. Check your connection and try again."
+        onRetryCatalog={onRetryCatalog}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+        onDeleted={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load categories")
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(onRetryCatalog).toHaveBeenCalled()
   })
 })

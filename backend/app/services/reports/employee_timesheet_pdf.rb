@@ -100,7 +100,7 @@ module Reports
       pdf.text "Time Entries", size: 11.5, style: :bold
       pdf.move_down 6
 
-      rows = [ [ "Date", "Start", "End", "Break", "Category / Service", "Regular", "OT", "Total" ] ]
+      rows = [ [ "Date", "Start", "End", "Break", "Category / Task / Period", "Regular", "OT", "Total" ] ]
       Array(employee[:days]).each do |day|
         Array(day[:entries]).each do |entry|
           rows << [
@@ -229,7 +229,14 @@ module Reports
     end
 
     def work_label(entry)
-      [ entry.dig(:time_category, :name) || "Uncategorized", entry.dig(:service_type, :name), entry.dig(:service_task, :name) ].compact_blank.join(" / ")
+      # Fixed positions so a period is never mistaken for a task: an entry with
+      # a period but no task shows "No task" in the task slot.
+      task = entry.dig(:service_task, :name).presence
+      period = entry[:period_label].presence
+      parts = [ entry[:category_label] || "Uncategorized" ]
+      parts << (task || "No task") if task || period
+      parts << period if period
+      parts.join(" / ")
     end
 
     def generated_time

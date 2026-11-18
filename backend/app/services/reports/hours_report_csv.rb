@@ -6,10 +6,12 @@ module Reports
   class HoursReportCsv
     FORMULA_PREFIX = /\A[ \t\r\n]*[=+\-@]/
 
+    # Work columns follow the order staff log time in:
+    # Client -> Category -> Task -> Period -> Comments.
     DETAILED_HEADERS = [
-      "Export Reference", "Employee", "Date", "Start", "End", "Break Minutes", "Category",
-      "Client", "Tax Year", "Service", "Task", "Entry Method", "Regular Hours", "Overtime Hours",
-      "Total Hours", "Approval Status", "Approved By", "Approved At", "Finalized", "Description"
+      "Export Reference", "Employee", "Date", "Start", "End", "Break Minutes",
+      "Client", "Category", "Task", "Period", "Tax Year", "Entry Method", "Regular Hours", "Overtime Hours",
+      "Total Hours", "Approval Status", "Approved By", "Approved At", "Finalized", "Comments"
     ].freeze
 
     SUMMARY_HEADERS = [
@@ -30,11 +32,11 @@ module Reports
                 entry[:formatted_start_time],
                 entry[:formatted_end_time],
                 entry[:break_minutes],
-                entry.dig(:time_category, :name) || "Uncategorized",
                 entry.dig(:client, :name),
-                entry.dig(:tax_return, :tax_year),
-                entry.dig(:service_type, :name),
+                entry[:category_label] || "Uncategorized",
                 entry.dig(:service_task, :name),
+                entry[:period_label],
+                entry.dig(:tax_return, :tax_year),
                 entry[:entry_method],
                 format_hours(entry[:regular_hours]),
                 format_hours(entry[:overtime_hours]),

@@ -1,21 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { api } from '../../lib/api'
-import type { ApprovalReason, PendingApprovalsParams, PendingApprovalsSummary, TimeCategory, TimeEntry } from '../../lib/api'
+import type { ApprovalReason, PendingApprovalsParams, PendingApprovalsSummary, ServiceType, TimeCategory, TimeEntry } from '../../lib/api'
 import { formatDateISO, formatWorkDate } from '../../lib/dateUtils'
+import { parseCategoryFilter, workSummary, type ClientOption } from '../../lib/timeEntryWork'
 import EditTimeEntryModal from './EditTimeEntryModal'
-
-interface ClientOption {
-  id: number
-  first_name?: string
-  last_name?: string
-  name?: string
-}
+import { CategoryFilterSelect, ClientPicker } from './TimeEntryWorkFields'
 
 interface ApprovalQueueProps {
   onUpdate?: () => void
   canDeleteEntry?: (entry: TimeEntry) => boolean
   clients?: ClientOption[]
+  serviceTypes?: ServiceType[]
+  catalogError?: string | null
+  onRetryCatalog?: () => void
 }
 
 type DateMode = 'all' | 'exact' | 'range' | 'through' | 'since'
@@ -30,6 +28,7 @@ interface ReviewFilters {
   throughDate: string
   sinceDate: string
   userId: string
+  // "st:<category id>" or "tc:<legacy time category id>"
   categoryId: string
   clientId: string
   approvalType: '' | 'time_entry' | 'overtime' | 'both'
@@ -67,7 +66,9 @@ function buildPendingApprovalParams(filters: ReviewFilters): PendingApprovalsPar
   if (filters.dateMode === 'through' && filters.throughDate) params.through_date = filters.throughDate
   if (filters.dateMode === 'since' && filters.sinceDate) params.since_date = filters.sinceDate
   if (filters.userId) params.user_id = Number(filters.userId)
-  if (filters.categoryId) params.time_category_id = Number(filters.categoryId)
+  const category = parseCategoryFilter(filters.categoryId)
+  if (category.service_type_id) params.service_type_id = Number(category.service_type_id)
+  if (category.time_category_id) params.time_category_id = Number(category.time_category_id)
   if (filters.clientId) params.client_id = Number(filters.clientId)
   if (filters.approvalType) params.approval_type = filters.approvalType
   if (filters.entryMethod) params.entry_method = filters.entryMethod
@@ -143,10 +144,6 @@ function summarizeSelectedEntries(entries: TimeEntry[]) {
   return { totalHours, dateLabel }
 }
 
-function clientLabel(client: ClientOption) {
-  return client.name || [client.first_name, client.last_name].filter(Boolean).join(' ') || `Client #${client.id}`
-}
-
 function SummaryMetric({ label, value, sublabel, tone = 'default' }: { label: string; value: string; sublabel?: string; tone?: 'default' | 'warning' | 'success' }) {
   const toneClass = tone === 'warning' ? 'text-amber-700' : tone === 'success' ? 'text-emerald-700' : 'text-primary-dark'
   return (
@@ -158,7 +155,7 @@ function SummaryMetric({ label, value, sublabel, tone = 'default' }: { label: st
   )
 }
 
-export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [] }: ApprovalQueueProps) {
+export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], serviceTypes = [], catalogError, onRetryCatalog }: ApprovalQueueProps) {
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([])
   const [entries, setEntries] = useState<TimeEntry[]>([])
   const [categories, setCategories] = useState<TimeCategory[]>([])
@@ -429,12 +426,8 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [] }
                   {approvalReasonsFor(entry).map((reason) => <span key={reason.key} className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${reasonTone(reason.key)}`}>{reason.label}</span>)}
                 </div>
                 <p className="mt-1 text-xs text-text-muted">{formatWorkDate(entry.work_date)} · {entryTimeLabel(entry)}</p>
-                <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-[0.12em] text-text-muted">
-                  <span>{entry.time_category?.name || 'Uncategorized'}</span>
-                  {entry.client && <><span>·</span><span>{entry.client.name}</span></>}
-                  {entry.service_type && <><span>·</span><span>{entry.service_type.name}</span></>}
-                  <span>·</span><span>{entry.entry_method}</span>
-                </div>
+                <p className="mt-1 text-xs text-primary-dark">{workSummary(entry)}</p>
+                <p className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-text-muted">{entry.entry_method}</p>
                 {entry.description && (
                   <div className="mt-2">
                     <p className={`text-xs text-text-muted ${!expandedDescriptions.has(entry.id) && entry.description.length > 72 ? 'line-clamp-1' : ''}`}>{entry.description}</p>
@@ -534,8 +527,28 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [] }
                   {reviewFilters.dateMode === 'range' && <><DateField label="Start" value={reviewFilters.startDate} onChange={(startDate) => updateReviewFilters({ startDate })} /><DateField label="End" value={reviewFilters.endDate} onChange={(endDate) => updateReviewFilters({ endDate })} /></>}
 
                   <SelectField label="Employee" value={reviewFilters.userId} onChange={(userId) => updateReviewFilters({ userId })} options={[{ value: '', label: 'All employees' }, ...userOptions.map((user) => ({ value: String(user.id), label: user.label }))]} />
-                  <SelectField label="Category" value={reviewFilters.categoryId} onChange={(categoryId) => updateReviewFilters({ categoryId })} options={[{ value: '', label: 'All categories' }, ...categories.map((category) => ({ value: String(category.id), label: category.name }))]} />
-                  <SelectField label="Client" value={reviewFilters.clientId} onChange={(clientId) => updateReviewFilters({ clientId })} options={[{ value: '', label: 'All clients' }, ...clients.map((client) => ({ value: String(client.id), label: clientLabel(client) }))]} />
+                  <ClientPicker
+                    id="approval-filter-client"
+                    value={reviewFilters.clientId}
+                    onChange={(clientId) => updateReviewFilters({ clientId })}
+                    clients={clients}
+                    emptyLabel="All clients"
+                    searchable={false}
+                    labelClassName="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-muted"
+                    className="w-full rounded-xl border border-neutral-warm bg-white px-3 py-2 text-sm text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <div>
+                    <label htmlFor="approval-filter-category" className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">Category</label>
+                    <CategoryFilterSelect
+                      id="approval-filter-category"
+                      value={reviewFilters.categoryId}
+                      onChange={(categoryId) => updateReviewFilters({ categoryId })}
+                      serviceTypes={serviceTypes}
+                      legacyCategories={categories}
+                      allLabel="All categories"
+                      className="w-full rounded-xl border border-neutral-warm bg-white px-3 py-2 text-sm text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
                   <SelectField label="Review type" value={reviewFilters.approvalType} onChange={(approvalType) => updateReviewFilters({ approvalType: approvalType as ReviewFilters['approvalType'] })} options={[{ value: '', label: 'Any review type' }, { value: 'time_entry', label: 'Time entries only' }, { value: 'overtime', label: 'Overtime only' }, { value: 'both', label: 'Time + overtime' }]} />
                   <SelectField label="Entry method" value={reviewFilters.entryMethod} onChange={(entryMethod) => updateReviewFilters({ entryMethod: entryMethod as ReviewFilters['entryMethod'] })} options={[{ value: '', label: 'Any method' }, { value: 'clock', label: 'Clock' }, { value: 'manual', label: 'Manual' }]} />
                   <SelectField label="Sort by" value={reviewFilters.sort} onChange={(sort) => updateReviewFilters({ sort: sort as SortField })} options={[{ value: 'work_date', label: 'Work date' }, { value: 'created_at', label: 'Created' }, { value: 'employee', label: 'Employee' }, { value: 'hours', label: 'Hours' }, { value: 'approval_type', label: 'Review type' }, { value: 'category', label: 'Category' }, { value: 'client', label: 'Client' }]} />
@@ -587,8 +600,10 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [] }
       <EditTimeEntryModal
         isOpen={!!editingEntry}
         entry={editingEntry}
-        categories={categories}
+        serviceTypes={serviceTypes}
         clients={clients}
+        catalogError={catalogError}
+        onRetryCatalog={onRetryCatalog}
         canDelete={!!editingEntry && (canDeleteEntry?.(editingEntry) ?? false)}
         onClose={() => setEditingEntry(null)}
         onSaved={handleEditSaved}

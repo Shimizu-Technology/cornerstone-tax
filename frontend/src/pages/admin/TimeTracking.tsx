@@ -12,6 +12,17 @@ import ClockInOutCard from '../../components/time-tracking/ClockInOutCard'
 import ApprovalQueue from '../../components/time-tracking/ApprovalQueue'
 import WhosWorking from '../../components/time-tracking/WhosWorking'
 import HoursReportWorkspace, { type HoursReportFilters, type ReportView } from '../../components/time-tracking/HoursReportWorkspace'
+import TimeEntryWorkFields, { CategoryFilterSelect, ClientPicker, PeriodPicker } from '../../components/time-tracking/TimeEntryWorkFields'
+import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, useTimeEntryWorkOptions, workFieldsFromEntry, workFieldsPayload, type WorkFieldsValue } from '../../components/time-tracking/timeEntryWorkForm'
+import { buildHoursReportParams, normalizeReportFilters } from '../../lib/hoursReportParams'
+import {
+  categoryFilterValue,
+  parseCategoryFilter,
+  periodLabel,
+  workCategory,
+  workCategoryText,
+  workSummary,
+} from '../../lib/timeEntryWork'
 
 // Local types to avoid Vite caching issues
 interface TimeCategory {
@@ -58,13 +69,6 @@ function normalizeHoursReport(report: HoursReportResponse): HoursReportResponse 
       })),
     })),
   }
-}
-
-interface ClientOption {
-  id: number
-  first_name: string
-  last_name: string
-  name?: string
 }
 
 interface UserOption {
@@ -159,6 +163,10 @@ function formatBadgeCount(count: number): string {
   return count > 99 ? '99+' : String(count)
 }
 
+function entryPeriodLabel(entry: TimeEntryItem): string | null {
+  return entry.period_label || periodLabel(entry.period_type, entry.period_start)
+}
+
 export default function TimeTracking() {
   useEffect(() => { document.title = 'Time Tracking | Cornerstone Admin' }, [])
 
@@ -167,7 +175,9 @@ export default function TimeTracking() {
   const [entries, setEntries] = useState<TimeEntryItem[]>([])
   const [entrySummary, setEntrySummary] = useState({ total_hours: 0, total_break_hours: 0, entry_count: 0 })
   const [categories, setCategories] = useState<TimeCategory[]>([])
-  const [clients, setClients] = useState<ClientOption[]>([])
+  // Categories (with tasks) and the client picker list; errors stay visible with a retry.
+  const workOptions = useTimeEntryWorkOptions()
+  const { serviceTypes, clients } = workOptions
   const [users, setUsers] = useState<UserOption[]>([])
   const [pendingApprovalSummary, setPendingApprovalSummary] = useState<PendingApprovalsSummary | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -184,24 +194,33 @@ export default function TimeTracking() {
   const [currentDate, setCurrentDate] = useState(new Date())
   
   // Entries filters (for Time Entries tab)
-  const [entryFilters, setEntryFilters] = useState({
+  const emptyEntryFilters = {
     user_id: '',
-    time_category_id: '',
     client_id: '',
-  })
+    service_type_id: '',
+    time_category_id: '',
+    service_task_id: '',
+    period_type: '' as WorkFieldsValue['period_type'],
+    period_start: '',
+  }
+  const [entryFilters, setEntryFilters] = useState(emptyEntryFilters)
   const [showDenied, setShowDenied] = useState(false)
   
   // Report filters
-  const [reportFilters, setReportFilters] = useState<HoursReportFilters>({
+  const [reportFilters, setReportFilters] = useState<HoursReportFilters>(() => normalizeReportFilters({
     start_date: initialReportPeriod.start,
     end_date: initialReportPeriod.end,
     user_id: searchParams.get('user_id') || '',
     time_category_id: searchParams.get('time_category_id') || '',
     client_id: searchParams.get('client_id') || '',
+    service_type_id: searchParams.get('service_type_id') || '',
+    service_task_id: searchParams.get('service_task_id') || '',
+    period_type: searchParams.get('period_type') || '',
+    period_start: searchParams.get('period_start') || '',
     status: searchParams.get('status') || '',
     entry_method: searchParams.get('entry_method') || '',
     overtime_status: searchParams.get('overtime_status') || '',
-  })
+  }))
   const requestedReportView = searchParams.get('report_view')
   const [reportView, setReportView] = useState<ReportView>(requestedReportView === 'people' || requestedReportView === 'daily' || requestedReportView === 'review' ? requestedReportView : 'overview')
   const [reportData, setReportData] = useState<TimeEntryItem[]>([])
@@ -230,12 +249,11 @@ export default function TimeTracking() {
     work_date: formatDateISO(new Date()),
     start_time: '08:00',
     end_time: '17:00',
-    description: '',
-    time_category_id: '',
-    client_id: '',
     user_id: '',
     break_minutes: null as number | null
   })
+  // Client -> Category -> Task -> Period -> Comments
+  const [workFields, setWorkFields] = useState<WorkFieldsValue>(EMPTY_WORK_FIELDS)
   const [saving, setSaving] = useState(false)
 
   // Calculate hours from start/end times and break
@@ -301,6 +319,16 @@ export default function TimeTracking() {
       if (entryFilters.time_category_id) {
         params.time_category_id = parseInt(entryFilters.time_category_id)
       }
+      if (entryFilters.service_type_id) {
+        params.service_type_id = parseInt(entryFilters.service_type_id)
+      }
+      if (entryFilters.service_task_id) {
+        params.service_task_id = parseInt(entryFilters.service_task_id)
+      }
+      if (entryFilters.period_type && entryFilters.period_start) {
+        params.period_type = entryFilters.period_type
+        params.period_start = entryFilters.period_start
+      }
       if (entryFilters.client_id) {
         params.client_id = parseInt(entryFilters.client_id)
       }
@@ -327,24 +355,14 @@ export default function TimeTracking() {
   // Load categories, clients, and users
   const loadOptions = useCallback(async () => {
     try {
-      const [catResponse, clientResponse, userResponse, currentUserResponse] = await Promise.all([
+      const [catResponse, userResponse, currentUserResponse] = await Promise.all([
         api.getTimeCategories(),
-        api.getClients({ per_page: 100 }),
         api.getUsers({ include_terminated: true }),
         api.getCurrentUser()
       ])
 
       if (catResponse.data) {
         setCategories(catResponse.data.time_categories as unknown as TimeCategory[])
-      }
-
-      if (clientResponse.data) {
-        setClients(clientResponse.data.clients.map(c => ({
-          id: c.id,
-          first_name: c.first_name,
-          last_name: c.last_name,
-          name: `${c.first_name} ${c.last_name}`.trim()
-        })))
       }
 
       if (userResponse.data) {
@@ -442,18 +460,7 @@ export default function TimeTracking() {
     setReportData([])
 
     try {
-      const params: Parameters<typeof api.getHoursReport>[0] = {
-        start_date: reportFilters.start_date,
-        end_date: reportFilters.end_date,
-        approval_status: 'approved_or_standard',
-      }
-
-      if (reportFilters.user_id) params.user_id = parseInt(reportFilters.user_id)
-      if (reportFilters.time_category_id) params.time_category_id = parseInt(reportFilters.time_category_id)
-      if (reportFilters.client_id) params.client_id = parseInt(reportFilters.client_id)
-      if (reportFilters.status) params.status = reportFilters.status as HoursReportParams['status']
-      if (reportFilters.entry_method) params.entry_method = reportFilters.entry_method as HoursReportParams['entry_method']
-      if (reportFilters.overtime_status) params.overtime_status = reportFilters.overtime_status as HoursReportParams['overtime_status']
+      const params = buildHoursReportParams(reportFilters)
 
       const response = await api.getHoursReport(params)
       if (requestId !== reportRequestId.current) return
@@ -511,6 +518,9 @@ export default function TimeTracking() {
               tax_return: entry.tax_return,
               service_type: entry.service_type ? { ...entry.service_type, color: entry.service_type.color ?? null } : null,
               service_task: entry.service_task,
+              period_type: entry.period_type ?? null,
+              period_start: entry.period_start ?? null,
+              period_label: entry.period_label ?? null,
               linked_operation_task: null,
               locked_at: entry.locked_at,
               created_at: '',
@@ -541,7 +551,8 @@ export default function TimeTracking() {
     else next.set('tab', activeTab)
 
     const reportKeys: Array<keyof HoursReportFilters> = [
-      'start_date', 'end_date', 'user_id', 'time_category_id', 'client_id', 'status', 'entry_method', 'overtime_status',
+      'start_date', 'end_date', 'user_id', 'time_category_id', 'client_id', 'service_type_id', 'service_task_id',
+      'period_type', 'period_start', 'status', 'entry_method', 'overtime_status',
     ]
     if (activeTab === 'reports') {
       reportKeys.forEach(key => {
@@ -615,12 +626,10 @@ export default function TimeTracking() {
         work_date: date,
         start_time: startTime,
         end_time: endTime,
-        description: notes,
-        time_category_id: '',
-        client_id: '',
         user_id: currentUserId?.toString() || '',
         break_minutes: null
       })
+      setWorkFields({ ...EMPTY_WORK_FIELDS, description: notes })
       setShowModal(true)
       
       // Clear the URL params
@@ -666,12 +675,10 @@ export default function TimeTracking() {
       work_date: formatDateISO(date || currentDate),
       start_time: prefillStart || '08:00',
       end_time: prefillEnd || '17:00',
-      description: prefillNotes || '',
-      time_category_id: '',
-      client_id: '',
       user_id: currentUserId?.toString() || '',
       break_minutes: null
     })
+    setWorkFields({ ...EMPTY_WORK_FIELDS, description: prefillNotes || '' })
     setShowModal(true)
   }
 
@@ -684,12 +691,10 @@ export default function TimeTracking() {
       work_date: entry.work_date,
       start_time: entry.start_time || '08:00',
       end_time: entry.end_time || '17:00',
-      description: entry.description || '',
-      time_category_id: entry.time_category?.id.toString() || '',
-      client_id: entry.client?.id.toString() || '',
       user_id: entry.user?.id.toString() || '',
       break_minutes: entry.break_minutes
     })
+    setWorkFields(workFieldsFromEntry(entry))
     setShowModal(true)
   }
 
@@ -709,19 +714,20 @@ export default function TimeTracking() {
     setError(null)
 
     try {
-      const data = {
+      const timeFields = {
         work_date: formData.work_date,
         start_time: formData.start_time,
         end_time: formData.end_time,
-        description: formData.description || undefined,
-        time_category_id: formData.time_category_id ? parseInt(formData.time_category_id) : undefined,
-        client_id: formData.client_id ? parseInt(formData.client_id) : undefined,
-        user_id: !editingEntry && isAdmin && formData.user_id ? parseInt(formData.user_id) : undefined,
         break_minutes: formData.break_minutes
       }
 
       if (editingEntry) {
-        const response = await api.updateTimeEntry(editingEntry.id, data, correctionReason)
+        // Send only the work details the user changed so a concurrent edit is not overwritten.
+        const response = await api.updateTimeEntry(
+          editingEntry.id,
+          { ...timeFields, ...changedWorkFieldsPayload(workFieldsFromEntry(editingEntry), workFields) },
+          correctionReason,
+        )
         if (response.error) {
           if (response.code === 'correction_reason_required') {
             setRequiresCorrectionReason(true)
@@ -731,7 +737,13 @@ export default function TimeTracking() {
           return
         }
       } else {
-        const response = await api.createTimeEntry(data)
+        const work = workFieldsPayload(workFields)
+        const response = await api.createTimeEntry({
+          ...timeFields,
+          ...work,
+          description: work.description || undefined,
+          user_id: isAdmin && formData.user_id ? parseInt(formData.user_id) : undefined,
+        })
         if (response.error) {
           setError(response.error)
           return
@@ -818,17 +830,7 @@ export default function TimeTracking() {
   const pendingApprovalCount = pendingApprovalSummary?.entry_count ?? 0
   const pendingOvertimeApprovalCount = pendingApprovalSummary?.pending_overtime_count ?? 0
 
-  const currentReportParams = (): HoursReportParams => ({
-    start_date: reportFilters.start_date,
-    end_date: reportFilters.end_date,
-    approval_status: 'approved_or_standard',
-    ...(reportFilters.user_id ? { user_id: parseInt(reportFilters.user_id, 10) } : {}),
-    ...(reportFilters.time_category_id ? { time_category_id: parseInt(reportFilters.time_category_id, 10) } : {}),
-    ...(reportFilters.client_id ? { client_id: parseInt(reportFilters.client_id, 10) } : {}),
-    ...(reportFilters.status ? { status: reportFilters.status as HoursReportParams['status'] } : {}),
-    ...(reportFilters.entry_method ? { entry_method: reportFilters.entry_method as HoursReportParams['entry_method'] } : {}),
-    ...(reportFilters.overtime_status ? { overtime_status: reportFilters.overtime_status as HoursReportParams['overtime_status'] } : {}),
-  })
+  const currentReportParams = (): HoursReportParams => buildHoursReportParams(reportFilters)
 
   const saveReportDownload = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob)
@@ -895,6 +897,15 @@ export default function TimeTracking() {
         <WhosWorking />
       )}
       
+      {workOptions.error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <span>{workOptions.error} Categories, tasks or clients may be missing from the forms and filters below.</span>
+          <button type="button" onClick={workOptions.retry} className="min-h-11 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-100">
+            Try again
+          </button>
+        </div>
+      )}
+
       {/* Tab Navigation */}
       <div className="border-b border-neutral-warm">
         <nav className="flex gap-4">
@@ -953,13 +964,14 @@ export default function TimeTracking() {
       {/* Filters (Admin only) */}
       {isAdmin && (
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm p-4 hover:shadow-md transition-shadow duration-300">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
-              <label className="block text-sm text-text-muted mb-1">Employee</label>
+              <label htmlFor="entry-filter-employee" className="block text-sm text-text-muted mb-1">Employee</label>
               <select
+                id="entry-filter-employee"
                 value={entryFilters.user_id}
                 onChange={(e) => setEntryFilters({ ...entryFilters, user_id: e.target.value })}
-                className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                className="min-h-11 w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
               >
                 <option value="">All Employees</option>
                 {users.map(user => (
@@ -967,37 +979,58 @@ export default function TimeTracking() {
                 ))}
               </select>
             </div>
+            <ClientPicker
+              id="entry-filter-client"
+              value={entryFilters.client_id}
+              onChange={(client_id) => setEntryFilters({ ...entryFilters, client_id })}
+              clients={clients}
+              emptyLabel="All Clients"
+              searchable={false}
+              labelClassName="block text-sm text-text-muted mb-1"
+              className="min-h-11 w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white"
+            />
             <div>
-              <label className="block text-sm text-text-muted mb-1">Category</label>
+              <label htmlFor="entry-filter-category" className="block text-sm text-text-muted mb-1">Category</label>
+              <CategoryFilterSelect
+                id="entry-filter-category"
+                serviceTypes={serviceTypes}
+                legacyCategories={categories}
+                value={categoryFilterValue(entryFilters.service_type_id, entryFilters.time_category_id)}
+                onChange={(value) => setEntryFilters({ ...entryFilters, ...parseCategoryFilter(value), service_task_id: '' })}
+                className="min-h-11 w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+              />
+            </div>
+            <div>
+              <label htmlFor="entry-filter-task" className="block text-sm text-text-muted mb-1">Task</label>
               <select
-                value={entryFilters.time_category_id}
-                onChange={(e) => setEntryFilters({ ...entryFilters, time_category_id: e.target.value })}
-                className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                id="entry-filter-task"
+                value={entryFilters.service_task_id}
+                disabled={!entryFilters.service_type_id}
+                onChange={(e) => setEntryFilters({ ...entryFilters, service_task_id: e.target.value })}
+                className="min-h-11 w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm disabled:bg-neutral-warm/30 disabled:text-text-muted"
               >
-                <option value="">All Categories</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                <option value="">All Tasks</option>
+                {(serviceTypes.find(type => String(type.id) === entryFilters.service_type_id)?.tasks || []).map(task => (
+                  <option key={task.id} value={task.id}>{task.name}</option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-sm text-text-muted mb-1">Client</label>
-              <select
-                value={entryFilters.client_id}
-                onChange={(e) => setEntryFilters({ ...entryFilters, client_id: e.target.value })}
-                className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-              >
-                <option value="">All Clients</option>
-                {clients.map(client => (
-                  <option key={client.id} value={client.id}>{client.first_name} {client.last_name}</option>
-                ))}
-              </select>
-            </div>
+            <PeriodPicker
+              idPrefix="entry-filter"
+              hint=""
+              emptyLabel="Any Period"
+              stacked
+              value={entryFilters}
+              referenceDate={formatDateISO(currentDate)}
+              onChange={(period) => setEntryFilters({ ...entryFilters, ...period })}
+              labelClassName="block text-sm text-text-muted mb-1"
+              className="min-h-11 w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white"
+            />
           </div>
           {/* Clear filters button */}
-          {(entryFilters.user_id || entryFilters.time_category_id || entryFilters.client_id) && (
+          {Object.values(entryFilters).some(Boolean) && (
             <button
-              onClick={() => setEntryFilters({ user_id: '', time_category_id: '', client_id: '' })}
+              onClick={() => setEntryFilters(emptyEntryFilters)}
               className="mt-3 text-sm text-primary hover:text-primary-dark font-medium"
             >
               Clear all filters
@@ -1302,8 +1335,16 @@ export default function TimeTracking() {
                             {entry.formatted_start_time} - {entry.formatted_end_time}
                           </div>
                         )}
-                        {entry.time_category && (
-                          <div className="text-primary font-medium truncate text-[10px] sm:text-xs">{entry.time_category.name}</div>
+                        {entry.client && (
+                          <div className="text-primary-dark font-medium truncate text-[10px] sm:text-xs" title={entry.client.name}>{entry.client.name}</div>
+                        )}
+                        {workCategory(entry) && (
+                          <div className="text-primary font-medium truncate text-[10px] sm:text-xs" title={[workCategoryText(entry), entry.service_task?.name].filter(Boolean).join(' / ')}>
+                            {workCategoryText(entry)}{entry.service_task ? ` / ${entry.service_task.name}` : ''}
+                          </div>
+                        )}
+                        {entryPeriodLabel(entry) && (
+                          <div className="text-primary-dark/70 truncate text-[10px]">{entryPeriodLabel(entry)}</div>
                         )}
                         <div className="text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1">{ownerLabel(entry)}</div>
                         {entry.approval_note && (
@@ -1362,11 +1403,6 @@ export default function TimeTracking() {
                             {entry.formatted_start_time} - {entry.formatted_end_time}
                           </span>
                         )}
-                        {entry.time_category && (
-                          <span className="px-2 py-1 bg-primary/10 text-primary font-medium text-xs sm:text-sm rounded">
-                            {entry.time_category.name}
-                          </span>
-                        )}
                         {entry.locked_at && (
                           <span className="px-2 py-1 bg-amber-100 text-amber-700 font-medium text-xs rounded">
                             Locked
@@ -1393,20 +1429,30 @@ export default function TimeTracking() {
                           </span>
                         )}
                       </div>
+                      {/* Client -> Category -> Task -> Period */}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs sm:text-sm">
+                        <span className="font-semibold text-primary-dark">
+                          {entry.client ? entry.client.name : 'Internal'}
+                          {entry.tax_return && ` (${entry.tax_return.tax_year})`}
+                        </span>
+                        {workCategory(entry) ? (
+                          <span className="px-2 py-0.5 bg-primary/10 text-primary font-medium rounded">
+                            {workCategory(entry)?.label}
+                            {workCategory(entry)?.legacy && <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Legacy</span>}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-neutral-warm/50 text-text-muted rounded">Uncategorized</span>
+                        )}
+                        {entry.service_task && <span className="px-2 py-0.5 bg-secondary/60 text-primary-dark rounded">{entry.service_task.name}</span>}
+                        {entryPeriodLabel(entry) && <span className="px-2 py-0.5 border border-neutral-warm text-primary-dark rounded">{entryPeriodLabel(entry)}</span>}
+                      </div>
                       {/* Owner */}
                       <p className="mt-1 text-xs sm:text-sm text-primary-dark/80 truncate">
                         by {ownerLabel(entry)}
                       </p>
-                      {/* Description */}
+                      {/* Comments */}
                       {entry.description && (
                         <p className="mt-2 text-primary-dark text-sm">{entry.description}</p>
-                      )}
-                      {/* Client */}
-                      {entry.client && (
-                        <p className="mt-1 text-primary-dark/70 text-xs sm:text-sm">
-                          Client: {entry.client.name}
-                          {entry.tax_return && ` (${entry.tax_return.tax_year})`}
-                        </p>
                       )}
                       {/* Approval info */}
                       {entry.approved_by && (
@@ -1502,7 +1548,7 @@ export default function TimeTracking() {
               {!editingEntry && <div className="mb-4" />}
               
               <form onSubmit={handleSubmit} className="space-y-4">
-              <fieldset disabled={!!(editingEntry?.locked_at)} className={editingEntry?.locked_at ? 'opacity-60' : ''}>
+              <fieldset disabled={!!(editingEntry?.locked_at)} className={`space-y-4 ${editingEntry?.locked_at ? 'opacity-60' : ''}`}>
                 {/* Date */}
                 <div>
                   <label className="block text-sm font-medium text-primary-dark mb-1">
@@ -1618,53 +1664,19 @@ export default function TimeTracking() {
                   <p className="text-xs text-text-muted mt-1">Break time is not counted toward work hours</p>
                 </div>
 
-                {/* Category */}
-                <div>
-                  <label className="block text-sm font-medium text-primary-dark mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={formData.time_category_id}
-                    onChange={(e) => setFormData({ ...formData, time_category_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  >
-                    <option value="">Select category...</option>
-                    {categories.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Client */}
-                <div>
-                  <label className="block text-sm font-medium text-primary-dark mb-1">
-                    Client (optional)
-                  </label>
-                  <select
-                    value={formData.client_id}
-                    onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  >
-                    <option value="">No client</option>
-                    {clients.map(client => (
-                      <option key={client.id} value={client.id}>
-                        {client.first_name} {client.last_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label className="block text-sm font-medium text-primary-dark mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                    placeholder="What did you work on?"
-                    className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+                {/* Work details: Client -> Category -> Task -> Period -> Comments */}
+                <div className="border-t border-neutral-warm pt-4">
+                  <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-text-muted">Work details</h3>
+                  <TimeEntryWorkFields
+                    idPrefix="log-time"
+                    value={workFields}
+                    onChange={setWorkFields}
+                    clients={clients}
+                    serviceTypes={serviceTypes}
+                    current={editingEntry}
+                    referenceDate={formData.work_date}
+                    loadError={workOptions.error}
+                    onRetry={workOptions.retry}
                   />
                 </div>
 
@@ -1750,6 +1762,9 @@ export default function TimeTracking() {
             }}
             canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry) : false}
             clients={clients}
+            serviceTypes={serviceTypes}
+            catalogError={workOptions.error}
+            onRetryCatalog={workOptions.retry}
           />
         </div>
       )}
@@ -1766,7 +1781,8 @@ export default function TimeTracking() {
             error={reportError}
             users={users}
             categories={categories}
-            clients={clients.map(client => ({ id: client.id, name: client.name || `${client.first_name} ${client.last_name}`.trim() }))}
+            serviceTypes={serviceTypes}
+            clients={clients}
             exporting={reportExporting}
             onExport={(type) => void downloadReport(type)}
             onOpenEmployee={setSelectedReportEmployee}
@@ -1942,7 +1958,7 @@ function EmployeeReportDrawer({
                           <span className="font-semibold text-primary">{entry.total_hours.toFixed(2)}h</span>
                         </div>
                         <div className="mt-1 text-xs text-text-muted">
-                          {entry.time_category?.name || 'Uncategorized'} · {entry.client?.name || 'No client'} · {entry.entry_method}
+                          {workSummary(entry)} · {entry.entry_method}
                         </div>
                         {entry.overtime_hours > 0 && <p className="mt-2 text-xs font-semibold text-orange-800">{entry.overtime_hours.toFixed(2)}h of this entry is overtime.</p>}
                         {entry.breaks.length > 0 && (
