@@ -531,6 +531,7 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
                     onChange={(clientId) => updateReviewFilters({ clientId })}
                     clients={clients}
                     emptyLabel="All clients"
+                    searchable={false}
                     labelClassName="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-muted"
                     className="w-full rounded-xl border border-neutral-warm bg-white px-3 py-2 text-sm text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />

@@ -325,6 +325,7 @@ export default function HoursReportWorkspace({
                 onChange={value => updateFilter('client_id', value)}
                 clients={clients}
                 emptyLabel="All clients"
+                searchable={false}
                 labelClassName="mb-1.5 block text-sm font-medium text-text-muted"
                 className="min-h-11 w-full rounded-xl border border-neutral-warm bg-white px-3 py-2 text-sm"
               />
@@ -341,7 +342,7 @@ export default function HoursReportWorkspace({
               </label>
               <label className="text-sm font-medium text-primary-dark"><span className="mb-1.5 block text-text-muted">Task</span>
                 <select aria-label="Task" value={filters.service_task_id} disabled={!filters.service_type_id} onChange={event => updateFilter('service_task_id', event.target.value)} className="min-h-11 w-full rounded-xl border border-neutral-warm bg-white px-3 py-2 disabled:bg-neutral-warm/30 disabled:text-text-muted">
-                  <option value="">{filters.service_type_id ? 'All tasks' : 'Choose a category first'}</option>
+                  <option value="">All tasks</option>
                   {(serviceTypes.find(type => String(type.id) === filters.service_type_id)?.tasks || []).map(task => <option key={task.id} value={task.id}>{task.name}</option>)}
                 </select>
               </label>
@@ -349,6 +350,7 @@ export default function HoursReportWorkspace({
                 idPrefix="report-filter"
                 hint=""
                 emptyLabel="Any period"
+                stacked
                 value={{ period_type: filters.period_type === 'month' || filters.period_type === 'quarter' || filters.period_type === 'year' ? filters.period_type : '', period_start: filters.period_start }}
                 referenceDate={filters.end_date}
                 onChange={period => onFiltersChange({ ...filters, ...period })}

@@ -1009,6 +1009,7 @@ export default function TimeTracking() {
               onChange={(client_id) => setEntryFilters({ ...entryFilters, client_id })}
               clients={clients}
               emptyLabel="All Clients"
+              searchable={false}
               labelClassName="block text-sm text-text-muted mb-1"
               className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white"
             />
@@ -1032,7 +1033,7 @@ export default function TimeTracking() {
                 onChange={(e) => setEntryFilters({ ...entryFilters, service_task_id: e.target.value })}
                 className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm disabled:bg-neutral-warm/30 disabled:text-text-muted"
               >
-                <option value="">{entryFilters.service_type_id ? 'All Tasks' : 'Choose a category first'}</option>
+                <option value="">All Tasks</option>
                 {(serviceTypes.find(type => String(type.id) === entryFilters.service_type_id)?.tasks || []).map(task => (
                   <option key={task.id} value={task.id}>{task.name}</option>
                 ))}
@@ -1042,6 +1043,7 @@ export default function TimeTracking() {
               idPrefix="entry-filter"
               hint=""
               emptyLabel="Any Period"
+              stacked
               value={entryFilters}
               referenceDate={formatDateISO(currentDate)}
               onChange={(period) => setEntryFilters({ ...entryFilters, ...period })}
@@ -1362,7 +1364,7 @@ export default function TimeTracking() {
                         )}
                         {workCategory(entry) && (
                           <div className="text-primary font-medium truncate text-[10px] sm:text-xs" title={[workCategoryText(entry), entry.service_task?.name].filter(Boolean).join(' / ')}>
-                            {workCategory(entry)?.label}{entry.service_task ? ` / ${entry.service_task.name}` : ''}
+                            {workCategoryText(entry)}{entry.service_task ? ` / ${entry.service_task.name}` : ''}
                           </div>
                         )}
                         {entryPeriodLabel(entry) && (

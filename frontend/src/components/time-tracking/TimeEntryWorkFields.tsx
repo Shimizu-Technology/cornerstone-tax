@@ -39,6 +39,7 @@ export function ClientPicker({
   emptyLabel = INTERNAL_CLIENT_LABEL,
   className = inputClass,
   labelClassName = labelClass,
+  searchable: allowSearch = true,
 }: {
   id?: string
   label?: string
@@ -50,6 +51,8 @@ export function ClientPicker({
   emptyLabel?: string
   className?: string
   labelClassName?: string
+  /** Show the search box once the list is long. Compact filter bars turn it off. */
+  searchable?: boolean
 }) {
   const generatedId = useId()
   const selectId = id || `${generatedId}-client`
@@ -60,7 +63,7 @@ export function ClientPicker({
     const selected = allOptions.find((client) => String(client.id) === value)
     return selected && !matches.includes(selected) ? [selected, ...matches] : matches
   }, [allOptions, query, value])
-  const searchable = allOptions.length > 6
+  const searchable = allowSearch && allOptions.length > 6
 
   return (
     <div>
@@ -109,6 +112,7 @@ export function PeriodPicker({
   emptyLabel = 'No period',
   className = inputClass,
   labelClassName = labelClass,
+  stacked = false,
 }: {
   idPrefix?: string
   label?: string
@@ -120,6 +124,8 @@ export function PeriodPicker({
   emptyLabel?: string
   className?: string
   labelClassName?: string
+  /** Narrow columns (filter bars): put the month/quarter and year under the type. */
+  stacked?: boolean
 }) {
   const generatedId = useId()
   const prefix = idPrefix || generatedId
@@ -152,7 +158,7 @@ export function PeriodPicker({
       <legend className={labelClassName}>
         {label}{hint && <span className="font-normal text-text-muted"> {hint}</span>}
       </legend>
-      <div className={`grid gap-2 ${type === 'month' || type === 'quarter' ? 'grid-cols-1 sm:grid-cols-[1fr_1.2fr_1fr]' : type === 'year' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+      <div className={`grid gap-2 ${stacked ? (type === 'month' || type === 'quarter' ? 'grid-cols-2 [&>*:first-child]:col-span-2' : 'grid-cols-1') : type === 'month' || type === 'quarter' ? 'grid-cols-1 sm:grid-cols-[1fr_1.2fr_1fr]' : type === 'year' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
         <select id={`${prefix}-period-type`} aria-label={`${label} type`} value={type} onChange={(event) => changeType(event.target.value)} className={className}>
           <option value="">{emptyLabel}</option>
           {PERIOD_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
