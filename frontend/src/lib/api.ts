@@ -687,6 +687,9 @@ export interface TimeEntry {
     id: number;
     name: string;
   } | null;
+  period_type?: 'month' | 'quarter' | 'year' | null;
+  period_start?: string | null;
+  period_label?: string | null;
   linked_operation_task: {
     id: number;
     title: string;
@@ -695,6 +698,23 @@ export interface TimeEntry {
   created_at: string;
   updated_at: string;
   review_flags?: HoursReportReviewFlag[];
+}
+
+export interface ClockOutWorkDetails {
+  client_id?: number | null;
+  service_type_id?: number | null;
+  service_task_id?: number | null;
+  period_type?: 'month' | 'quarter' | 'year' | null;
+  period_start?: string | null;
+}
+
+export interface ClientPickerOption {
+  id: number;
+  name: string;
+  client_type: 'individual' | 'business' | null;
+  business_name: string | null;
+  first_name: string;
+  last_name: string;
 }
 
 export interface ClockStatus {
@@ -862,7 +882,30 @@ export interface HoursReportEntry {
   tax_return: { id: number; tax_year: number } | null;
   service_type: { id: number; name: string; color?: string | null } | null;
   service_task: { id: number; name: string } | null;
+  category_label?: string | null;
+  period_type?: 'month' | 'quarter' | 'year' | null;
+  period_start?: string | null;
+  period_label?: string | null;
   breaks: Array<{ id: number; start_time: string | null; end_time: string | null; duration_minutes: number | null }>;
+}
+
+/** Hours grouped by client -> category -> task -> period. */
+export interface HoursReportWorkBreakdownRow {
+  client_id: number | null;
+  client_name: string;
+  service_type_id: number | null;
+  time_category_id: number | null;
+  category_name: string;
+  legacy_category: boolean;
+  service_task_id: number | null;
+  task_name: string;
+  period_type: 'month' | 'quarter' | 'year' | null;
+  period_start: string | null;
+  period_label: string;
+  total_hours: number;
+  regular_hours: number;
+  overtime_hours: number;
+  entries_count: number;
 }
 
 export type HoursReportReviewFlag = 'uncategorized' | 'missing_client' | 'missing_description' | 'long_shift' | 'overlap';
@@ -939,6 +982,7 @@ export interface HoursReportEmployee {
   categories: HoursReportGroup[];
   clients: HoursReportGroup[];
   services: HoursReportGroup[];
+  work_breakdown?: HoursReportWorkBreakdownRow[];
   weeks: HoursReportWeek[];
 }
 
@@ -988,6 +1032,8 @@ export interface HoursReportParams {
   client_id?: number;
   service_type_id?: number;
   service_task_id?: number;
+  period_type?: 'month' | 'quarter' | 'year';
+  period_start?: string;
   entry_method?: 'clock' | 'manual';
   approval_status?: 'pending' | 'approved' | 'denied' | 'approved_or_standard';
   overtime_status?: 'none' | 'pending' | 'approved' | 'denied';
@@ -1460,6 +1506,10 @@ export const api = {
     fetchApiPublic<{ workflow_stages: WorkflowStage[] }>('/api/v1/workflow_stages'),
 
   // Clients
+  /** Every active client for pickers, labeled (business name or First Last) and sorted by that label. */
+  getClientOptions: () =>
+    fetchApi<{ clients: ClientPickerOption[] }>('/api/v1/clients/options'),
+
   getClients: (params?: { 
     page?: number; 
     search?: string; 
@@ -1997,6 +2047,8 @@ export const api = {
     client_id?: number;
     service_type_id?: number;
     service_task_id?: number;
+    period_type?: 'month' | 'quarter' | 'year';
+    period_start?: string;
     user_id?: number;
     entry_method?: 'clock' | 'manual';
     approval_status?: 'pending' | 'approved' | 'denied' | 'approved_or_standard';
@@ -2014,6 +2066,8 @@ export const api = {
     if (params?.client_id) searchParams.set('client_id', params.client_id.toString());
     if (params?.service_type_id) searchParams.set('service_type_id', params.service_type_id.toString());
     if (params?.service_task_id) searchParams.set('service_task_id', params.service_task_id.toString());
+    if (params?.period_type) searchParams.set('period_type', params.period_type);
+    if (params?.period_start) searchParams.set('period_start', params.period_start);
     if (params?.user_id) searchParams.set('user_id', params.user_id.toString());
     if (params?.entry_method) searchParams.set('entry_method', params.entry_method);
     if (params?.approval_status) searchParams.set('approval_status', params.approval_status);
@@ -2031,12 +2085,14 @@ export const api = {
     end_time: string;
     description?: string;
     time_category_id?: number;
-    client_id?: number;
+    client_id?: number | null;
     tax_return_id?: number;
     break_minutes?: number | null;
     user_id?: number;
-    service_type_id?: number;
-    service_task_id?: number;
+    service_type_id?: number | null;
+    service_task_id?: number | null;
+    period_type?: 'month' | 'quarter' | 'year' | null;
+    period_start?: string | null;
     operation_task_id?: number;
   }) =>
     fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries', (() => {
@@ -2058,6 +2114,8 @@ export const api = {
     break_minutes: number | null;
     service_type_id: number | null;
     service_task_id: number | null;
+    period_type: 'month' | 'quarter' | 'year' | null;
+    period_start: string | null;
     operation_task_id: number;
     breaks: Array<{ id?: number; start_time: string; end_time: string; _destroy?: boolean }>;
   }>, correctionReason?: string) =>
@@ -2085,14 +2143,18 @@ export const api = {
       }),
     }),
 
-  clockOut: (correctedEndTime?: string, description?: string) =>
-    fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/clock_out', {
+  clockOut: (correctedEndTime?: string, description?: string, workDetails?: ClockOutWorkDetails) => {
+    const details = Object.fromEntries(Object.entries(workDetails || {}).filter(([, value]) => value !== null && value !== undefined && value !== ''));
+    const body = {
+      ...(correctedEndTime ? { corrected_end_time: correctedEndTime } : {}),
+      ...(description ? { description } : {}),
+      ...details,
+    };
+    return fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/clock_out', {
       method: 'POST',
-      ...((correctedEndTime || description) ? { body: JSON.stringify({
-        ...(correctedEndTime ? { corrected_end_time: correctedEndTime } : {}),
-        ...(description ? { description } : {}),
-      }) } : {}),
-    }),
+      ...(Object.keys(body).length ? { body: JSON.stringify(body) } : {}),
+    });
+  },
 
   startBreak: () =>
     fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/start_break', {
