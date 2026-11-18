@@ -150,7 +150,7 @@ export default function HoursReportWorkspace({
   const breakdownRows = useMemo(() => {
     const rows = new Map<string, HoursReportWorkBreakdownRow>()
     report?.employees.forEach(employee => (employee.work_breakdown || []).forEach(row => {
-      const key = [row.client_id, row.service_type_id, row.time_category_id, row.service_task_id, row.period_type, row.period_start].join('|')
+      const key = breakdownRowKey(row)
       const current = rows.get(key)
       if (current) {
         current.total_hours += row.total_hours
@@ -185,7 +185,7 @@ export default function HoursReportWorkspace({
     return [...rows.values()].sort((a, b) => b.hours - a.hours)
   }, [report, breakdownRows, hasBreakdown])
 
-  const taskRows = useMemo(() => sumBreakdownBy(breakdownRows, row => row.task_name === 'No task' ? 'No task' : `${row.category_name} / ${row.task_name}`), [breakdownRows])
+  const taskRows = useMemo(() => sumBreakdownBy(breakdownRows, row => row.service_task_id === null ? 'No task' : `${row.category_name} / ${row.task_name}`), [breakdownRows])
   const periodRows = useMemo(() => sumBreakdownBy(breakdownRows, row => row.period_label), [breakdownRows])
 
   const clientRows = useMemo(() => {
@@ -227,7 +227,7 @@ export default function HoursReportWorkspace({
   const issueCards: Array<{ filter: ReviewFilter; label: string; count: number; note: string }> = report ? [
     { filter: 'uncategorized', label: 'Uncategorized', count: report.quality.uncategorized_count, note: 'Assign a work category' },
     { filter: 'missing_client', label: 'No client assigned', count: report.quality.missing_client_count, note: 'May be valid for internal work' },
-    { filter: 'missing_description', label: 'Missing description', count: report.quality.missing_description_count, note: 'Add context for the work' },
+    { filter: 'missing_description', label: 'Missing comments', count: report.quality.missing_description_count, note: 'Add context for the work' },
     { filter: 'long_shift', label: `Long shifts (${report.quality.long_shift_threshold_hours}h+)`, count: report.quality.long_shift_count, note: 'Verify unusually long entries' },
     { filter: 'overlap', label: 'Overlapping time', count: report.quality.overlapping_entry_count, note: 'Two entries cover the same time' },
     { filter: 'unresolved', label: 'Excluded / unresolved', count: unresolvedEntries.length, note: 'Pending, denied, or open time' },
@@ -524,6 +524,11 @@ function EntryCard({ entry, onEdit, showFlags = false }: { entry: TimeEntry; onE
   )
 }
 
+/** One key per client/category/task/period row; period type matters (Jan month vs Q1 share a start). */
+function breakdownRowKey(row: HoursReportWorkBreakdownRow) {
+  return [row.client_id, row.service_type_id, row.time_category_id, row.service_task_id, row.period_type, row.period_start].join('|')
+}
+
 function sumBreakdownBy(breakdownRows: HoursReportWorkBreakdownRow[], labelFor: (row: HoursReportWorkBreakdownRow) => string) {
   const rows = new Map<string, { name: string; hours: number; entries: number }>()
   breakdownRows.forEach(row => {
@@ -553,7 +558,7 @@ function WorkBreakdownTable({ rows }: { rows: HoursReportWorkBreakdownRow[] }) {
         <p className="mt-0.5 text-xs text-text-muted">Approved hours grouped the way staff log them.</p>
       </div>
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full text-left text-sm">
+        <table aria-labelledby="work-breakdown-title" className="w-full text-left text-sm">
           <thead className="bg-white text-xs uppercase tracking-[0.12em] text-text-muted">
             <tr>
               <th scope="col" className="px-4 py-2 font-semibold">Client</th>
@@ -566,7 +571,7 @@ function WorkBreakdownTable({ rows }: { rows: HoursReportWorkBreakdownRow[] }) {
           </thead>
           <tbody className="divide-y divide-neutral-warm">
             {rows.map(row => (
-              <tr key={[row.client_id, row.service_type_id, row.time_category_id, row.service_task_id, row.period_start].join('|')}>
+              <tr key={breakdownRowKey(row)}>
                 <td className="px-4 py-2 font-medium text-primary-dark">{row.client_name}</td>
                 <td className="px-4 py-2 text-primary-dark">{row.category_name}</td>
                 <td className="px-4 py-2 text-primary-dark">{row.task_name}</td>
@@ -580,12 +585,15 @@ function WorkBreakdownTable({ rows }: { rows: HoursReportWorkBreakdownRow[] }) {
       </div>
       <ul className="divide-y divide-neutral-warm md:hidden">
         {rows.map(row => (
-          <li key={[row.client_id, row.service_type_id, row.time_category_id, row.service_task_id, row.period_start].join('|')} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3">
+          <li key={breakdownRowKey(row)} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3">
             <div className="min-w-0">
               <p className="truncate font-medium text-primary-dark">{row.client_name}</p>
               <p className="text-xs text-text-muted">{[row.category_name, row.task_name, row.period_label].join(' · ')}</p>
             </div>
-            <p className="font-semibold tabular-nums text-primary">{formatHours(row.total_hours)}</p>
+            <div className="text-right">
+              <p className="font-semibold tabular-nums text-primary">{formatHours(row.total_hours)}</p>
+              <p className="text-xs tabular-nums text-text-muted">{row.entries_count} {row.entries_count === 1 ? 'entry' : 'entries'}</p>
+            </div>
           </li>
         ))}
       </ul>

@@ -123,4 +123,26 @@ describe('TimeEntryWorkFields', () => {
       description: '',
     })
   })
+
+  it('counts only real matches when the selected client does not match the search', () => {
+    render(<Harness initial={{ ...EMPTY_WORK_FIELDS, client_id: '1' }} />)
+
+    fireEvent.change(screen.getByLabelText('Search client list'), { target: { value: 'zzz' } })
+
+    expect(screen.getByText('No clients match')).toBeInTheDocument()
+    // The selection itself stays in the list.
+    expect(optionNames(screen.getByLabelText(/^Client/, { selector: 'select' }))).toContain("MoSa's")
+  })
+
+  it('keeps showing a stored legacy category after a current category is added', () => {
+    render(
+      <Harness
+        initial={{ ...EMPTY_WORK_FIELDS, service_type_id: '1' }}
+        current={{ service_type: { id: 1, name: 'Bookkeeping' }, time_category: { id: 9, name: 'Tax Prep' } }}
+      />,
+    )
+
+    expect(screen.getByText('Tax Prep')).toBeInTheDocument()
+    expect(screen.getByText(/stays on record alongside the category above/)).toBeInTheDocument()
+  })
 })

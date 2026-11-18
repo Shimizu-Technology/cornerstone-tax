@@ -721,6 +721,16 @@ export interface ClockStatus {
   clocked_in: boolean;
   status: 'clocked_in' | 'on_break' | 'completed' | null;
   entry_id: number | null;
+  work_date?: string | null;
+  work_details?: {
+    client: { id: number; name: string } | null;
+    service_type: { id: number; name: string } | null;
+    service_task: { id: number; name: string } | null;
+    time_category: { id: number; name: string } | null;
+    period_type: 'month' | 'quarter' | 'year' | null;
+    period_start: string | null;
+    description: string | null;
+  } | null;
   clock_in_at: string | null;
   elapsed_minutes: number | null;
   break_minutes: number;
@@ -2143,11 +2153,17 @@ export const api = {
       }),
     }),
 
-  clockOut: (correctedEndTime?: string, description?: string, workDetails?: ClockOutWorkDetails) => {
-    const details = Object.fromEntries(Object.entries(workDetails || {}).filter(([, value]) => value !== null && value !== undefined && value !== ''));
+  /**
+   * Work details that are present (including null) replace the saved values;
+   * omitted keys are kept. timeEntryId makes the server reject the request if
+   * the active clock-in changed since the form opened.
+   */
+  clockOut: (correctedEndTime?: string, description?: string, workDetails?: ClockOutWorkDetails, timeEntryId?: number | null) => {
+    const details = Object.fromEntries(Object.entries(workDetails || {}).filter(([, value]) => value !== undefined));
     const body = {
       ...(correctedEndTime ? { corrected_end_time: correctedEndTime } : {}),
       ...(description ? { description } : {}),
+      ...(timeEntryId ? { time_entry_id: timeEntryId } : {}),
       ...details,
     };
     return fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/clock_out', {

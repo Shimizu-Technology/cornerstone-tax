@@ -12,6 +12,8 @@ interface ApprovalQueueProps {
   canDeleteEntry?: (entry: TimeEntry) => boolean
   clients?: ClientOption[]
   serviceTypes?: ServiceType[]
+  catalogError?: string | null
+  onRetryCatalog?: () => void
 }
 
 type DateMode = 'all' | 'exact' | 'range' | 'through' | 'since'
@@ -153,7 +155,7 @@ function SummaryMetric({ label, value, sublabel, tone = 'default' }: { label: st
   )
 }
 
-export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], serviceTypes = [] }: ApprovalQueueProps) {
+export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], serviceTypes = [], catalogError, onRetryCatalog }: ApprovalQueueProps) {
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([])
   const [entries, setEntries] = useState<TimeEntry[]>([])
   const [categories, setCategories] = useState<TimeCategory[]>([])
@@ -600,6 +602,8 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
         entry={editingEntry}
         serviceTypes={serviceTypes}
         clients={clients}
+        catalogError={catalogError}
+        onRetryCatalog={onRetryCatalog}
         canDelete={!!editingEntry && (canDeleteEntry?.(editingEntry) ?? false)}
         onClose={() => setEditingEntry(null)}
         onSaved={handleEditSaved}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import type { ServiceType } from '../../lib/api'
 import { isPeriodType, type ClientOption, type PeriodType, type WorkPeriod } from '../../lib/timeEntryWork'
@@ -64,26 +64,84 @@ export function workFieldsPayload(value: WorkFieldsValue) {
   }
 }
 
-/** Loads the active categories (with tasks) and the client picker list. */
+export type WorkFieldsPayload = ReturnType<typeof workFieldsPayload>
+
+/**
+ * Only the work fields the user changed, so saving an edit never overwrites
+ * details someone else saved meanwhile. Category and task travel together
+ * when the category changes, as do the two period fields.
+ */
+export function changedWorkFieldsPayload(initial: WorkFieldsValue, current: WorkFieldsValue): Partial<WorkFieldsPayload> {
+  const before = workFieldsPayload(initial)
+  const after = workFieldsPayload(current)
+  const changes: Partial<WorkFieldsPayload> = {}
+
+  if (before.client_id !== after.client_id) changes.client_id = after.client_id
+  if (before.service_type_id !== after.service_type_id) {
+    changes.service_type_id = after.service_type_id
+    changes.service_task_id = after.service_task_id
+  } else if (before.service_task_id !== after.service_task_id) {
+    changes.service_task_id = after.service_task_id
+  }
+  if (before.period_type !== after.period_type || before.period_start !== after.period_start) {
+    changes.period_type = after.period_type
+    changes.period_start = after.period_start
+  }
+  if (before.description !== after.description) changes.description = after.description
+
+  return changes
+}
+
+/**
+ * Loads the active categories (with tasks) and the client picker list.
+ * A failed request is not cached: `error` explains it and `retry` reloads
+ * only what failed, keeping whatever already loaded.
+ */
 export function useTimeEntryWorkOptions(enabled = true) {
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const [loadedParts, setLoadedParts] = useState({ serviceTypes: false, clients: false })
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  // Read inside the effect without re-running it when one part finishes.
+  const loadedRef = useRef(loadedParts)
+  const loaded = loadedParts.serviceTypes && loadedParts.clients
 
   useEffect(() => {
-    if (!enabled || loaded) return
+    if (!enabled) return
+    const done = loadedRef.current
+    if (done.serviceTypes && done.clients) return
     let cancelled = false
-    Promise.all([api.getServiceTypes(), api.getClientOptions()])
-      .then(([serviceTypeResponse, clientResponse]) => {
-        if (cancelled) return
-        if (serviceTypeResponse.data) setServiceTypes(serviceTypeResponse.data.service_types)
-        if (clientResponse.data) setClients(clientResponse.data.clients)
-        setLoaded(true)
-      })
-      .catch(() => undefined)
+
+    const markLoaded = (part: 'serviceTypes' | 'clients') => {
+      loadedRef.current = { ...loadedRef.current, [part]: true }
+      setLoadedParts(loadedRef.current)
+    }
+    const typesRequest = done.serviceTypes ? Promise.resolve(true) : api.getServiceTypes().then((response) => {
+      if (cancelled || !response.data) return false
+      setServiceTypes(response.data.service_types)
+      markLoaded('serviceTypes')
+      return true
+    }).catch(() => false)
+    const clientsRequest = done.clients ? Promise.resolve(true) : api.getClientOptions().then((response) => {
+      if (cancelled || !response.data) return false
+      setClients(response.data.clients)
+      markLoaded('clients')
+      return true
+    }).catch(() => false)
+
+    void Promise.all([typesRequest, clientsRequest]).then(([typesOk, clientsOk]) => {
+      if (cancelled) return
+      const failed = [typesOk ? null : 'categories', clientsOk ? null : 'clients'].filter(Boolean)
+      setError(failed.length ? `Couldn't load ${failed.join(' or ')}. Check your connection and try again.` : null)
+    })
     return () => { cancelled = true }
-  }, [enabled, loaded])
+  }, [enabled, attempt])
 
-  return { serviceTypes, clients, loaded }
+  const retry = useCallback(() => {
+    setError(null)
+    setAttempt((value) => value + 1)
+  }, [])
+
+  return { serviceTypes, clients, loaded, error, retry }
 }
-

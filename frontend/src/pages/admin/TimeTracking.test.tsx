@@ -3,7 +3,6 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TimeTracking from './TimeTracking'
 import { formatDateISO } from '../../lib/dateUtils'
-import { reportPeriodForPreset } from '../../lib/reportPeriods'
 
 const apiMocks = vi.hoisted(() => ({
   getTimeEntries: vi.fn(),
@@ -104,8 +103,7 @@ describe('TimeTracking reports', () => {
       .mockResolvedValueOnce({ data: successfulReport })
       .mockResolvedValueOnce({ error: 'Unable to load report' })
 
-    renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: 'Reports' }))
+    renderPage('/admin/time?tab=reports&start_date=2026-09-01&end_date=2026-09-21')
 
     expect(await screen.findByText('130.30h')).toBeInTheDocument()
 
@@ -113,8 +111,7 @@ describe('TimeTracking reports', () => {
 
     await waitFor(() => {
       expect(apiMocks.getHoursReport).toHaveBeenLastCalledWith(expect.objectContaining({
-        // The page opens on the current month; only the end date changes.
-        start_date: reportPeriodForPreset('this_month').start,
+        start_date: '2026-09-01',
         end_date: '2026-12-31',
       }))
     })
@@ -163,6 +160,29 @@ describe('TimeTracking reports', () => {
       end_date: '2026-09-21',
       status: 'terminated',
     })))
+  })
+
+  it('drops report URL filters the controls cannot show', async () => {
+    apiMocks.getHoursReport.mockResolvedValue({ data: successfulReport })
+
+    renderPage('/admin/time?tab=reports&start_date=2026-07-01&end_date=2026-07-31&service_type_id=3&time_category_id=9&period_type=quarter')
+
+    await waitFor(() => expect(apiMocks.getHoursReport).toHaveBeenCalled())
+    const params = apiMocks.getHoursReport.mock.calls[0][0]
+    expect(params).toMatchObject({ service_type_id: 3 })
+    expect(params).not.toHaveProperty('time_category_id')
+    expect(params).not.toHaveProperty('period_type')
+  })
+
+  it('drops a task filter that has no category', async () => {
+    apiMocks.getHoursReport.mockResolvedValue({ data: successfulReport })
+
+    renderPage('/admin/time?tab=reports&start_date=2026-07-01&end_date=2026-07-31&service_task_id=7&time_category_id=9')
+
+    await waitFor(() => expect(apiMocks.getHoursReport).toHaveBeenCalled())
+    const params = apiMocks.getHoursReport.mock.calls[0][0]
+    expect(params).not.toHaveProperty('service_task_id')
+    expect(params).toMatchObject({ time_category_id: 9 })
   })
 
   it('restores category, task and period report filters from the URL', async () => {
@@ -331,7 +351,27 @@ describe('TimeTracking log time', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
     await waitFor(() => expect(apiMocks.updateTimeEntry).toHaveBeenCalled())
     const payload = apiMocks.updateTimeEntry.mock.calls[0][1]
-    expect(payload).not.toHaveProperty('time_category_id')
-    expect(payload).toMatchObject({ client_id: 6, service_type_id: null, period_type: null, description: 'Old work' })
+    // Nothing in the work details changed, so none of them (and never the legacy category) are sent.
+    for (const key of ['time_category_id', 'client_id', 'service_type_id', 'service_task_id', 'period_type', 'period_start', 'description']) {
+      expect(payload).not.toHaveProperty(key)
+    }
+    expect(payload).toMatchObject({ start_time: '09:00', end_time: '10:00' })
+  })
+
+  it('shows a retry when categories or clients fail to load', async () => {
+    apiMocks.getServiceTypes
+      .mockResolvedValueOnce({ error: 'Server error' })
+      .mockResolvedValueOnce({ data: { service_types: serviceTypes } })
+
+    renderPage('/admin/time')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't load categories")
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    expect(apiMocks.getServiceTypes).toHaveBeenCalledTimes(2)
+    // Clients loaded the first time and are not refetched.
+    expect(apiMocks.getClientOptions).toHaveBeenCalledTimes(1)
   })
 })

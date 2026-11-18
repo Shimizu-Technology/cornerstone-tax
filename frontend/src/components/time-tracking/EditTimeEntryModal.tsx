@@ -4,7 +4,7 @@ import { api } from '../../lib/api'
 import type { ServiceType } from '../../lib/api'
 import type { ClientOption } from '../../lib/timeEntryWork'
 import TimeEntryWorkFields from './TimeEntryWorkFields'
-import { EMPTY_WORK_FIELDS, workFieldsFromEntry, workFieldsPayload, type WorkFieldsValue } from './timeEntryWorkForm'
+import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, workFieldsFromEntry, type WorkFieldsValue } from './timeEntryWorkForm'
 
 interface EditableTimeEntry {
   id: number
@@ -51,6 +51,8 @@ interface EditTimeEntryModalProps {
   entry: EditableTimeEntry | null
   serviceTypes?: ServiceType[]
   clients?: ClientOption[]
+  catalogError?: string | null
+  onRetryCatalog?: () => void
   canDelete: boolean
   onClose: () => void
   onSaved: () => void | Promise<void>
@@ -95,6 +97,8 @@ export default function EditTimeEntryModal({
   entry,
   serviceTypes = [],
   clients = [],
+  catalogError,
+  onRetryCatalog,
   canDelete,
   onClose,
   onSaved,
@@ -175,7 +179,8 @@ export default function EditTimeEntryModal({
       const payload = {
         work_date: formData.work_date,
         start_time: formData.start_time,
-        ...workFieldsPayload(workFields),
+        // Only what the user changed, so concurrent edits are not overwritten.
+        ...changedWorkFieldsPayload(workFieldsFromEntry(entry), workFields),
         ...(isActiveClockEntry ? {} : {
           end_time: formData.end_time,
           break_minutes: formData.break_minutes,
@@ -410,6 +415,8 @@ export default function EditTimeEntryModal({
                       serviceTypes={serviceTypes}
                       current={entry}
                       referenceDate={formData.work_date}
+                      loadError={catalogError}
+                      onRetry={onRetryCatalog}
                     />
                   </div>
 

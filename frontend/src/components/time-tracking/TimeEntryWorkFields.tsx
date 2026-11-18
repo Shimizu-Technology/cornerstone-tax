@@ -18,7 +18,7 @@ import {
 } from '../../lib/timeEntryWork'
 import type { CurrentWorkSelection, WorkFieldsValue } from './timeEntryWorkForm'
 
-const inputClass = 'w-full rounded-lg border border-neutral-warm bg-white px-3 py-2 text-base sm:text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-neutral-warm/30 disabled:text-text-muted'
+const inputClass = 'min-h-11 w-full rounded-lg border border-neutral-warm bg-white px-3 py-2 text-base sm:text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-neutral-warm/30 disabled:text-text-muted'
 const labelClass = 'mb-1 block text-sm font-medium text-primary-dark'
 
 interface NamedRef { id: number; name: string }
@@ -58,11 +58,13 @@ export function ClientPicker({
   const selectId = id || `${generatedId}-client`
   const [query, setQuery] = useState('')
   const allOptions = useMemo(() => sortClientOptions(withCurrent<ClientOption>(clients, current ?? null)), [clients, current])
+  const matches = useMemo(() => filterClientOptions(allOptions, query), [allOptions, query])
+  // The current selection stays in the list even when it doesn't match, but
+  // the match count only reflects real matches.
   const visibleOptions = useMemo(() => {
-    const matches = filterClientOptions(allOptions, query)
     const selected = allOptions.find((client) => String(client.id) === value)
     return selected && !matches.includes(selected) ? [selected, ...matches] : matches
-  }, [allOptions, query, value])
+  }, [allOptions, matches, value])
   const searchable = allowSearch && allOptions.length > 6
 
   return (
@@ -88,7 +90,7 @@ export function ClientPicker({
       </select>
       {searchable && query && (
         <p className="mt-1 text-xs text-text-muted" aria-live="polite">
-          {visibleOptions.length === 0 ? 'No clients match' : `${visibleOptions.length} match${visibleOptions.length === 1 ? '' : 'es'}`}
+          {matches.length === 0 ? 'No clients match' : `${matches.length} match${matches.length === 1 ? '' : 'es'}`}
         </p>
       )}
     </div>
@@ -224,6 +226,8 @@ export default function TimeEntryWorkFields({
   referenceDate,
   commentsPlaceholder = 'Optional notes about this work',
   idPrefix,
+  loadError,
+  onRetry,
 }: {
   value: WorkFieldsValue
   onChange: (value: WorkFieldsValue) => void
@@ -233,6 +237,9 @@ export default function TimeEntryWorkFields({
   referenceDate?: string
   commentsPlaceholder?: string
   idPrefix?: string
+  /** Shown when the category or client lists failed to load. */
+  loadError?: string | null
+  onRetry?: () => void
 }) {
   const generatedId = useId()
   const prefix = idPrefix || generatedId
@@ -244,12 +251,23 @@ export default function TimeEntryWorkFields({
   const categoryTasks = [...(selectedCategory?.tasks || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name))
   const currentTask = current?.service_task && String(current.service_type?.id) === value.service_type_id ? { ...current.service_task, inactive: true } : null
   const taskOptions = withCurrent<NamedRef & { inactive?: boolean }>(categoryTasks, currentTask)
-  const legacyCategory = !current?.service_type && current?.time_category ? current.time_category : null
+  const legacyCategory = current?.time_category ?? null
+  const legacyOnly = Boolean(legacyCategory && !current?.service_type)
 
   const update = (patch: Partial<WorkFieldsValue>) => onChange({ ...value, ...patch })
 
   return (
     <div className="space-y-4" data-testid="time-entry-work-fields">
+      {loadError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <span>{loadError}</span>
+          {onRetry && (
+            <button type="button" onClick={onRetry} className="min-h-11 rounded-lg border border-red-300 bg-white px-3 text-sm font-semibold text-red-700 hover:bg-red-100">
+              Try again
+            </button>
+          )}
+        </div>
+      )}
       <ClientPicker
         id={`${prefix}-client`}
         hint="(optional)"
@@ -274,7 +292,8 @@ export default function TimeEntryWorkFields({
         </select>
         {legacyCategory && (
           <p className="mt-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800">
-            Legacy category: <span className="font-semibold">{legacyCategory.name}</span>. It stays on this entry; choose a category to add the new detail.
+            Legacy category: <span className="font-semibold">{legacyCategory.name}</span>.{' '}
+            {legacyOnly ? 'It stays on this entry; choose a category to add the new detail.' : 'It stays on record alongside the category above.'}
           </p>
         )}
       </div>

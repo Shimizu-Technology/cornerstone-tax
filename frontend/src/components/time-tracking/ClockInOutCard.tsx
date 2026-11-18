@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
 import type { ClockStatus } from '../../lib/api'
 import TimeEntryWorkFields from './TimeEntryWorkFields'
-import { EMPTY_WORK_FIELDS, useTimeEntryWorkOptions, workFieldsPayload, type WorkFieldsValue } from './timeEntryWorkForm'
+import { EMPTY_WORK_FIELDS, useTimeEntryWorkOptions, workFieldsFromEntry, workFieldsPayload, type WorkFieldsValue } from './timeEntryWorkForm'
 
 interface ClockInOutCardProps {
   onStatusChange?: () => void
@@ -23,6 +23,9 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
   const [showClockOutModal, setShowClockOutModal] = useState(false)
   const [correctionTime, setCorrectionTime] = useState('')
   const [clockOutWork, setClockOutWork] = useState<WorkFieldsValue>(EMPTY_WORK_FIELDS)
+  // Which clock-in the draft belongs to; a failed clock-out keeps the draft
+  // for a retry on the same entry.
+  const [clockOutDraftEntryId, setClockOutDraftEntryId] = useState<number | null>(null)
   const workOptions = useTimeEntryWorkOptions(showClockOutModal)
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
@@ -158,7 +161,10 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
     } else {
       setCorrectionTime('')
     }
-    setClockOutWork(EMPTY_WORK_FIELDS)
+    if (!status?.entry_id || status.entry_id !== clockOutDraftEntryId) {
+      setClockOutWork(status?.work_details ? workFieldsFromEntry(status.work_details) : EMPTY_WORK_FIELDS)
+      setClockOutDraftEntryId(status?.entry_id ?? null)
+    }
     setShowClockOutModal(true)
   }
 
@@ -172,11 +178,13 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
         return `${guamDate}T${correctionTime}:00`
       })() : undefined
       const { description, ...workDetails } = workFieldsPayload(clockOutWork)
-      const result = await api.clockOut(correctedEnd, description.trim() || undefined, workDetails)
+      const result = await api.clockOut(correctedEnd, description.trim() || undefined, workDetails, status?.entry_id)
       if (result?.error) {
         setError(result.error)
         await fetchStatus()
       } else {
+        setClockOutWork(EMPTY_WORK_FIELDS)
+        setClockOutDraftEntryId(null)
         await fetchStatus()
         onStatusChange?.()
       }
@@ -475,6 +483,10 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
                   onChange={setClockOutWork}
                   clients={workOptions.clients}
                   serviceTypes={workOptions.serviceTypes}
+                  current={status?.work_details}
+                  referenceDate={status?.work_date || undefined}
+                  loadError={workOptions.error}
+                  onRetry={workOptions.retry}
                   commentsPlaceholder="e.g. Worked on Ms. Tajalle's 1040, filed Mr. Cruz's extension..."
                 />
               </div>
@@ -525,7 +537,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
                 {correctionTime ? `Clock Out at ${fmt12(correctionTime)}` : 'Clock Out'}
               </button>
               <button
-                onClick={() => setShowClockOutModal(false)}
+                onClick={() => { setShowClockOutModal(false); setClockOutDraftEntryId(null) }}
                 className="min-h-[44px] px-5 border border-gray-300 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 transition-colors"
               >
                 Cancel

@@ -13,17 +13,15 @@ import ApprovalQueue from '../../components/time-tracking/ApprovalQueue'
 import WhosWorking from '../../components/time-tracking/WhosWorking'
 import HoursReportWorkspace, { type HoursReportFilters, type ReportView } from '../../components/time-tracking/HoursReportWorkspace'
 import TimeEntryWorkFields, { CategoryFilterSelect, ClientPicker, PeriodPicker } from '../../components/time-tracking/TimeEntryWorkFields'
-import { EMPTY_WORK_FIELDS, workFieldsFromEntry, workFieldsPayload, type WorkFieldsValue } from '../../components/time-tracking/timeEntryWorkForm'
-import type { ServiceType } from '../../lib/api'
+import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, useTimeEntryWorkOptions, workFieldsFromEntry, workFieldsPayload, type WorkFieldsValue } from '../../components/time-tracking/timeEntryWorkForm'
+import { buildHoursReportParams, normalizeReportFilters } from '../../lib/hoursReportParams'
 import {
   categoryFilterValue,
-  isPeriodType,
   parseCategoryFilter,
   periodLabel,
   workCategory,
   workCategoryText,
   workSummary,
-  type ClientOption,
 } from '../../lib/timeEntryWork'
 
 // Local types to avoid Vite caching issues
@@ -177,8 +175,9 @@ export default function TimeTracking() {
   const [entries, setEntries] = useState<TimeEntryItem[]>([])
   const [entrySummary, setEntrySummary] = useState({ total_hours: 0, total_break_hours: 0, entry_count: 0 })
   const [categories, setCategories] = useState<TimeCategory[]>([])
-  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
-  const [clients, setClients] = useState<ClientOption[]>([])
+  // Categories (with tasks) and the client picker list; errors stay visible with a retry.
+  const workOptions = useTimeEntryWorkOptions()
+  const { serviceTypes, clients } = workOptions
   const [users, setUsers] = useState<UserOption[]>([])
   const [pendingApprovalSummary, setPendingApprovalSummary] = useState<PendingApprovalsSummary | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -208,7 +207,7 @@ export default function TimeTracking() {
   const [showDenied, setShowDenied] = useState(false)
   
   // Report filters
-  const [reportFilters, setReportFilters] = useState<HoursReportFilters>({
+  const [reportFilters, setReportFilters] = useState<HoursReportFilters>(() => normalizeReportFilters({
     start_date: initialReportPeriod.start,
     end_date: initialReportPeriod.end,
     user_id: searchParams.get('user_id') || '',
@@ -216,12 +215,12 @@ export default function TimeTracking() {
     client_id: searchParams.get('client_id') || '',
     service_type_id: searchParams.get('service_type_id') || '',
     service_task_id: searchParams.get('service_task_id') || '',
-    period_type: isPeriodType(searchParams.get('period_type')) ? searchParams.get('period_type') || '' : '',
-    period_start: isPeriodType(searchParams.get('period_type')) ? searchParams.get('period_start') || '' : '',
+    period_type: searchParams.get('period_type') || '',
+    period_start: searchParams.get('period_start') || '',
     status: searchParams.get('status') || '',
     entry_method: searchParams.get('entry_method') || '',
     overtime_status: searchParams.get('overtime_status') || '',
-  })
+  }))
   const requestedReportView = searchParams.get('report_view')
   const [reportView, setReportView] = useState<ReportView>(requestedReportView === 'people' || requestedReportView === 'daily' || requestedReportView === 'review' ? requestedReportView : 'overview')
   const [reportData, setReportData] = useState<TimeEntryItem[]>([])
@@ -356,24 +355,14 @@ export default function TimeTracking() {
   // Load categories, clients, and users
   const loadOptions = useCallback(async () => {
     try {
-      const [catResponse, serviceTypeResponse, clientResponse, userResponse, currentUserResponse] = await Promise.all([
+      const [catResponse, userResponse, currentUserResponse] = await Promise.all([
         api.getTimeCategories(),
-        api.getServiceTypes(),
-        api.getClientOptions(),
         api.getUsers({ include_terminated: true }),
         api.getCurrentUser()
       ])
 
       if (catResponse.data) {
         setCategories(catResponse.data.time_categories as unknown as TimeCategory[])
-      }
-
-      if (serviceTypeResponse.data) {
-        setServiceTypes(serviceTypeResponse.data.service_types)
-      }
-
-      if (clientResponse.data) {
-        setClients(clientResponse.data.clients)
       }
 
       if (userResponse.data) {
@@ -471,24 +460,7 @@ export default function TimeTracking() {
     setReportData([])
 
     try {
-      const params: Parameters<typeof api.getHoursReport>[0] = {
-        start_date: reportFilters.start_date,
-        end_date: reportFilters.end_date,
-        approval_status: 'approved_or_standard',
-      }
-
-      if (reportFilters.user_id) params.user_id = parseInt(reportFilters.user_id)
-      if (reportFilters.time_category_id) params.time_category_id = parseInt(reportFilters.time_category_id)
-      if (reportFilters.client_id) params.client_id = parseInt(reportFilters.client_id)
-      if (reportFilters.service_type_id) params.service_type_id = parseInt(reportFilters.service_type_id)
-      if (reportFilters.service_task_id) params.service_task_id = parseInt(reportFilters.service_task_id)
-      if (isPeriodType(reportFilters.period_type) && reportFilters.period_start) {
-        params.period_type = reportFilters.period_type
-        params.period_start = reportFilters.period_start
-      }
-      if (reportFilters.status) params.status = reportFilters.status as HoursReportParams['status']
-      if (reportFilters.entry_method) params.entry_method = reportFilters.entry_method as HoursReportParams['entry_method']
-      if (reportFilters.overtime_status) params.overtime_status = reportFilters.overtime_status as HoursReportParams['overtime_status']
+      const params = buildHoursReportParams(reportFilters)
 
       const response = await api.getHoursReport(params)
       if (requestId !== reportRequestId.current) return
@@ -742,18 +714,20 @@ export default function TimeTracking() {
     setError(null)
 
     try {
-      const work = workFieldsPayload(workFields)
-      const data = {
+      const timeFields = {
         work_date: formData.work_date,
         start_time: formData.start_time,
         end_time: formData.end_time,
-        ...work,
-        user_id: !editingEntry && isAdmin && formData.user_id ? parseInt(formData.user_id) : undefined,
         break_minutes: formData.break_minutes
       }
 
       if (editingEntry) {
-        const response = await api.updateTimeEntry(editingEntry.id, data, correctionReason)
+        // Send only the work details the user changed so a concurrent edit is not overwritten.
+        const response = await api.updateTimeEntry(
+          editingEntry.id,
+          { ...timeFields, ...changedWorkFieldsPayload(workFieldsFromEntry(editingEntry), workFields) },
+          correctionReason,
+        )
         if (response.error) {
           if (response.code === 'correction_reason_required') {
             setRequiresCorrectionReason(true)
@@ -763,7 +737,13 @@ export default function TimeTracking() {
           return
         }
       } else {
-        const response = await api.createTimeEntry({ ...data, description: work.description || undefined })
+        const work = workFieldsPayload(workFields)
+        const response = await api.createTimeEntry({
+          ...timeFields,
+          ...work,
+          description: work.description || undefined,
+          user_id: isAdmin && formData.user_id ? parseInt(formData.user_id) : undefined,
+        })
         if (response.error) {
           setError(response.error)
           return
@@ -850,20 +830,7 @@ export default function TimeTracking() {
   const pendingApprovalCount = pendingApprovalSummary?.entry_count ?? 0
   const pendingOvertimeApprovalCount = pendingApprovalSummary?.pending_overtime_count ?? 0
 
-  const currentReportParams = (): HoursReportParams => ({
-    start_date: reportFilters.start_date,
-    end_date: reportFilters.end_date,
-    approval_status: 'approved_or_standard',
-    ...(reportFilters.user_id ? { user_id: parseInt(reportFilters.user_id, 10) } : {}),
-    ...(reportFilters.time_category_id ? { time_category_id: parseInt(reportFilters.time_category_id, 10) } : {}),
-    ...(reportFilters.client_id ? { client_id: parseInt(reportFilters.client_id, 10) } : {}),
-    ...(reportFilters.service_type_id ? { service_type_id: parseInt(reportFilters.service_type_id, 10) } : {}),
-    ...(reportFilters.service_task_id ? { service_task_id: parseInt(reportFilters.service_task_id, 10) } : {}),
-    ...(isPeriodType(reportFilters.period_type) && reportFilters.period_start ? { period_type: reportFilters.period_type, period_start: reportFilters.period_start } : {}),
-    ...(reportFilters.status ? { status: reportFilters.status as HoursReportParams['status'] } : {}),
-    ...(reportFilters.entry_method ? { entry_method: reportFilters.entry_method as HoursReportParams['entry_method'] } : {}),
-    ...(reportFilters.overtime_status ? { overtime_status: reportFilters.overtime_status as HoursReportParams['overtime_status'] } : {}),
-  })
+  const currentReportParams = (): HoursReportParams => buildHoursReportParams(reportFilters)
 
   const saveReportDownload = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob)
@@ -930,6 +897,15 @@ export default function TimeTracking() {
         <WhosWorking />
       )}
       
+      {workOptions.error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <span>{workOptions.error} Categories, tasks or clients may be missing from the forms and filters below.</span>
+          <button type="button" onClick={workOptions.retry} className="min-h-11 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-100">
+            Try again
+          </button>
+        </div>
+      )}
+
       {/* Tab Navigation */}
       <div className="border-b border-neutral-warm">
         <nav className="flex gap-4">
@@ -995,7 +971,7 @@ export default function TimeTracking() {
                 id="entry-filter-employee"
                 value={entryFilters.user_id}
                 onChange={(e) => setEntryFilters({ ...entryFilters, user_id: e.target.value })}
-                className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                className="min-h-11 w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
               >
                 <option value="">All Employees</option>
                 {users.map(user => (
@@ -1011,7 +987,7 @@ export default function TimeTracking() {
               emptyLabel="All Clients"
               searchable={false}
               labelClassName="block text-sm text-text-muted mb-1"
-              className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white"
+              className="min-h-11 w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white"
             />
             <div>
               <label htmlFor="entry-filter-category" className="block text-sm text-text-muted mb-1">Category</label>
@@ -1021,7 +997,7 @@ export default function TimeTracking() {
                 legacyCategories={categories}
                 value={categoryFilterValue(entryFilters.service_type_id, entryFilters.time_category_id)}
                 onChange={(value) => setEntryFilters({ ...entryFilters, ...parseCategoryFilter(value), service_task_id: '' })}
-                className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                className="min-h-11 w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
               />
             </div>
             <div>
@@ -1031,7 +1007,7 @@ export default function TimeTracking() {
                 value={entryFilters.service_task_id}
                 disabled={!entryFilters.service_type_id}
                 onChange={(e) => setEntryFilters({ ...entryFilters, service_task_id: e.target.value })}
-                className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm disabled:bg-neutral-warm/30 disabled:text-text-muted"
+                className="min-h-11 w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm disabled:bg-neutral-warm/30 disabled:text-text-muted"
               >
                 <option value="">All Tasks</option>
                 {(serviceTypes.find(type => String(type.id) === entryFilters.service_type_id)?.tasks || []).map(task => (
@@ -1048,7 +1024,7 @@ export default function TimeTracking() {
               referenceDate={formatDateISO(currentDate)}
               onChange={(period) => setEntryFilters({ ...entryFilters, ...period })}
               labelClassName="block text-sm text-text-muted mb-1"
-              className="w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white"
+              className="min-h-11 w-full px-3 py-2 border border-neutral-warm rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white"
             />
           </div>
           {/* Clear filters button */}
@@ -1699,6 +1675,8 @@ export default function TimeTracking() {
                     serviceTypes={serviceTypes}
                     current={editingEntry}
                     referenceDate={formData.work_date}
+                    loadError={workOptions.error}
+                    onRetry={workOptions.retry}
                   />
                 </div>
 
@@ -1785,6 +1763,8 @@ export default function TimeTracking() {
             canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry) : false}
             clients={clients}
             serviceTypes={serviceTypes}
+            catalogError={workOptions.error}
+            onRetryCatalog={workOptions.retry}
           />
         </div>
       )}

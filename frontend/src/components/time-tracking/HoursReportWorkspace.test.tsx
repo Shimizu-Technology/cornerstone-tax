@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { HoursReportEmployee, HoursReportResponse, TimeEntry } from '../../lib/api'
 import HoursReportWorkspace, { type HoursReportFilters } from './HoursReportWorkspace'
@@ -211,5 +211,52 @@ describe('HoursReportWorkspace', () => {
     expect(screen.getByText('Approved entries with review flags')).toBeInTheDocument()
     expect(screen.getAllByText('No client assigned').length).toBeGreaterThan(0)
     expect(screen.getByText('These hours remain included in the totals.')).toBeInTheDocument()
+  })
+
+  it('keeps a January month and a first quarter apart and counts real unassigned tasks only', () => {
+    const row = {
+      client_id: 5, client_name: "MoSa's", service_type_id: 1, time_category_id: null, category_name: 'Bookkeeping',
+      legacy_category: false, service_task_id: 11, task_name: 'No task', period_start: '2026-01-01',
+      total_hours: 2, regular_hours: 2, overtime_hours: 0, entries_count: 1,
+    }
+    const breakdownReport: HoursReportResponse = {
+      ...report,
+      employees: [{
+        ...employee,
+        work_breakdown: [
+          { ...row, period_type: 'month', period_label: 'January 2026' },
+          { ...row, period_type: 'quarter', period_label: '1st Quarter 2026', total_hours: 3 },
+        ],
+      }],
+    }
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    render(
+      <HoursReportWorkspace
+        filters={filters}
+        onFiltersChange={vi.fn()}
+        report={breakdownReport}
+        entries={[entry]}
+        loading={false}
+        error={null}
+        users={[]}
+        categories={[]}
+        clients={[]}
+        exporting={null}
+        onExport={vi.fn()}
+        onOpenEmployee={vi.fn()}
+        onEditEntry={vi.fn()}
+        view="overview"
+        onViewChange={vi.fn()}
+      />
+    )
+
+    const table = screen.getByRole('table', { name: 'Client, category, task and period' })
+    expect(within(table).getByText('January 2026')).toBeInTheDocument()
+    expect(within(table).getByText('1st Quarter 2026')).toBeInTheDocument()
+    // A real task literally named "No task" is grouped as a task, not as unassigned.
+    expect(screen.getByText('Bookkeeping / No task')).toBeInTheDocument()
+    expect(consoleError.mock.calls.some(call => String(call[0]).includes('same key'))).toBe(false)
+    consoleError.mockRestore()
   })
 })
