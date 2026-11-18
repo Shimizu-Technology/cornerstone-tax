@@ -4,10 +4,14 @@ import type {
   HoursReportEmployee,
   HoursReportResponse,
   HoursReportReviewFlag,
+  HoursReportWorkBreakdownRow,
+  ServiceType,
   TimeEntry,
 } from '../../lib/api'
 import { reportPeriodForPreset, type ReportPeriodPreset } from '../../lib/reportPeriods'
+import { categoryFilterValue, parseCategoryFilter, workCategoryText, workSummary, type ClientOption, type PeriodType } from '../../lib/timeEntryWork'
 import ReportExportActions from './ReportExportActions'
+import { CategoryFilterSelect, ClientPicker, PeriodPicker } from './TimeEntryWorkFields'
 
 export interface HoursReportFilters {
   start_date: string
@@ -15,6 +19,10 @@ export interface HoursReportFilters {
   user_id: string
   time_category_id: string
   client_id: string
+  service_type_id: string
+  service_task_id: string
+  period_type: PeriodType | '' | string
+  period_start: string
   status: string
   entry_method: string
   overtime_status: string
@@ -29,7 +37,7 @@ type ReviewFilter = HoursReportReviewFlag | 'unresolved' | 'all'
 const REVIEW_LABELS: Record<HoursReportReviewFlag, string> = {
   uncategorized: 'Uncategorized',
   missing_client: 'No client assigned',
-  missing_description: 'Missing description',
+  missing_description: 'Missing comments',
   long_shift: 'Long shift',
   overlap: 'Overlapping time',
 }
@@ -94,6 +102,7 @@ export default function HoursReportWorkspace({
   error,
   users,
   categories,
+  serviceTypes = [],
   clients,
   exporting,
   onExport,
@@ -110,7 +119,8 @@ export default function HoursReportWorkspace({
   error: string | null
   users: EmployeeOption[]
   categories: Option[]
-  clients: Option[]
+  serviceTypes?: ServiceType[]
+  clients: ClientOption[]
   exporting: HoursReportDownloadType | null
   onExport: (type: HoursReportDownloadType) => void
   onOpenEmployee: (employee: HoursReportEmployee) => void
@@ -136,7 +146,34 @@ export default function HoursReportWorkspace({
     onFiltersChange({ ...filters, start_date: period.start, end_date: period.end })
   }
 
+  // Client -> Category -> Task -> Period rows across every employee.
+  const breakdownRows = useMemo(() => {
+    const rows = new Map<string, HoursReportWorkBreakdownRow>()
+    report?.employees.forEach(employee => (employee.work_breakdown || []).forEach(row => {
+      const key = [row.client_id, row.service_type_id, row.time_category_id, row.service_task_id, row.period_type, row.period_start].join('|')
+      const current = rows.get(key)
+      if (current) {
+        current.total_hours += row.total_hours
+        current.regular_hours += row.regular_hours
+        current.overtime_hours += row.overtime_hours
+        current.entries_count += row.entries_count
+      } else {
+        rows.set(key, { ...row })
+      }
+    }))
+    return [...rows.values()].sort((a, b) => (
+      Number(a.client_id === null) - Number(b.client_id === null) ||
+      a.client_name.localeCompare(b.client_name) ||
+      a.category_name.localeCompare(b.category_name) ||
+      a.task_name.localeCompare(b.task_name) ||
+      (a.period_start || '').localeCompare(b.period_start || '')
+    ))
+  }, [report])
+
+  const hasBreakdown = useMemo(() => report?.employees.some(employee => employee.work_breakdown !== undefined) ?? false, [report])
+
   const categoryRows = useMemo(() => {
+    if (hasBreakdown) return sumBreakdownBy(breakdownRows, row => row.category_name)
     const rows = new Map<string, { name: string; hours: number; entries: number }>()
     report?.employees.forEach(employee => employee.categories.forEach(category => {
       const key = `${category.id ?? 'none'}:${category.name}`
@@ -146,7 +183,10 @@ export default function HoursReportWorkspace({
       rows.set(key, current)
     }))
     return [...rows.values()].sort((a, b) => b.hours - a.hours)
-  }, [report])
+  }, [report, breakdownRows, hasBreakdown])
+
+  const taskRows = useMemo(() => sumBreakdownBy(breakdownRows, row => row.task_name === 'No task' ? 'No task' : `${row.category_name} / ${row.task_name}`), [breakdownRows])
+  const periodRows = useMemo(() => sumBreakdownBy(breakdownRows, row => row.period_label), [breakdownRows])
 
   const clientRows = useMemo(() => {
     const rows = new Map<string, { name: string; hours: number; entries: number }>()
@@ -279,8 +319,42 @@ export default function HoursReportWorkspace({
 
           {showMoreFilters && (
             <div className="grid grid-cols-1 gap-4 rounded-2xl bg-neutral-warm/25 p-4 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="text-sm font-medium text-primary-dark"><span className="mb-1.5 block text-text-muted">Category</span><select aria-label="Category" value={filters.time_category_id} onChange={event => updateFilter('time_category_id', event.target.value)} className="min-h-11 w-full rounded-xl border border-neutral-warm bg-white px-3 py-2"><option value="">All categories</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-              <label className="text-sm font-medium text-primary-dark"><span className="mb-1.5 block text-text-muted">Client</span><select aria-label="Client" value={filters.client_id} onChange={event => updateFilter('client_id', event.target.value)} className="min-h-11 w-full rounded-xl border border-neutral-warm bg-white px-3 py-2"><option value="">All clients</option>{clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
+              <ClientPicker
+                id="report-filter-client"
+                value={filters.client_id}
+                onChange={value => updateFilter('client_id', value)}
+                clients={clients}
+                emptyLabel="All clients"
+                labelClassName="mb-1.5 block text-sm font-medium text-text-muted"
+                className="min-h-11 w-full rounded-xl border border-neutral-warm bg-white px-3 py-2 text-sm"
+              />
+              <label className="text-sm font-medium text-primary-dark"><span className="mb-1.5 block text-text-muted">Category</span>
+                <CategoryFilterSelect
+                  id="report-filter-category"
+                  serviceTypes={serviceTypes}
+                  legacyCategories={categories}
+                  allLabel="All categories"
+                  value={categoryFilterValue(filters.service_type_id, filters.time_category_id)}
+                  onChange={value => onFiltersChange({ ...filters, ...parseCategoryFilter(value), service_task_id: '' })}
+                  className="min-h-11 w-full rounded-xl border border-neutral-warm bg-white px-3 py-2"
+                />
+              </label>
+              <label className="text-sm font-medium text-primary-dark"><span className="mb-1.5 block text-text-muted">Task</span>
+                <select aria-label="Task" value={filters.service_task_id} disabled={!filters.service_type_id} onChange={event => updateFilter('service_task_id', event.target.value)} className="min-h-11 w-full rounded-xl border border-neutral-warm bg-white px-3 py-2 disabled:bg-neutral-warm/30 disabled:text-text-muted">
+                  <option value="">{filters.service_type_id ? 'All tasks' : 'Choose a category first'}</option>
+                  {(serviceTypes.find(type => String(type.id) === filters.service_type_id)?.tasks || []).map(task => <option key={task.id} value={task.id}>{task.name}</option>)}
+                </select>
+              </label>
+              <PeriodPicker
+                idPrefix="report-filter"
+                hint=""
+                emptyLabel="Any period"
+                value={{ period_type: filters.period_type === 'month' || filters.period_type === 'quarter' || filters.period_type === 'year' ? filters.period_type : '', period_start: filters.period_start }}
+                referenceDate={filters.end_date}
+                onChange={period => onFiltersChange({ ...filters, ...period })}
+                labelClassName="mb-1.5 block text-sm font-medium text-text-muted"
+                className="min-h-11 w-full rounded-xl border border-neutral-warm bg-white px-3 py-2 text-sm"
+              />
               <label className="text-sm font-medium text-primary-dark"><span className="mb-1.5 block text-text-muted">Entry method</span><select aria-label="Entry Method" value={filters.entry_method} onChange={event => updateFilter('entry_method', event.target.value)} className="min-h-11 w-full rounded-xl border border-neutral-warm bg-white px-3 py-2"><option value="">Clock and manual</option><option value="clock">Clock entries</option><option value="manual">Manual entries</option></select></label>
               <label className="text-sm font-medium text-primary-dark"><span className="mb-1.5 block text-text-muted">Overtime status</span><select aria-label="Overtime Status" value={filters.overtime_status} onChange={event => updateFilter('overtime_status', event.target.value)} className="min-h-11 w-full rounded-xl border border-neutral-warm bg-white px-3 py-2"><option value="">All overtime statuses</option><option value="none">No overtime review</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="denied">Denied</option></select></label>
             </div>
@@ -334,10 +408,15 @@ export default function HoursReportWorkspace({
       )}
 
       {report && view === 'overview' && (
+        <div className="space-y-5">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {[
-            { title: 'Hours by category', rows: categoryRows, empty: 'No category totals in this period.' },
             { title: 'Hours by client', rows: clientRows, empty: 'No client totals in this period.' },
+            { title: 'Hours by category', rows: categoryRows, empty: 'No category totals in this period.' },
+            ...(hasBreakdown ? [
+              { title: 'Hours by task', rows: taskRows, empty: 'No task totals in this period.' },
+              { title: 'Hours by period', rows: periodRows, empty: 'No period totals in this period.' },
+            ] : []),
           ].map(section => (
             <section key={section.title} className="overflow-hidden rounded-2xl border border-neutral-warm bg-white shadow-sm">
               <div className="border-b border-neutral-warm bg-neutral-warm/25 px-4 py-3"><h3 className="font-semibold text-primary-dark">{section.title}</h3></div>
@@ -354,6 +433,8 @@ export default function HoursReportWorkspace({
             </section>
           ))}
         </div>
+        {breakdownRows.length > 0 && <WorkBreakdownTable rows={breakdownRows} />}
+        </div>
       )}
 
       {report && view === 'people' && (
@@ -369,7 +450,7 @@ export default function HoursReportWorkspace({
                   <span className="shrink-0 text-xl font-bold tabular-nums text-primary">{formatHours(employee.total_hours)}</span>
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-neutral-warm/25 p-3 text-sm"><div><p className="text-xs text-text-muted">Regular</p><p className="font-semibold text-primary-dark">{formatHours(employee.regular_hours)}</p></div><div><p className="text-xs text-text-muted">Overtime</p><p className="font-semibold text-orange-700">{formatHours(employee.overtime_hours)}</p></div><div><p className="text-xs text-text-muted">Breaks</p><p className="font-semibold text-primary-dark">{formatHours(employee.break_hours)}</p></div></div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-muted"><span className="rounded-full bg-secondary/55 px-2.5 py-1">Top category: {[...employee.categories].sort((a, b) => b.total_hours - a.total_hours)[0]?.name || 'None'}</span><span className="rounded-full bg-secondary/55 px-2.5 py-1">Top client: {[...employee.clients].sort((a, b) => b.total_hours - a.total_hours)[0]?.name || 'None'}</span>{employee.quality.flagged_entries_count > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">{employee.quality.flagged_entries_count} flagged</span>}</div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-muted"><span className="rounded-full bg-secondary/55 px-2.5 py-1">Top category: {topCategoryName(employee)}</span><span className="rounded-full bg-secondary/55 px-2.5 py-1">Top client: {[...employee.clients].sort((a, b) => b.total_hours - a.total_hours)[0]?.name || 'None'}</span>{employee.quality.flagged_entries_count > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">{employee.quality.flagged_entries_count} flagged</span>}</div>
                 <p className="mt-4 text-sm font-semibold text-primary">Open daily and overtime breakdown</p>
               </button>
             ))}
@@ -386,8 +467,8 @@ export default function HoursReportWorkspace({
                 const expanded = expandedGroups.has(group.key)
                 const total = group.entries.reduce((sum, entry) => sum + entry.hours, 0)
                 const breaks = group.entries.reduce((sum, entry) => sum + (entry.break_minutes || 0), 0)
-                const categories = [...new Set(group.entries.map(entry => entry.time_category?.name || 'Uncategorized'))]
-                const clientsForDay = [...new Set(group.entries.map(entry => entry.client?.name || 'No client'))]
+                const categories = [...new Set(group.entries.map(entry => workCategoryText(entry)))]
+                const clientsForDay = [...new Set(group.entries.map(entry => entry.client?.name || 'Internal'))]
                 const first = group.entries[0]
                 const last = group.entries[group.entries.length - 1]
                 return (
@@ -431,12 +512,81 @@ function EntryCard({ entry, onEdit, showFlags = false }: { entry: TimeEntry; onE
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="font-semibold text-primary-dark">{entry.formatted_start_time || entry.start_time || '—'}–{entry.formatted_end_time || entry.end_time || '—'} · {formatHours(entry.hours)}</p>
-          <p className="mt-1 text-sm text-text-muted">{entry.time_category?.name || 'Uncategorized'} · {entry.client?.name || 'No client assigned'} · {entry.entry_method}</p>
-          <p className="mt-1 text-sm text-primary-dark">{entry.description || 'No description'}</p>
+          <p className="mt-1 text-sm text-text-muted">{entry.client?.name || 'No client assigned'} · {workSummary(entry, { includeClient: false })} · {entry.entry_method}</p>
+          <p className="mt-1 text-sm text-primary-dark">{entry.description || 'No comments'}</p>
           {showFlags && entry.review_flags && <div className="mt-3 flex flex-wrap gap-1.5">{entry.review_flags.map(flag => <span key={flag} className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">{REVIEW_LABELS[flag]}</span>)}</div>}
         </div>
         <button type="button" onClick={onEdit} className="min-h-11 shrink-0 rounded-xl border border-primary/25 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">Edit entry</button>
       </div>
     </div>
+  )
+}
+
+function sumBreakdownBy(breakdownRows: HoursReportWorkBreakdownRow[], labelFor: (row: HoursReportWorkBreakdownRow) => string) {
+  const rows = new Map<string, { name: string; hours: number; entries: number }>()
+  breakdownRows.forEach(row => {
+    const name = labelFor(row)
+    const current = rows.get(name) || { name, hours: 0, entries: 0 }
+    current.hours += row.total_hours
+    current.entries += row.entries_count
+    rows.set(name, current)
+  })
+  return [...rows.values()].sort((a, b) => b.hours - a.hours)
+}
+
+function topCategoryName(employee: HoursReportEmployee) {
+  if (employee.work_breakdown) {
+    const totals = new Map<string, number>()
+    employee.work_breakdown.forEach(row => totals.set(row.category_name, (totals.get(row.category_name) || 0) + row.total_hours))
+    return [...totals.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || 'None'
+  }
+  return [...employee.categories].sort((a, b) => b.total_hours - a.total_hours)[0]?.name || 'None'
+}
+
+function WorkBreakdownTable({ rows }: { rows: HoursReportWorkBreakdownRow[] }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-neutral-warm bg-white shadow-sm" aria-labelledby="work-breakdown-title">
+      <div className="border-b border-neutral-warm bg-neutral-warm/25 px-4 py-3">
+        <h3 id="work-breakdown-title" className="font-semibold text-primary-dark">Client, category, task and period</h3>
+        <p className="mt-0.5 text-xs text-text-muted">Approved hours grouped the way staff log them.</p>
+      </div>
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-white text-xs uppercase tracking-[0.12em] text-text-muted">
+            <tr>
+              <th scope="col" className="px-4 py-2 font-semibold">Client</th>
+              <th scope="col" className="px-4 py-2 font-semibold">Category</th>
+              <th scope="col" className="px-4 py-2 font-semibold">Task</th>
+              <th scope="col" className="px-4 py-2 font-semibold">Period</th>
+              <th scope="col" className="px-4 py-2 text-right font-semibold">Entries</th>
+              <th scope="col" className="px-4 py-2 text-right font-semibold">Hours</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-warm">
+            {rows.map(row => (
+              <tr key={[row.client_id, row.service_type_id, row.time_category_id, row.service_task_id, row.period_start].join('|')}>
+                <td className="px-4 py-2 font-medium text-primary-dark">{row.client_name}</td>
+                <td className="px-4 py-2 text-primary-dark">{row.category_name}</td>
+                <td className="px-4 py-2 text-primary-dark">{row.task_name}</td>
+                <td className="px-4 py-2 text-primary-dark">{row.period_label}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-text-muted">{row.entries_count}</td>
+                <td className="px-4 py-2 text-right font-semibold tabular-nums text-primary">{formatHours(row.total_hours)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <ul className="divide-y divide-neutral-warm md:hidden">
+        {rows.map(row => (
+          <li key={[row.client_id, row.service_type_id, row.time_category_id, row.service_task_id, row.period_start].join('|')} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <p className="truncate font-medium text-primary-dark">{row.client_name}</p>
+              <p className="text-xs text-text-muted">{[row.category_name, row.task_name, row.period_label].join(' · ')}</p>
+            </div>
+            <p className="font-semibold tabular-nums text-primary">{formatHours(row.total_hours)}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

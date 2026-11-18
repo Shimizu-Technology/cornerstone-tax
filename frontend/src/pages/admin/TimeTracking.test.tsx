@@ -1,12 +1,18 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TimeTracking from './TimeTracking'
+import { formatDateISO } from '../../lib/dateUtils'
+import { reportPeriodForPreset } from '../../lib/reportPeriods'
 
 const apiMocks = vi.hoisted(() => ({
   getTimeEntries: vi.fn(),
   getTimeCategories: vi.fn(),
   getClients: vi.fn(),
+  getClientOptions: vi.fn(),
+  getServiceTypes: vi.fn(),
+  createTimeEntry: vi.fn(),
+  updateTimeEntry: vi.fn(),
   getUsers: vi.fn(),
   getCurrentUser: vi.fn(),
   getPendingApprovals: vi.fn(),
@@ -85,6 +91,8 @@ describe('TimeTracking reports', () => {
     apiMocks.getTimeEntries.mockResolvedValue({ data: { time_entries: [], summary: { total_hours: 0, total_break_hours: 0, entry_count: 0 } } })
     apiMocks.getTimeCategories.mockResolvedValue({ data: { time_categories: [] } })
     apiMocks.getClients.mockResolvedValue({ data: { clients: [] } })
+    apiMocks.getClientOptions.mockResolvedValue({ data: { clients: [] } })
+    apiMocks.getServiceTypes.mockResolvedValue({ data: { service_types: [] } })
     apiMocks.getUsers.mockResolvedValue({ data: { users: [] } })
     apiMocks.getCurrentUser.mockResolvedValue({ data: { user: { id: 1, is_admin: true } } })
     apiMocks.getPendingApprovals.mockResolvedValue({ data: { summary: null } })
@@ -105,7 +113,8 @@ describe('TimeTracking reports', () => {
 
     await waitFor(() => {
       expect(apiMocks.getHoursReport).toHaveBeenLastCalledWith(expect.objectContaining({
-        start_date: '2026-09-01',
+        // The page opens on the current month; only the end date changes.
+        start_date: reportPeriodForPreset('this_month').start,
         end_date: '2026-12-31',
       }))
     })
@@ -154,5 +163,175 @@ describe('TimeTracking reports', () => {
       end_date: '2026-09-21',
       status: 'terminated',
     })))
+  })
+
+  it('restores category, task and period report filters from the URL', async () => {
+    apiMocks.getHoursReport.mockResolvedValue({ data: successfulReport })
+
+    renderPage('/admin/time?tab=reports&start_date=2026-07-01&end_date=2026-07-31&service_type_id=3&service_task_id=7&period_type=quarter&period_start=2026-07-01')
+
+    await waitFor(() => expect(apiMocks.getHoursReport).toHaveBeenCalledWith(expect.objectContaining({
+      service_type_id: 3,
+      service_task_id: 7,
+      period_type: 'quarter',
+      period_start: '2026-07-01',
+    })))
+  })
+})
+
+const serviceTypes = [
+  {
+    id: 2,
+    name: 'Payroll',
+    description: null,
+    color: null,
+    position: 2,
+    tasks: [
+      { id: 21, name: 'Payroll Processing', description: null, position: 1 },
+      { id: 22, name: 'Payroll Return Preparation', description: null, position: 2 },
+    ],
+  },
+  {
+    id: 1,
+    name: 'Bookkeeping',
+    description: null,
+    color: null,
+    position: 1,
+    tasks: [
+      { id: 12, name: 'Payroll Data Entry', description: null, position: 2 },
+      { id: 11, name: 'Bank Reconciliation', description: null, position: 1 },
+    ],
+  },
+]
+
+const clientOptions = [
+  { id: 5, name: "MoSa's", client_type: 'business', business_name: "MoSa's", first_name: 'Maria', last_name: 'Santos' },
+  { id: 6, name: 'Jose Cruz', client_type: 'individual', business_name: null, first_name: 'Jose', last_name: 'Cruz' },
+]
+
+function emptyEntryResponse(entries: unknown[] = []) {
+  return { data: { time_entries: entries, summary: { total_hours: 0, total_break_hours: 0, entry_count: entries.length } } }
+}
+
+describe('TimeTracking log time', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    apiMocks.getTimeEntries.mockResolvedValue(emptyEntryResponse())
+    apiMocks.getTimeCategories.mockResolvedValue({ data: { time_categories: [{ id: 9, name: 'Tax Prep', description: null }] } })
+    apiMocks.getClientOptions.mockResolvedValue({ data: { clients: clientOptions } })
+    apiMocks.getServiceTypes.mockResolvedValue({ data: { service_types: serviceTypes } })
+    apiMocks.getUsers.mockResolvedValue({ data: { users: [] } })
+    apiMocks.getCurrentUser.mockResolvedValue({ data: { user: { id: 1, is_admin: false } } })
+    apiMocks.getPendingApprovals.mockResolvedValue({ data: { summary: null } })
+    apiMocks.getTimePeriodLockStatus.mockResolvedValue({ data: { locked: false, lock: null } })
+    apiMocks.createTimeEntry.mockResolvedValue({ data: { time_entry: {} } })
+    apiMocks.updateTimeEntry.mockResolvedValue({ data: { time_entry: {} } })
+  })
+
+  it('asks for client, category, task, period and comments in that order', async () => {
+    renderPage('/admin/time')
+    fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
+
+    const fields = within(await screen.findByTestId('time-entry-work-fields'))
+    const labels = [
+      fields.getByLabelText(/^Client/),
+      fields.getByLabelText('Category'),
+      fields.getByLabelText('Task'),
+      fields.getByLabelText('Period type'),
+      fields.getByLabelText('Comments'),
+    ]
+    labels.slice(1).forEach((element, index) => {
+      expect(labels[index].compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+    expect(screen.queryByText('Description')).not.toBeInTheDocument()
+    expect(fields.getByRole('option', { name: 'Internal – no client' })).toBeInTheDocument()
+    // Legacy time categories are not offered for new entries.
+    expect(fields.queryByRole('option', { name: /Tax Prep/ })).not.toBeInTheDocument()
+  })
+
+  it('labels clients by business name and sorts them', async () => {
+    renderPage('/admin/time')
+    fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
+
+    const clientSelect = await screen.findByLabelText(/^Client/, { selector: '#log-time-client' })
+    await waitFor(() => expect(within(clientSelect).getAllByRole('option').map(option => option.textContent)).toEqual([
+      'Internal – no client', 'Jose Cruz', "MoSa's",
+    ]))
+  })
+
+  it('submits the chosen client, category, task and period', async () => {
+    renderPage('/admin/time')
+    fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
+    const fields = within(await screen.findByTestId('time-entry-work-fields'))
+
+    await waitFor(() => expect(fields.getAllByRole('option', { name: "MoSa's" }).length).toBeGreaterThan(0))
+    fireEvent.change(fields.getByLabelText(/^Client/, { selector: 'select' }), { target: { value: '5' } })
+    fireEvent.change(fields.getByLabelText('Category'), { target: { value: '1' } })
+    fireEvent.change(fields.getByLabelText('Task'), { target: { value: '11' } })
+    fireEvent.change(fields.getByLabelText('Period type'), { target: { value: 'month' } })
+    fireEvent.change(fields.getByLabelText('Period month'), { target: { value: '7' } })
+    fireEvent.change(fields.getByLabelText('Period year'), { target: { value: '2026' } })
+    expect(fields.getByText('July 2026')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(apiMocks.createTimeEntry).toHaveBeenCalled())
+    const payload = apiMocks.createTimeEntry.mock.calls[0][0]
+    expect(payload).toMatchObject({
+      client_id: 5,
+      service_type_id: 1,
+      service_task_id: 11,
+      period_type: 'month',
+      period_start: '2026-07-01',
+    })
+    expect(payload).not.toHaveProperty('time_category_id')
+    expect(payload.description).toBeUndefined()
+  })
+
+  it('shows and keeps the legacy category when editing an old entry', async () => {
+    const legacyEntry = {
+      id: 77,
+      work_date: formatDateISO(new Date()),
+      start_time: '09:00',
+      end_time: '10:00',
+      formatted_start_time: '9:00 AM',
+      formatted_end_time: '10:00 AM',
+      hours: 1,
+      break_minutes: null,
+      description: 'Old work',
+      entry_method: 'manual',
+      status: 'completed',
+      approval_status: 'approved',
+      overtime_status: 'none',
+      approved_by: null,
+      approval_note: null,
+      locked_at: null,
+      user: { id: 1, email: 'alice@example.com', display_name: 'Alice', full_name: 'Alice Smith' },
+      time_category: { id: 9, name: 'Tax Prep' },
+      client: { id: 6, name: 'Jose Cruz' },
+      tax_return: null,
+      service_type: null,
+      service_task: null,
+      period_type: null,
+      period_start: null,
+      period_label: null,
+      breaks: [],
+    }
+    apiMocks.getTimeEntries.mockResolvedValue(emptyEntryResponse([legacyEntry]))
+
+    renderPage('/admin/time')
+    expect(await screen.findByTitle(/Tax Prep \(legacy\)/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Jose Cruz'))
+
+    const fields = within(await screen.findByTestId('time-entry-work-fields'))
+    expect(fields.getByText('Tax Prep')).toBeInTheDocument()
+    expect(fields.getByText(/Legacy category/)).toBeInTheDocument()
+    expect((fields.getByLabelText(/^Client/, { selector: 'select' }) as HTMLSelectElement).value).toBe('6')
+    expect((fields.getByLabelText('Comments') as HTMLTextAreaElement).value).toBe('Old work')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await waitFor(() => expect(apiMocks.updateTimeEntry).toHaveBeenCalled())
+    const payload = apiMocks.updateTimeEntry.mock.calls[0][1]
+    expect(payload).not.toHaveProperty('time_category_id')
+    expect(payload).toMatchObject({ client_id: 6, service_type_id: null, period_type: null, description: 'Old work' })
   })
 })

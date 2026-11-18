@@ -47,7 +47,6 @@ describe('EditTimeEntryModal', () => {
       <EditTimeEntryModal
         isOpen
         entry={entry}
-        categories={[]}
         canDelete
         onClose={vi.fn()}
         onSaved={vi.fn()}
@@ -60,6 +59,9 @@ describe('EditTimeEntryModal', () => {
     await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
     expect(apiMock.updateTimeEntry.mock.calls[0][1]).not.toHaveProperty('breaks')
     expect(apiMock.updateTimeEntry.mock.calls[0][1]).toMatchObject({ break_minutes: 30 })
+    // Work details are sent in the new shape; the legacy category is never rewritten.
+    expect(apiMock.updateTimeEntry.mock.calls[0][1]).toMatchObject({ client_id: null, service_type_id: null, service_task_id: null, period_type: null })
+    expect(apiMock.updateTimeEntry.mock.calls[0][1]).not.toHaveProperty('time_category_id')
   })
 
   it('collects and resubmits a correction reason for an exported entry', async () => {
@@ -76,7 +78,6 @@ describe('EditTimeEntryModal', () => {
       <EditTimeEntryModal
         isOpen
         entry={entry}
-        categories={[]}
         canDelete
         onClose={vi.fn()}
         onSaved={onSaved}
@@ -114,7 +115,6 @@ describe('EditTimeEntryModal', () => {
       <EditTimeEntryModal
         isOpen
         entry={entry}
-        categories={[]}
         canDelete
         onClose={vi.fn()}
         onSaved={vi.fn()}

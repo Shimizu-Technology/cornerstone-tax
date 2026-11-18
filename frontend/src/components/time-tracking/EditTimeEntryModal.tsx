@@ -1,18 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { api } from '../../lib/api'
-
-interface TimeCategoryOption {
-  id: number
-  name: string
-}
-
-interface ClientOption {
-  id: number
-  first_name?: string
-  last_name?: string
-  name?: string
-}
+import type { ServiceType } from '../../lib/api'
+import type { ClientOption } from '../../lib/timeEntryWork'
+import TimeEntryWorkFields from './TimeEntryWorkFields'
+import { EMPTY_WORK_FIELDS, workFieldsFromEntry, workFieldsPayload, type WorkFieldsValue } from './timeEntryWorkForm'
 
 interface EditableTimeEntry {
   id: number
@@ -41,6 +33,10 @@ interface EditableTimeEntry {
     id: number
     name: string
   } | null
+  service_type?: { id: number; name: string } | null
+  service_task?: { id: number; name: string } | null
+  period_type?: string | null
+  period_start?: string | null
   breaks?: Array<{
     id?: number
     start_time: string | null
@@ -53,7 +49,7 @@ interface EditableTimeEntry {
 interface EditTimeEntryModalProps {
   isOpen: boolean
   entry: EditableTimeEntry | null
-  categories: TimeCategoryOption[]
+  serviceTypes?: ServiceType[]
   clients?: ClientOption[]
   canDelete: boolean
   onClose: () => void
@@ -94,14 +90,10 @@ function timeInputValue(value: string | null | undefined) {
   return hour && minute ? `${hour}:${minute}` : ''
 }
 
-function clientLabel(client: ClientOption) {
-  return client.name || [client.first_name, client.last_name].filter(Boolean).join(' ') || `Client #${client.id}`
-}
-
 export default function EditTimeEntryModal({
   isOpen,
   entry,
-  categories,
+  serviceTypes = [],
   clients = [],
   canDelete,
   onClose,
@@ -113,11 +105,9 @@ export default function EditTimeEntryModal({
     work_date: '',
     start_time: '08:00',
     end_time: '17:00',
-    description: '',
-    time_category_id: '',
-    client_id: '',
     break_minutes: null as number | null,
   })
+  const [workFields, setWorkFields] = useState<WorkFieldsValue>(EMPTY_WORK_FIELDS)
   const [breakRows, setBreakRows] = useState<Array<{ id?: number; start_time: string; end_time: string }>>([])
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -133,11 +123,9 @@ export default function EditTimeEntryModal({
       work_date: entry.work_date,
       start_time: entry.start_time || '08:00',
       end_time: entry.end_time || '17:00',
-      description: entry.description || '',
-      time_category_id: entry.time_category?.id.toString() || '',
-      client_id: entry.client?.id.toString() || '',
       break_minutes: entry.break_minutes,
     })
+    setWorkFields(workFieldsFromEntry(entry))
     setBreakRows((entry.breaks || [])
       .filter((row) => row.start_time && row.end_time)
       .map((row) => ({
@@ -187,9 +175,7 @@ export default function EditTimeEntryModal({
       const payload = {
         work_date: formData.work_date,
         start_time: formData.start_time,
-        description: formData.description || undefined,
-        time_category_id: formData.time_category_id ? parseInt(formData.time_category_id, 10) : null,
-        client_id: formData.client_id ? parseInt(formData.client_id, 10) : null,
+        ...workFieldsPayload(workFields),
         ...(isActiveClockEntry ? {} : {
           end_time: formData.end_time,
           break_minutes: formData.break_minutes,
@@ -414,38 +400,16 @@ export default function EditTimeEntryModal({
                     </div>
                   )}
 
-                  <div className="mt-4">
-                    <label className="mb-1 block text-sm font-medium text-primary-dark">Category</label>
-                    <select
-                      value={formData.time_category_id}
-                      onChange={(event) => setFormData({ ...formData, time_category_id: event.target.value })}
-                      className="w-full rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="">Select category...</option>
-                      {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                    </select>
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="mb-1 block text-sm font-medium text-primary-dark">Client</label>
-                    <select
-                      value={formData.client_id}
-                      onChange={(event) => setFormData({ ...formData, client_id: event.target.value })}
-                      className="w-full rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="">No client</option>
-                      {clients.map((client) => <option key={client.id} value={client.id}>{clientLabel(client)}</option>)}
-                    </select>
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="mb-1 block text-sm font-medium text-primary-dark">Description</label>
-                    <textarea
-                      value={formData.description}
-                      onChange={(event) => setFormData({ ...formData, description: event.target.value })}
-                      rows={3}
-                      placeholder="What did you work on?"
-                      className="w-full resize-none rounded-lg border border-neutral-warm px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+                  <div className="mt-4 border-t border-neutral-warm pt-4">
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-text-muted">Work details</h3>
+                    <TimeEntryWorkFields
+                      idPrefix={`edit-entry-${entry.id}`}
+                      value={workFields}
+                      onChange={setWorkFields}
+                      clients={clients}
+                      serviceTypes={serviceTypes}
+                      current={entry}
+                      referenceDate={formData.work_date}
                     />
                   </div>
 
