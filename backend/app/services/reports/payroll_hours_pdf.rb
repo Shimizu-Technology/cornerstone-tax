@@ -291,7 +291,7 @@ module Reports
     end
 
     def work_label(entry)
-      [ entry.dig(:time_category, :name) || "Uncategorized", entry.dig(:service_type, :name), entry.dig(:service_task, :name) ].compact_blank.join(" / ")
+      [ entry[:category_label] || "Uncategorized", entry.dig(:service_task, :name), entry[:period_label] ].compact_blank.join(" / ")
     end
 
     def employees

@@ -14,6 +14,8 @@ module Api
           client_id
           service_type_id
           service_task_id
+          period_type
+          period_start
           entry_method
           approval_status
           overtime_status

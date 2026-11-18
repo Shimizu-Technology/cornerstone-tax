@@ -52,7 +52,14 @@ class Client < ApplicationRecord
     "#{first_name} #{last_name}"
   end
 
+  # The name staff see when choosing or reading a client on time entries and
+  # reports: the business name for businesses, otherwise "First Last".
   def display_name
-    full_name
+    business_name.presence || full_name.strip.presence || "Client ##{id}"
   end
+
+  # SQL twin of #display_name, used to sort client pickers and reports.
+  DISPLAY_NAME_SQL = "COALESCE(NULLIF(TRIM(clients.business_name), ''), TRIM(CONCAT_WS(' ', clients.first_name, clients.last_name)))"
+
+  scope :order_by_display_name, -> { order(Arel.sql("LOWER(#{DISPLAY_NAME_SQL}) ASC"), :id) }
 end

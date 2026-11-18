@@ -3,6 +3,10 @@
 class TimeClockService
   BUSINESS_TIMEZONE = "Guam"
 
+  # Optional work details staff can add when clocking out (same fields as a
+  # manual entry: client, category, task, period).
+  CLOCK_OUT_WORK_FIELDS = %i[client_id service_type_id service_task_id period_type period_start].freeze
+
   class ClockError < StandardError; end
   class AuthorizationError < StandardError; end
 
@@ -45,7 +49,7 @@ class TimeClockService
     end
 
     # ── Clock Out ──
-    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil, description: nil)
+    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil, description: nil, work_details: {})
       entry = active_entry_for(user)
       raise ClockError, "Not currently clocked in" unless entry
 
@@ -83,13 +87,16 @@ class TimeClockService
         end
 
         entry.description = description if description.present?
+        entry.assign_attributes(work_details.slice(*CLOCK_OUT_WORK_FIELDS).compact_blank) if work_details.present?
         entry.status = "completed"
         entry.break_minutes = entry.total_break_minutes
         entry.calculate_hours_from_times
         entry.overtime_status = check_overtime_status(user, entry)
         entry.admin_override = true if admin_override_by.present?
 
-        entry.save!
+        unless entry.save
+          raise ClockError, entry.errors.full_messages.to_sentence
+        end
       end
 
       entry

@@ -40,6 +40,10 @@ module Api
         @time_entries = @time_entries.where(service_task_id: params[:service_task_id]) if params[:service_task_id].present?
         @time_entries = @time_entries.where(entry_method: params[:entry_method]) if params[:entry_method].present?
 
+        period_filter = work_period_filter_params
+        return if performed?
+        @time_entries = @time_entries.for_work_period(period_filter[:period_type], period_filter[:period_start]) if period_filter
+
         if params[:approval_status].present?
           @time_entries = @time_entries.where(approval_status: approval_status_value(params[:approval_status]))
         end
@@ -139,6 +143,8 @@ module Api
           client_id: @time_entry.client_id,
           service_type_id: @time_entry.service_type_id,
           service_task_id: @time_entry.service_task_id,
+          period_type: @time_entry.period_type,
+          period_start: @time_entry.period_start&.iso8601,
           overtime_status: @time_entry.overtime_status,
           start_time: @time_entry.formatted_start_time,
           end_time: @time_entry.formatted_end_time
@@ -192,6 +198,8 @@ module Api
             client_id: @time_entry.client_id,
             service_type_id: @time_entry.service_type_id,
             service_task_id: @time_entry.service_task_id,
+            period_type: @time_entry.period_type,
+            period_start: @time_entry.period_start&.iso8601,
             overtime_status: @time_entry.overtime_status,
             start_time: @time_entry.formatted_start_time,
             end_time: @time_entry.formatted_end_time
@@ -280,12 +288,13 @@ module Api
       def clock_out
         target_user = resolve_clock_target_user
         admin_override = (current_user.admin? && target_user.id != current_user.id) ? current_user : nil
-        permitted = params.permit(:corrected_end_time, :description)
+        permitted = params.permit(:corrected_end_time, :description, *TimeClockService::CLOCK_OUT_WORK_FIELDS)
         entry = TimeClockService.clock_out(
           user: target_user,
           admin_override_by: admin_override,
           corrected_end_time: permitted[:corrected_end_time],
-          description: permitted[:description]
+          description: permitted[:description],
+          work_details: permitted.slice(*TimeClockService::CLOCK_OUT_WORK_FIELDS).to_h.symbolize_keys
         )
         render json: { time_entry: serialize_time_entry(eager_reload(entry)) }
       rescue TimeClockService::ClockError => e
@@ -678,6 +687,8 @@ module Api
           :user_id,
           :service_type_id,
           :service_task_id,
+          :period_type,
+          :period_start,
           breaks: [ :id, :start_time, :end_time, :_destroy ]
         )
         normalize_manual_time(permitted, :start_time)
@@ -922,7 +933,7 @@ module Api
           } : nil,
           client: entry.client ? {
             id: entry.client.id,
-            name: "#{entry.client.first_name} #{entry.client.last_name}".strip
+            name: entry.client.display_name
           } : nil,
           tax_return: entry.tax_return ? {
             id: entry.tax_return.id,
@@ -937,6 +948,9 @@ module Api
             id: entry.service_task.id,
             name: entry.service_task.name
           } : nil,
+          period_type: entry.period_type,
+          period_start: entry.period_start&.iso8601,
+          period_label: entry.period_label,
           linked_operation_task: linked_operation_task ? {
             id: linked_operation_task.id,
             title: linked_operation_task.title
@@ -1036,6 +1050,20 @@ module Api
         }
       end
 
+      # Reads optional period_type / period_start filters. Returns nil when
+      # neither is given; renders 422 for unsupported values.
+      def work_period_filter_params
+        return nil if params[:period_type].blank? && params[:period_start].blank?
+
+        period_type = allowed_filter_param(:period_type, TimeEntry::PERIOD_TYPES)
+        return if performed?
+
+        period_start = parse_pending_date_param(:period_start)
+        return if performed?
+
+        { period_type: period_type, period_start: period_start }
+      end
+
       def parse_pending_date_param(key)
         return nil if params[key].blank?
 
@@ -1133,18 +1161,15 @@ module Api
             id: :asc
           )
         when "category"
-          categories_table = TimeCategory.arel_table
-          entries.left_outer_joins(:time_category).order(
-            lower_order(categories_table[:name], dir),
+          entries.left_outer_joins(:service_type, :time_category).order(
+            lower_order(Arel.sql("COALESCE(service_types.name, time_categories.name)"), dir),
             work_date: :asc,
             start_time: :asc,
             id: :asc
           )
         when "client"
-          clients_table = Client.arel_table
           entries.left_outer_joins(:client).order(
-            lower_order(clients_table[:last_name], dir),
-            lower_order(clients_table[:first_name], dir),
+            lower_order(Arel.sql(Client::DISPLAY_NAME_SQL), dir),
             work_date: :asc,
             start_time: :asc,
             id: :asc
@@ -1197,16 +1222,15 @@ module Api
           { work_date: date.iso8601, count: count.to_i, hours: hours.to_f.round(2) }
         end
 
-        counts_by_client = scope.left_outer_joins(:client).group("clients.id", "clients.first_name", "clients.last_name").pluck(
+        counts_by_client = scope.left_outer_joins(:client).group("clients.id").pluck(
           "clients.id",
-          "clients.first_name",
-          "clients.last_name",
+          Arel.sql("MIN(#{Client::DISPLAY_NAME_SQL})"),
           Arel.sql("COUNT(time_entries.id)"),
           Arel.sql("COALESCE(SUM(time_entries.hours), 0)")
-        ).map do |id, first_name, last_name, count, hours|
+        ).map do |id, client_name, count, hours|
           {
             id: id,
-            name: id ? [ first_name, last_name ].compact.join(" ").strip : "No client",
+            name: id ? client_name : "No client",
             count: count.to_i,
             hours: hours.to_f.round(2)
           }

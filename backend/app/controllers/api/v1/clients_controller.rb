@@ -75,6 +75,27 @@ module Api
         }
       end
 
+      # GET /api/v1/clients/options
+      # Lightweight list of every active client for pickers (time entries,
+      # filters, reports), labeled and sorted by Client#display_name.
+      def options
+        clients = Client.active.order_by_display_name
+                        .select(:id, :first_name, :last_name, :business_name, :client_type)
+
+        render json: {
+          clients: clients.map do |client|
+            {
+              id: client.id,
+              name: client.display_name,
+              client_type: client.client_type,
+              business_name: client.business_name,
+              first_name: client.first_name,
+              last_name: client.last_name
+            }
+          end
+        }
+      end
+
       # GET /api/v1/clients/:id
       def show
         client = Client.includes(

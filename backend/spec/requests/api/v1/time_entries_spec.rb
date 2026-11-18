@@ -445,6 +445,204 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
     end
   end
 
+  # ── CLIENT / CATEGORY / TASK / PERIOD ────────────────────────────────
+  describe "work details (client, category, task, period)" do
+    let!(:bookkeeping) { ServiceType.create!(name: "Bookkeeping", position: 1) }
+    let!(:payroll) { ServiceType.create!(name: "Payroll", position: 2) }
+    let!(:bank_rec) { ServiceTask.create!(service_type: bookkeeping, name: "Bank Reconciliation", position: 1) }
+    let!(:payroll_processing) { ServiceTask.create!(service_type: payroll, name: "Payroll Processing", position: 1) }
+    let!(:business_client) do
+      Client.create!(first_name: "Maria", last_name: "Santos", client_type: "business", business_name: "MoSa's Joint")
+    end
+    let!(:individual_client) { Client.create!(first_name: "Jose", last_name: "Cruz") }
+
+    def manual_entry_params(**overrides)
+      {
+        time_entry: {
+          work_date: Date.current.iso8601,
+          start_time: "09:00",
+          end_time: "11:00",
+          client_id: business_client.id,
+          service_type_id: bookkeeping.id,
+          service_task_id: bank_rec.id,
+          period_type: "month",
+          period_start: "2026-07-01",
+          description: ""
+        }.merge(overrides)
+      }
+    end
+
+    it "creates an entry with client, category, task and period" do
+      post "/api/v1/time_entries", params: manual_entry_params, headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:created)
+      entry = json[:time_entry]
+      expect(entry.dig(:client, :name)).to eq("MoSa's Joint")
+      expect(entry.dig(:service_type, :name)).to eq("Bookkeeping")
+      expect(entry.dig(:service_task, :name)).to eq("Bank Reconciliation")
+      expect(entry[:period_type]).to eq("month")
+      expect(entry[:period_start]).to eq("2026-07-01")
+      expect(entry[:period_label]).to eq("July 2026")
+      expect(entry[:time_category]).to be_nil
+    end
+
+    it "labels an individual client by first and last name" do
+      post "/api/v1/time_entries",
+           params: manual_entry_params(client_id: individual_client.id, period_type: "quarter", period_start: "2026-07-01"),
+           headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig(:time_entry, :client, :name)).to eq("Jose Cruz")
+      expect(json.dig(:time_entry, :period_label)).to eq("3rd Quarter 2026")
+    end
+
+    it "rejects a misaligned period" do
+      post "/api/v1/time_entries",
+           params: manual_entry_params(period_type: "quarter", period_start: "2026-08-01"),
+           headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("first day of the selected quarter")
+    end
+
+    it "rejects a task from a different category" do
+      post "/api/v1/time_entries",
+           params: manual_entry_params(service_task_id: payroll_processing.id),
+           headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("must belong to the selected service type")
+    end
+
+    it "updates the period and clears it again" do
+      entry = create(:time_entry, user: employee, service_type: bookkeeping, service_task: bank_rec)
+
+      patch "/api/v1/time_entries/#{entry.id}",
+            params: { time_entry: { period_type: "year", period_start: "2026-01-01" } },
+            headers: auth_headers_for[admin]
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:time_entry, :period_label)).to eq("2026")
+
+      patch "/api/v1/time_entries/#{entry.id}",
+            params: { time_entry: { period_type: "", period_start: "" } },
+            headers: auth_headers_for[admin]
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:time_entry, :period_type)).to be_nil
+      expect(json.dig(:time_entry, :period_label)).to be_nil
+      expect(AuditLog.where(auditable: entry, action: "updated").last.changes_made).to include("period_type")
+    end
+
+    it "keeps a legacy time category when an older entry is edited" do
+      legacy = TimeCategory.create!(name: "Tax Prep")
+      entry = create(:time_entry, user: employee, time_category: legacy)
+
+      patch "/api/v1/time_entries/#{entry.id}",
+            params: { time_entry: { description: "Updated comment", client_id: individual_client.id } },
+            headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:time_entry, :time_category, :name)).to eq("Tax Prep")
+      expect(entry.reload.time_category_id).to eq(legacy.id)
+    end
+
+    describe "filters" do
+      let!(:july_rec) do
+        create(:time_entry, user: employee, client: business_client, service_type: bookkeeping, service_task: bank_rec,
+                            period_type: "month", period_start: Date.new(2026, 7, 1))
+      end
+      let!(:q3_payroll) do
+        create(:time_entry, user: employee, client: individual_client, service_type: payroll, service_task: payroll_processing,
+                            period_type: "quarter", period_start: Date.new(2026, 7, 1))
+      end
+      let!(:legacy_entry) { create(:time_entry, user: employee, time_category: TimeCategory.create!(name: "Admin")) }
+
+      def ids_for(params)
+        get "/api/v1/time_entries", params: params, headers: auth_headers_for[admin]
+        expect(response).to have_http_status(:ok)
+        json[:time_entries].map { |row| row[:id] }
+      end
+
+      it "filters by category and task" do
+        expect(ids_for(service_type_id: payroll.id)).to eq([ q3_payroll.id ])
+        expect(ids_for(service_task_id: bank_rec.id)).to eq([ july_rec.id ])
+      end
+
+      it "filters by period type and start" do
+        expect(ids_for(period_type: "month", period_start: "2026-07-01")).to eq([ july_rec.id ])
+        expect(ids_for(period_type: "quarter")).to eq([ q3_payroll.id ])
+        expect(ids_for(period_start: "2026-07-01")).to contain_exactly(july_rec.id, q3_payroll.id)
+      end
+
+      it "rejects invalid period filters" do
+        get "/api/v1/time_entries", params: { period_type: "week" }, headers: auth_headers_for[admin]
+        expect(response).to have_http_status(:unprocessable_entity)
+
+        get "/api/v1/time_entries", params: { period_start: "not-a-date" }, headers: auth_headers_for[admin]
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+
+      it "still returns and filters legacy time-category entries" do
+        all_ids = ids_for({})
+        expect(all_ids).to include(legacy_entry.id)
+        legacy_row = json[:time_entries].find { |row| row[:id] == legacy_entry.id }
+        expect(legacy_row.dig(:time_category, :name)).to eq("Admin")
+        expect(legacy_row[:service_type]).to be_nil
+
+        expect(ids_for(time_category_id: legacy_entry.time_category_id)).to eq([ legacy_entry.id ])
+      end
+    end
+
+    it "records work details when clocking out" do
+      post "/api/v1/time_entries/clock_in", headers: auth_headers_for[employee]
+      expect(response).to have_http_status(:created)
+
+      post "/api/v1/time_entries/clock_out",
+           params: {
+             description: "Reconciled July",
+             client_id: business_client.id,
+             service_type_id: bookkeeping.id,
+             service_task_id: bank_rec.id,
+             period_type: "month",
+             period_start: "2026-07-01"
+           },
+           headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:ok)
+      entry = json[:time_entry]
+      expect(entry[:status]).to eq("completed")
+      expect(entry[:description]).to eq("Reconciled July")
+      expect(entry.dig(:client, :name)).to eq("MoSa's Joint")
+      expect(entry.dig(:service_task, :name)).to eq("Bank Reconciliation")
+      expect(entry[:period_label]).to eq("July 2026")
+    end
+
+    it "keeps the clock running when clock-out work details are invalid" do
+      post "/api/v1/time_entries/clock_in", headers: auth_headers_for[employee]
+
+      post "/api/v1/time_entries/clock_out",
+           params: { service_type_id: bookkeeping.id, service_task_id: payroll_processing.id },
+           headers: auth_headers_for[employee]
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(TimeEntry.clocked_in.where(user: employee)).to exist
+    end
+  end
+
+  describe "GET /api/v1/time_entries/pending_approvals client labels" do
+    it "counts and sorts clients by their display name" do
+      business = Client.create!(first_name: "Zoe", last_name: "Aguon", client_type: "business", business_name: "Beta Builders")
+      person = Client.create!(first_name: "Amy", last_name: "Zamora")
+      later = create(:time_entry, user: employee, client: business, approval_status: "pending")
+      earlier = create(:time_entry, user: employee, client: person, approval_status: "pending")
+
+      get "/api/v1/time_entries/pending_approvals", params: { sort: "client", direction: "asc" }, headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      expect(json[:pending_entries].map { |row| row[:id] }).to eq([ earlier.id, later.id ])
+      expect(json.dig(:summary, :counts_by_client).map { |row| row[:name] }).to contain_exactly("Amy Zamora", "Beta Builders")
+    end
+  end
+
   # ── EXPORTED REPORT CORRECTIONS ──────────────────────────────────────
   describe "corrections after an export" do
     let!(:entry) { create(:time_entry, user: employee, approval_status: "approved") }
