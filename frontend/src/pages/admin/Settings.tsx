@@ -78,7 +78,6 @@ export default function Settings() {
   const [categories, setCategories] = useState<AdminTimeCategoryLocal[]>([])
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [editingCategory, setEditingCategory] = useState<AdminTimeCategoryLocal | null>(null)
-  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false)
   const [categoryFormData, setCategoryFormData] = useState({
     name: '',
     description: '',
@@ -386,6 +385,8 @@ export default function Settings() {
   
   // Time Category handlers
   const handleSaveCategory = async () => {
+    // Legacy categories can be edited but not added; new time uses Categories & Tasks.
+    if (!editingCategory) return
     if (!categoryFormData.name.trim()) {
       setCategoryError('Name is required')
       return
@@ -395,23 +396,12 @@ export default function Settings() {
     setCategoryError('')
 
     try {
-      if (editingCategory) {
-        const response = await api.updateTimeCategory(editingCategory.id, categoryFormData)
-        if (response.data) {
-          setCategories(prev => prev.map(c => c.id === editingCategory.id ? response.data!.time_category as unknown as AdminTimeCategoryLocal : c))
-          setEditingCategory(null)
-        } else if (response.error) {
-          setCategoryError(response.error)
-        }
-      } else {
-        const response = await api.createTimeCategory(categoryFormData)
-        if (response.data) {
-          setCategories(prev => [...prev, response.data!.time_category as unknown as AdminTimeCategoryLocal])
-          setIsAddingNewCategory(false)
-          setCategoryFormData({ name: '', description: '' })
-        } else if (response.error) {
-          setCategoryError(response.error)
-        }
+      const response = await api.updateTimeCategory(editingCategory.id, categoryFormData)
+      if (response.data) {
+        setCategories(prev => prev.map(c => c.id === editingCategory.id ? response.data!.time_category as unknown as AdminTimeCategoryLocal : c))
+        setEditingCategory(null)
+      } else if (response.error) {
+        setCategoryError(response.error)
       }
     } finally {
       setSavingCategory(false)
@@ -448,12 +438,10 @@ export default function Settings() {
       name: category.name,
       description: category.description || '',
     })
-    setIsAddingNewCategory(false)
   }
 
   const cancelEditCategory = () => {
     setEditingCategory(null)
-    setIsAddingNewCategory(false)
     setCategoryFormData({ name: '', description: '' })
     setCategoryError('')
   }
@@ -936,13 +924,13 @@ export default function Settings() {
       <FadeUp>
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-primary-dark tracking-tight">Settings</h1>
-        <p className="text-text-muted mt-1">Manage workflow stages, time categories, and system settings</p>
+        <p className="text-text-muted mt-1">Manage workflow stages, time tracking categories and tasks, and system settings</p>
       </div>
       </FadeUp>
       
       {/* Tabs */}
       <div className="border-b border-neutral-warm">
-        <nav className="flex gap-4">
+        <nav className="flex gap-4 overflow-x-auto">
           <button
             onClick={() => setActiveTab('workflow')}
             className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
@@ -954,14 +942,14 @@ export default function Settings() {
             Workflow Stages
           </button>
           <button
-            onClick={() => setActiveTab('time')}
+            onClick={() => setActiveTab('services')}
             className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'time'
+              activeTab === 'services'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
             }`}
           >
-            Time Categories
+            Categories &amp; Tasks
           </button>
           <button
             onClick={() => setActiveTab('schedule')}
@@ -972,16 +960,6 @@ export default function Settings() {
             }`}
           >
             Schedule Presets
-          </button>
-          <button
-            onClick={() => setActiveTab('services')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'services'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-text-muted hover:text-primary-dark'
-            }`}
-          >
-            Services
           </button>
           <button
             onClick={() => setActiveTab('operations')}
@@ -1002,6 +980,16 @@ export default function Settings() {
             }`}
           >
             System
+          </button>
+          <button
+            onClick={() => setActiveTab('time')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'time'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-muted hover:text-primary-dark'
+            }`}
+          >
+            Legacy Categories
           </button>
         </nav>
       </div>
@@ -1162,25 +1150,14 @@ export default function Settings() {
       </div>
       )}
 
-      {/* Time Categories Tab */}
+      {/* Legacy Categories Tab (time_categories) */}
       {activeTab === 'time' && (
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
         <div className="px-6 py-5 border-b border-neutral-warm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-primary-dark">Time Categories</h2>
-            <p className="text-sm text-text-muted mt-0.5">Configure categories for time tracking</p>
+            <h2 className="text-lg font-semibold text-primary-dark">Legacy Categories</h2>
+            <p className="text-sm text-text-muted mt-0.5">The older single-list categories. Entries logged before the update keep these. New time uses Categories &amp; Tasks.</p>
           </div>
-          {!isAddingNewCategory && !editingCategory && (
-            <button
-              onClick={() => setIsAddingNewCategory(true)}
-              className="inline-flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-dark hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-md hover:shadow-lg"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Category
-            </button>
-          )}
         </div>
 
         {loadingCategories ? (
@@ -1189,21 +1166,6 @@ export default function Settings() {
           </div>
         ) : (
           <div className="divide-y divide-neutral-warm">
-            {/* Add New Category Form */}
-            {isAddingNewCategory && (
-              <div className="p-6 bg-neutral-warm/30">
-                <h3 className="font-semibold text-primary-dark mb-4">Add New Category</h3>
-                <CategoryForm
-                  formData={categoryFormData}
-                  onFormChange={(key, value) => setCategoryFormData(prev => ({ ...prev, [key]: value }))}
-                  onSave={handleSaveCategory}
-                  onCancel={cancelEditCategory}
-                  saving={savingCategory}
-                  error={categoryError}
-                />
-              </div>
-            )}
-
             {/* Active Categories */}
             {activeCategories.map((category) => (
               <div key={category.id} className="p-5 sm:p-6 hover:bg-neutral-warm/20 transition-colors">
@@ -1222,7 +1184,7 @@ export default function Settings() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-primary-dark">{category.name}</span>
                         <span className="text-xs px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-medium">
-                          {category.time_entries_count} entries
+                          {category.time_entries_count} {category.time_entries_count === 1 ? 'entry' : 'entries'}
                         </span>
                       </div>
                       {category.description && (
@@ -1260,7 +1222,7 @@ export default function Settings() {
                       <div className="min-w-0 opacity-60">
                         <span className="font-medium text-primary-dark">{category.name}</span>
                         <p className="text-sm text-text-muted mt-0.5">
-                          {category.time_entries_count} entries
+                          {category.time_entries_count} {category.time_entries_count === 1 ? 'entry' : 'entries'}
                         </p>
                       </div>
                       <button
@@ -1275,20 +1237,14 @@ export default function Settings() {
               </>
             )}
 
-            {activeCategories.length === 0 && !isAddingNewCategory && (
+            {activeCategories.length === 0 && (
               <div className="p-12 text-center">
                 <div className="w-16 h-16 bg-neutral-warm rounded-full flex items-center justify-center mx-auto mb-4">
                   <svg className="w-8 h-8 text-text-muted" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <p className="text-text-muted mb-4">No time categories configured</p>
-                <button
-                  onClick={() => setIsAddingNewCategory(true)}
-                  className="text-primary hover:text-primary-dark font-medium"
-                >
-                  Add your first category →
-                </button>
+                <p className="text-text-muted">No legacy categories</p>
               </div>
             )}
           </div>
@@ -1403,13 +1359,13 @@ export default function Settings() {
       </div>
       )}
 
-      {/* Services Tab */}
+      {/* Categories & Tasks Tab (service_types and service_tasks) */}
       {activeTab === 'services' && (
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-warm overflow-hidden hover:shadow-md transition-shadow duration-300">
         <div className="px-6 py-5 border-b border-neutral-warm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-primary-dark">Service Types</h2>
-            <p className="text-sm text-text-muted mt-0.5">Configure the services offered and their tasks</p>
+            <h2 className="text-lg font-semibold text-primary-dark">Categories &amp; Tasks</h2>
+            <p className="text-sm text-text-muted mt-0.5">The categories and tasks staff pick when logging time. They also tag the services each client uses.</p>
           </div>
           {!isAddingNewServiceType && !editingServiceType && (
             <button
@@ -1419,7 +1375,7 @@ export default function Settings() {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Add Service Type
+              Add Category
             </button>
           )}
         </div>
@@ -1428,7 +1384,7 @@ export default function Settings() {
         {(isAddingNewServiceType || editingServiceType) && (
           <div className="p-6 bg-secondary/30 border-b border-neutral-warm">
             <h3 className="font-medium text-primary-dark mb-4">
-              {editingServiceType ? 'Edit Service Type' : 'Add New Service Type'}
+              {editingServiceType ? 'Edit Category' : 'Add New Category'}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -1438,7 +1394,7 @@ export default function Settings() {
                   value={serviceTypeFormData.name}
                   onChange={(e) => setServiceTypeFormData(prev => ({ ...prev, name: e.target.value }))}
                   className="w-full px-4 py-2 border border-neutral-warm rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
-                  placeholder="e.g., Payroll Services"
+                  placeholder="e.g., Payroll"
                 />
               </div>
               <div>
@@ -1490,7 +1446,7 @@ export default function Settings() {
           </div>
         ) : serviceTypes.length === 0 ? (
           <div className="p-6 text-center text-text-muted">
-            No service types configured yet.
+            No categories yet.
           </div>
         ) : (
           <div className="divide-y divide-neutral-warm">
@@ -1500,6 +1456,7 @@ export default function Settings() {
                   <button
                     onClick={() => setExpandedServiceType(expandedServiceType === serviceType.id ? null : serviceType.id)}
                     className="flex items-center gap-3 text-left flex-1"
+                    aria-expanded={expandedServiceType === serviceType.id}
                   >
                     <div
                       className="w-4 h-4 rounded-full shrink-0"
@@ -1525,7 +1482,8 @@ export default function Settings() {
                     <button
                       onClick={() => startEditServiceType(serviceType)}
                       className="p-2 text-gray-400 hover:text-primary rounded-lg hover:bg-gray-50"
-                      title="Edit"
+                      title="Edit category"
+                      aria-label={`Edit ${serviceType.name}`}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -1534,7 +1492,8 @@ export default function Settings() {
                     <button
                       onClick={() => handleDeleteServiceType(serviceType)}
                       className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-gray-50"
-                      title="Deactivate"
+                      title="Turn off category"
+                      aria-label={`Turn off ${serviceType.name}`}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1616,6 +1575,8 @@ export default function Settings() {
                               <button
                                 onClick={() => startEditTask(serviceType.id, task)}
                                 className="p-1 text-gray-400 hover:text-primary rounded"
+                                aria-label={`Rename ${task.name}`}
+                                title="Rename task"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -1624,6 +1585,8 @@ export default function Settings() {
                               <button
                                 onClick={() => handleDeleteTask(serviceType.id, task)}
                                 className="p-1 text-gray-400 hover:text-red-600 rounded"
+                                aria-label={`Turn off ${task.name}`}
+                                title="Turn off task"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

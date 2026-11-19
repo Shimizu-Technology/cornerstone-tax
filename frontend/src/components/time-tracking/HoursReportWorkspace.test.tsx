@@ -184,7 +184,7 @@ describe('HoursReportWorkspace', () => {
 
     expect(screen.getByText('660.38h')).toBeInTheDocument()
     expect(screen.getByText('Approval review complete')).toBeInTheDocument()
-    expect(screen.getByText('1 entries need a look')).toBeInTheDocument()
+    expect(screen.getByText('1 entry needs a look')).toBeInTheDocument()
     expect(screen.getByText('Flags do not remove hours from payroll totals.')).toBeInTheDocument()
   })
 

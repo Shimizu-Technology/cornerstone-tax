@@ -397,7 +397,7 @@ export default function HoursReportWorkspace({
             </div>
             <button type="button" onClick={() => openReview('all')} className={`rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${report.quality.status === 'clear' ? 'border-emerald-200 bg-emerald-50 text-emerald-950' : 'border-amber-200 bg-amber-50 text-amber-950 hover:border-amber-300'}`}>
               <p className="text-xs font-bold uppercase tracking-[0.12em]">Data quality</p>
-              <p className="mt-1 font-semibold">{report.quality.status === 'clear' ? 'No review flags' : `${report.quality.flagged_entries_count} entries need a look`}</p>
+              <p className="mt-1 font-semibold">{report.quality.status === 'clear' ? 'No review flags' : `${report.quality.flagged_entries_count} ${report.quality.flagged_entries_count === 1 ? 'entry needs' : 'entries need'} a look`}</p>
               <p className="mt-1 text-sm opacity-80">Flags do not remove hours from payroll totals.</p>
             </button>
             <div className="rounded-2xl border border-neutral-warm bg-secondary/30 p-4 text-primary-dark">

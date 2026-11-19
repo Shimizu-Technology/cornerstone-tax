@@ -487,7 +487,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
                   referenceDate={status?.work_date || undefined}
                   loadError={workOptions.error}
                   onRetry={workOptions.retry}
-                  commentsPlaceholder="e.g. Worked on Ms. Tajalle's 1040, filed Mr. Cruz's extension..."
+                  commentsPlaceholder="e.g. Reconciled October bank statements, prepared GRT return..."
                 />
               </div>
 
