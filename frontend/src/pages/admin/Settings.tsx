@@ -78,7 +78,6 @@ export default function Settings() {
   const [categories, setCategories] = useState<AdminTimeCategoryLocal[]>([])
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [editingCategory, setEditingCategory] = useState<AdminTimeCategoryLocal | null>(null)
-  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false)
   const [categoryFormData, setCategoryFormData] = useState({
     name: '',
     description: '',
@@ -386,6 +385,8 @@ export default function Settings() {
   
   // Time Category handlers
   const handleSaveCategory = async () => {
+    // Legacy categories can be edited but not added; new time uses Categories & Tasks.
+    if (!editingCategory) return
     if (!categoryFormData.name.trim()) {
       setCategoryError('Name is required')
       return
@@ -395,23 +396,12 @@ export default function Settings() {
     setCategoryError('')
 
     try {
-      if (editingCategory) {
-        const response = await api.updateTimeCategory(editingCategory.id, categoryFormData)
-        if (response.data) {
-          setCategories(prev => prev.map(c => c.id === editingCategory.id ? response.data!.time_category as unknown as AdminTimeCategoryLocal : c))
-          setEditingCategory(null)
-        } else if (response.error) {
-          setCategoryError(response.error)
-        }
-      } else {
-        const response = await api.createTimeCategory(categoryFormData)
-        if (response.data) {
-          setCategories(prev => [...prev, response.data!.time_category as unknown as AdminTimeCategoryLocal])
-          setIsAddingNewCategory(false)
-          setCategoryFormData({ name: '', description: '' })
-        } else if (response.error) {
-          setCategoryError(response.error)
-        }
+      const response = await api.updateTimeCategory(editingCategory.id, categoryFormData)
+      if (response.data) {
+        setCategories(prev => prev.map(c => c.id === editingCategory.id ? response.data!.time_category as unknown as AdminTimeCategoryLocal : c))
+        setEditingCategory(null)
+      } else if (response.error) {
+        setCategoryError(response.error)
       }
     } finally {
       setSavingCategory(false)
@@ -448,12 +438,10 @@ export default function Settings() {
       name: category.name,
       description: category.description || '',
     })
-    setIsAddingNewCategory(false)
   }
 
   const cancelEditCategory = () => {
     setEditingCategory(null)
-    setIsAddingNewCategory(false)
     setCategoryFormData({ name: '', description: '' })
     setCategoryError('')
   }
@@ -1178,21 +1166,6 @@ export default function Settings() {
           </div>
         ) : (
           <div className="divide-y divide-neutral-warm">
-            {/* Add New Category Form */}
-            {isAddingNewCategory && (
-              <div className="p-6 bg-neutral-warm/30">
-                <h3 className="font-semibold text-primary-dark mb-4">Add New Category</h3>
-                <CategoryForm
-                  formData={categoryFormData}
-                  onFormChange={(key, value) => setCategoryFormData(prev => ({ ...prev, [key]: value }))}
-                  onSave={handleSaveCategory}
-                  onCancel={cancelEditCategory}
-                  saving={savingCategory}
-                  error={categoryError}
-                />
-              </div>
-            )}
-
             {/* Active Categories */}
             {activeCategories.map((category) => (
               <div key={category.id} className="p-5 sm:p-6 hover:bg-neutral-warm/20 transition-colors">
@@ -1264,7 +1237,7 @@ export default function Settings() {
               </>
             )}
 
-            {activeCategories.length === 0 && !isAddingNewCategory && (
+            {activeCategories.length === 0 && (
               <div className="p-12 text-center">
                 <div className="w-16 h-16 bg-neutral-warm rounded-full flex items-center justify-center mx-auto mb-4">
                   <svg className="w-8 h-8 text-text-muted" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
