@@ -52,7 +52,11 @@ class TimeClockService
     # ── Clock Out ──
     # expected_entry_id: the active entry the clock-out form was opened for.
     # When given, a different (or no) active entry is rejected unchanged.
-    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil, description: nil, work_details: {}, expected_entry_id: nil)
+    # work_lines: optional split of the session's time across clients (see
+    # TimeEntry#work_lines_input). The clock keeps running while the form is
+    # open, so lines within a few minutes of the final duration are scaled to
+    # it exactly.
+    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil, description: nil, work_details: {}, expected_entry_id: nil, work_lines: nil)
       entry = active_entry_for(user)
       raise ClockError, "Not currently clocked in" unless entry
       ensure_expected_entry!(entry, expected_entry_id)
@@ -96,6 +100,10 @@ class TimeClockService
 
         entry.description = description if description.present?
         apply_clock_out_work_details(entry, work_details)
+        unless work_lines.nil?
+          entry.work_lines_input = work_lines
+          entry.work_lines_tolerance_minutes = WorkLineHours::CLOCK_OUT_TOLERANCE_MINUTES
+        end
         entry.status = "completed"
         entry.break_minutes = entry.total_break_minutes
         entry.calculate_hours_from_times

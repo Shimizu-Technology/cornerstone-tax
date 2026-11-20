@@ -22,6 +22,13 @@ class TimeEntry < ApplicationRecord
   belongs_to :overtime_approved_by, class_name: "User", optional: true
   has_many :time_entry_breaks, dependent: :destroy
   has_many :linked_operation_tasks, class_name: "OperationTask", foreign_key: "linked_time_entry_id", dependent: :nullify
+  # How the entry's hours were spent, by client. See TimeEntryAllocation.
+  has_many :work_lines, -> { order(:position, :id) }, class_name: "TimeEntryAllocation",
+           inverse_of: :time_entry, dependent: :delete_all, autosave: true
+
+  # Entry-level work columns mirror the first work line (kept for older
+  # screens, filters and the payroll time summary).
+  WORK_LINE_SYNC_FIELDS = %i[client_id service_type_id service_task_id period_type period_start].freeze
 
   validates :work_date, presence: true
   validates :hours, presence: true, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 24 }
@@ -31,18 +38,25 @@ class TimeEntry < ApplicationRecord
   validates :attendance_status, inclusion: { in: ATTENDANCE_STATUSES }, allow_nil: true
   validates :approval_status, inclusion: { in: APPROVAL_STATUSES }, allow_nil: true
   validates :overtime_status, inclusion: { in: OVERTIME_STATUSES }, allow_nil: true
-  validates :start_time, presence: true, if: -> { status == "completed" }
-  validates :end_time, presence: true, if: -> { status == "completed" }
+  validates :start_time, presence: true, if: -> { status == "completed" && !duration_only? }
+  validates :end_time, presence: true, if: -> { status == "completed" && !duration_only? }
   validate :end_time_after_start_time
   validate :service_task_matches_service_type
   validates :period_type, inclusion: { in: PERIOD_TYPES }, allow_nil: true
   validate :period_fields_consistent
   validate :selected_work_records_exist
+  validate :work_lines_match_hours
 
   before_validation :normalize_blank_period
 
   before_validation :calculate_hours_from_times, if: -> { start_time.present? && end_time.present? }
   before_validation :set_zero_hours_if_clocked_in, if: -> { status.in?(%w[clocked_in on_break]) }
+  # Runs last: line hours are split from the entry's final hours.
+  before_validation :apply_work_lines
+  after_save :clear_work_lines_input
+
+  attr_reader :work_lines_input
+  attr_writer :work_lines_tolerance_minutes
 
   scope :for_date, ->(date) { where(work_date: date) }
   scope :for_week, ->(date) { where(work_date: date.beginning_of_week(:sunday)..date.end_of_week(:sunday)) }
@@ -60,6 +74,18 @@ class TimeEntry < ApplicationRecord
     scope = scope.where(period_start: start) if start.present?
     scope
   }
+  # Entries whose own column or any work line has the value (a split entry
+  # matches every client it was split across).
+  scope :with_work_line_value, lambda { |column, value|
+    column = column.to_sym
+    raise ArgumentError, "unsupported work line column" unless WORK_LINE_SYNC_FIELDS.include?(column)
+
+    where(
+      "time_entries.#{column} = :value OR time_entries.id IN " \
+      "(SELECT time_entry_allocations.time_entry_id FROM time_entry_allocations WHERE time_entry_allocations.#{column} = :value)",
+      value: value
+    )
+  }
   scope :clock_entries, -> { where(entry_method: "clock") }
   scope :manual_entries, -> { where(entry_method: "manual") }
   # Clock entries have nil approval_status (they don't go through the approval
@@ -68,6 +94,32 @@ class TimeEntry < ApplicationRecord
 
   def locked?
     locked_at.present?
+  end
+
+  # Replace this entry's work lines on the next save. Each line is a hash of
+  # client_id, description, service_type_id, service_task_id, period_type,
+  # period_start and a duration (minutes, hours or a "45m"/"1.5h" string).
+  # nil leaves the lines alone (a single line then follows the entry).
+  def work_lines_input=(lines)
+    @work_lines_input = lines.nil? ? nil : Array(lines).map { |line| line.to_h.symbolize_keys }
+  end
+
+  def work_lines_tolerance_minutes
+    @work_lines_tolerance_minutes || WorkLineHours::DEFAULT_TOLERANCE_MINUTES
+  end
+
+  # A manual entry logged as a list of durations, with no start/end times.
+  # Its hours are the sum of its work lines.
+  def duration_only?
+    manual_entry? && start_time.blank? && end_time.blank?
+  end
+
+  def current_work_lines
+    work_lines.reject(&:marked_for_destruction?)
+  end
+
+  def split?
+    current_work_lines.size > 1
   end
 
   def editable_by?(acting_user)
@@ -195,6 +247,100 @@ class TimeEntry < ApplicationRecord
   end
 
   private
+
+  def clear_work_lines_input
+    @work_lines_input = nil
+  end
+
+  def apply_work_lines
+    @work_lines_error = nil
+    return unless status == "completed"
+
+    if @work_lines_input
+      build_submitted_work_lines
+    else
+      sync_single_work_line
+    end
+  rescue WorkLineHours::Error => e
+    @work_lines_error = e.message
+  end
+
+  def build_submitted_work_lines
+    raise WorkLineHours::Error, "Add at least one work line" if @work_lines_input.empty?
+
+    minutes = @work_lines_input.map { |line| WorkLineHours.line_minutes(line) }
+    self.hours = WorkLineHours.hours_for_minutes(minutes.sum) if duration_only?
+    parts = WorkLineHours.distribute(hours, minutes, tolerance_minutes: work_lines_tolerance_minutes)
+
+    work_lines.each { |line| line.mark_for_destruction if line.persisted? }
+    built = @work_lines_input.each_with_index.map do |line, index|
+      work_lines.build(
+        client_id: line[:client_id].presence,
+        description: line[:description],
+        service_type_id: line[:service_type_id].presence,
+        service_task_id: line[:service_type_id].present? ? line[:service_task_id].presence : nil,
+        period_type: line[:period_type].presence,
+        period_start: line[:period_start].presence,
+        hours: parts[index],
+        position: index
+      )
+    end
+    work_lines.reject { |line| line.persisted? || built.include?(line) }.each { |line| work_lines.delete(line) }
+
+    first = built.first
+    assign_attributes(first.work_attributes)
+    descriptions = built.filter_map { |line| line.description.to_s.strip.presence }.uniq
+    self.description = descriptions.join("; ").presence if descriptions.any? || built.size > 1
+  end
+
+  def sync_single_work_line
+    lines = current_work_lines
+    if hours.to_d <= 0
+      lines.each(&:mark_for_destruction)
+      return
+    end
+
+    if lines.size > 1
+      changed_fields = WORK_LINE_SYNC_FIELDS.select { |field| will_save_change_to_attribute?(field) }
+      if changed_fields.any?
+        raise WorkLineHours::Error, "This entry is split across several work lines. Change the work lines instead."
+      end
+      return
+    end
+
+    # A day log without times is defined by its lines; never invent one.
+    return if lines.empty? && duration_only?
+
+    line = lines.first || work_lines.build(position: 0)
+    line.assign_attributes(
+      client_id: client_id,
+      service_type_id: service_type_id,
+      service_task_id: service_task_id,
+      period_type: period_type,
+      period_start: period_start,
+      description: description,
+      hours: hours.to_d.round(2)
+    )
+  end
+
+  def work_lines_match_hours
+    if @work_lines_error
+      errors.add(:base, @work_lines_error)
+      return
+    end
+    return unless status == "completed"
+
+    lines = current_work_lines
+    if lines.empty?
+      errors.add(:base, "Add work lines or start and end times") if duration_only?
+      return
+    end
+
+    total = lines.sum { |line| line.hours.to_d }
+    return if total == hours.to_d.round(2)
+
+    errors.add(:base, "Work lines add up to #{format('%.2f', total)}h but this entry is #{format('%.2f', hours.to_d)}h. Update the work lines to match.")
+  end
 
   def set_zero_hours_if_clocked_in
     self.hours = 0 if hours.blank?

@@ -3,6 +3,7 @@
 class ServiceTask < ApplicationRecord
   belongs_to :service_type
   has_many :time_entries, dependent: :nullify
+  has_many :time_entry_allocations, dependent: :nullify
 
   validates :name, presence: true
   validates :name, uniqueness: { scope: :service_type_id }

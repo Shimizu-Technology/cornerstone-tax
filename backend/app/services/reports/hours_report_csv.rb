@@ -6,12 +6,14 @@ module Reports
   class HoursReportCsv
     FORMULA_PREFIX = /\A[ \t\r\n]*[=+\-@]/
 
-    # Work columns follow the order staff log time in:
-    # Client -> Category -> Task -> Period -> Comments.
+    # One row per work line. Work columns follow the order staff log time in:
+    # Client -> Category -> Task -> Period -> Comments. Entry columns (times,
+    # breaks, approval) repeat on each line of a split entry; "Line" shows
+    # e.g. "2 of 3" so split entries are easy to spot.
     DETAILED_HEADERS = [
       "Export Reference", "Employee", "Date", "Start", "End", "Break Minutes",
       "Client", "Category", "Task", "Period", "Tax Year", "Entry Method", "Regular Hours", "Overtime Hours",
-      "Total Hours", "Approval Status", "Approved By", "Approved At", "Finalized", "Comments"
+      "Total Hours", "Approval Status", "Approved By", "Approved At", "Finalized", "Comments", "Entry ID", "Line"
     ].freeze
 
     SUMMARY_HEADERS = [
@@ -25,28 +27,33 @@ module Reports
         Array(report[:employees]).each do |employee|
           Array(employee[:days]).each do |day|
             Array(day[:entries]).each do |entry|
-              csv << sanitize_row([
-                export.public_id,
-                employee[:full_name],
-                entry[:work_date],
-                entry[:formatted_start_time],
-                entry[:formatted_end_time],
-                entry[:break_minutes],
-                entry.dig(:client, :name),
-                entry[:category_label] || "Uncategorized",
-                entry.dig(:service_task, :name),
-                entry[:period_label],
-                entry.dig(:tax_return, :tax_year),
-                entry[:entry_method],
-                format_hours(entry[:regular_hours]),
-                format_hours(entry[:overtime_hours]),
-                format_hours(entry[:total_hours]),
-                entry[:approval_status] || "standard",
-                entry.dig(:approved_by, :full_name),
-                entry[:approved_at],
-                entry[:locked_at].present? ? "Yes" : "No",
-                entry[:description]
-              ])
+              lines = Array(entry[:work_lines]).presence || [ entry ]
+              lines.each_with_index do |line, index|
+                csv << sanitize_row([
+                  export.public_id,
+                  employee[:full_name],
+                  entry[:work_date],
+                  entry[:formatted_start_time],
+                  entry[:formatted_end_time],
+                  entry[:break_minutes],
+                  line[:client_label] || line.dig(:client, :name) || "Unassigned",
+                  line[:category_label] || "Uncategorized",
+                  line.dig(:service_task, :name),
+                  line[:period_label],
+                  entry.dig(:tax_return, :tax_year),
+                  entry[:entry_method],
+                  format_hours(line[:regular_hours]),
+                  format_hours(line[:overtime_hours]),
+                  format_hours(line[:total_hours]),
+                  entry[:approval_status] || "standard",
+                  entry.dig(:approved_by, :full_name),
+                  entry[:approved_at],
+                  entry[:locked_at].present? ? "Yes" : "No",
+                  line[:description],
+                  entry[:id],
+                  "#{index + 1} of #{lines.size}"
+                ])
+              end
             end
           end
         end

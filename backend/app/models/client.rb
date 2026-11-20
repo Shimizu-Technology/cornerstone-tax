@@ -6,6 +6,7 @@ class Client < ApplicationRecord
   has_many :intake_submissions, dependent: :destroy
   has_many :matched_intake_submissions, class_name: "IntakeSubmission", foreign_key: :matched_client_id, dependent: :nullify
   has_many :time_entries, dependent: :nullify
+  has_many :time_entry_allocations, dependent: :nullify
   has_many :transmittals, dependent: :destroy
   has_many :notifications, dependent: :destroy
   has_one :user, dependent: :nullify

@@ -528,6 +528,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_20_020000) do
     t.check_constraint "period_type IS NULL OR (period_type::text = ANY (ARRAY['month'::character varying, 'quarter'::character varying, 'year'::character varying]::text[]))", name: "check_time_entries_period_type"
   end
 
+  create_table "time_entry_allocations", force: :cascade do |t|
+    t.bigint "client_id"
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.decimal "hours", precision: 5, scale: 2, null: false
+    t.date "period_start"
+    t.string "period_type"
+    t.integer "position", default: 0, null: false
+    t.bigint "service_task_id"
+    t.bigint "service_type_id"
+    t.bigint "time_entry_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["client_id"], name: "index_time_entry_allocations_on_client_id"
+    t.index ["service_task_id"], name: "index_time_entry_allocations_on_service_task_id"
+    t.index ["service_type_id"], name: "index_time_entry_allocations_on_service_type_id"
+    t.index ["time_entry_id", "position"], name: "index_time_entry_allocations_on_time_entry_id_and_position"
+    t.index ["time_entry_id"], name: "index_time_entry_allocations_on_time_entry_id"
+    t.check_constraint "(period_type IS NULL) = (period_start IS NULL)", name: "check_time_entry_allocations_period_pair"
+    t.check_constraint "hours > 0::numeric AND hours <= 24::numeric", name: "check_time_entry_allocations_hours"
+    t.check_constraint "period_start IS NULL OR EXTRACT(day FROM period_start) = 1::numeric AND (period_type::text = 'month'::text OR period_type::text = 'quarter'::text AND (EXTRACT(month FROM period_start) = ANY (ARRAY[1::numeric, 4::numeric, 7::numeric, 10::numeric])) OR period_type::text = 'year'::text AND EXTRACT(month FROM period_start) = 1::numeric)", name: "check_time_entry_allocations_period_alignment"
+    t.check_constraint "period_type IS NULL OR (period_type::text = ANY (ARRAY['month'::character varying, 'quarter'::character varying, 'year'::character varying]::text[]))", name: "check_time_entry_allocations_period_type"
+  end
+
   create_table "time_entry_breaks", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "duration_minutes"
@@ -674,6 +697,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_20_020000) do
   add_foreign_key "time_entries", "users"
   add_foreign_key "time_entries", "users", column: "approved_by_id"
   add_foreign_key "time_entries", "users", column: "overtime_approved_by_id"
+  add_foreign_key "time_entry_allocations", "clients"
+  add_foreign_key "time_entry_allocations", "service_tasks"
+  add_foreign_key "time_entry_allocations", "service_types"
+  add_foreign_key "time_entry_allocations", "time_entries", on_delete: :cascade
   add_foreign_key "time_entry_breaks", "time_entries"
   add_foreign_key "time_period_locks", "users", column: "locked_by_id"
   add_foreign_key "transmittals", "clients"

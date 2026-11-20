@@ -6,6 +6,25 @@ module Payroll
   class HoursReportBuilder
     BUSINESS_TIMEZONE = TimeClockService::BUSINESS_TIMEZONE
     LONG_SHIFT_HOURS = 12
+    UNASSIGNED_LABEL = TimeEntryAllocation::UNASSIGNED_LABEL
+
+    # Stand-in for an entry that has no stored work lines yet (an open clock,
+    # or data written before lines existed): one line carrying the entry's own
+    # work fields and full hours, so reports read the same either way.
+    VirtualLine = Struct.new(:entry, keyword_init: true) do
+      delegate :client, :client_id, :service_type, :service_type_id, :service_task, :service_task_id,
+               :period_type, :period_start, :period_label, :description, :category_label, to: :entry
+
+      def id = nil
+      def position = 0
+      def hours = entry.hours
+      def minutes = (entry.hours.to_d * 60).round.to_i
+      def client_label = client ? client.display_name : UNASSIGNED_LABEL
+    end
+
+    # One reported slice of time: a work line with its share of the entry's
+    # regular and overtime hours.
+    Item = Struct.new(:entry, :line, :hours, :regular_hours, :overtime_hours, keyword_init: true)
 
     attr_reader :params, :start_date, :end_date, :context_start_date, :context_end_date,
                 :daily_overtime_threshold, :weekly_overtime_threshold
@@ -85,10 +104,10 @@ module Payroll
     def report_entries_scope(range, user_ids)
       scope = base_entries_scope(range, user_ids)
       scope = scope.where(time_category_id: params[:time_category_id]) if params[:time_category_id].present?
-      scope = scope.where(client_id: params[:client_id]) if params[:client_id].present?
-      scope = scope.where(service_type_id: params[:service_type_id]) if params[:service_type_id].present?
-      scope = scope.where(service_task_id: params[:service_task_id]) if params[:service_task_id].present?
-      scope = scope.for_work_period(period_type_filter, period_start_filter) if period_type_filter || period_start_filter
+      # Client, category, task and period are work-line filters, applied per
+      # line in Ruby (see #included_lines); period_type is validated here.
+      period_type_filter
+      period_start_filter
       scope = scope.where(entry_method: params[:entry_method]) if params[:entry_method].present?
       scope = scope.where(approval_status: approval_status_value(params[:approval_status])) if params[:approval_status].present?
       scope = scope.where(overtime_status: params[:overtime_status]) if params[:overtime_status].present?
@@ -100,7 +119,8 @@ module Payroll
 
       TimeEntry
         .where(user_id: user_ids, work_date: range)
-        .includes(:user, :time_category, :time_entry_breaks, :client, :tax_return, :service_type, :service_task, :approved_by, :overtime_approved_by)
+        .includes(:user, :time_category, :time_entry_breaks, :client, :tax_return, :service_type, :service_task, :approved_by, :overtime_approved_by,
+                  work_lines: [ :client, :service_type, :service_task ])
         .order(:work_date, :start_time, :created_at, :id)
     end
 
@@ -129,7 +149,7 @@ module Payroll
 
       users.filter_map do |user|
         user_context_entries = context_entries_by_user.fetch(user.id, [])
-        user_report_entries = report_entries_by_user.fetch(user.id, [])
+        user_report_entries = report_entries_by_user.fetch(user.id, []).select { |entry| included_lines(entry).any? }
         period_entries = user_report_entries.select { |entry| entry.work_date.between?(start_date, end_date) }
         control_period_entries = user_context_entries.select { |entry| entry.work_date.between?(start_date, end_date) }
         next if period_entries.empty? && control_period_entries.empty? && !include_empty_employees?
@@ -144,16 +164,19 @@ module Payroll
 
     def build_employee_report(user, user_context_entries, user_report_entries, control_period_entries)
       overtime_allocations = allocate_overtime(user_context_entries)
+      user_report_entries = user_report_entries.select { |entry| included_lines(entry).any? }
       period_entries = user_report_entries.select { |entry| entry.work_date.between?(start_date, end_date) }
       countable_period_entries = period_entries.select { |entry| countable?(entry) }
+      items_by_entry = countable_period_entries.to_h { |entry| [ entry.id, items_for(entry, overtime_allocations) ] }
+      items = items_by_entry.values.flatten
       quality = quality_for(countable_period_entries)
       review_flags_by_entry = quality.delete(:review_flags_by_entry)
-      days = build_days(countable_period_entries, overtime_allocations, review_flags_by_entry)
-      categories = build_categories(countable_period_entries, overtime_allocations)
-      clients = build_clients(countable_period_entries, overtime_allocations)
-      services = build_services(countable_period_entries, overtime_allocations)
-      work_breakdown = build_work_breakdown(countable_period_entries, overtime_allocations)
-      weeks = build_weeks(user_context_entries, countable_period_entries, overtime_allocations)
+      days = build_days(countable_period_entries, items_by_entry, review_flags_by_entry)
+      categories = build_categories(countable_period_entries, items_by_entry)
+      clients = build_clients(items)
+      services = build_services(items)
+      work_breakdown = build_work_breakdown(items)
+      weeks = build_weeks(user_context_entries, items)
       # Readiness is a control concern, not a display filter. Pending entries
       # and open clocks keep the report in draft even when hidden by a visible
       # approved-only filter. Denied entries remain visible as exclusions but
@@ -185,7 +208,7 @@ module Payroll
         ready: report_ready?(issues),
         issues: issues,
         quality: quality,
-        excluded_entries: control_period_entries.reject { |entry| countable?(entry) }.map { |entry| serialize_entry(entry, {}, []) },
+        excluded_entries: control_period_entries.reject { |entry| countable?(entry) }.map { |entry| serialize_entry(entry, unallocated_items(entry), []) },
         days: days,
         categories: categories,
         clients: clients,
@@ -234,74 +257,125 @@ module Payroll
       allocations
     end
 
-    def build_days(entries, allocations, review_flags_by_entry)
+    # Work lines reported for an entry: every line, or only the lines that
+    # match the client/category/task/period filters.
+    def included_lines(entry)
+      @included_lines ||= {}
+      @included_lines[entry.id] ||= all_lines(entry).select { |line| line_matches_filters?(line) }
+    end
+
+    def all_lines(entry)
+      lines = entry.work_lines.to_a
+      lines.empty? ? [ VirtualLine.new(entry: entry) ] : lines
+    end
+
+    def line_matches_filters?(line)
+      return false if params[:client_id].present? && line.client_id.to_s != params[:client_id].to_s
+      return false if params[:service_type_id].present? && line.service_type_id.to_s != params[:service_type_id].to_s
+      return false if params[:service_task_id].present? && line.service_task_id.to_s != params[:service_task_id].to_s
+      return false if period_type_filter && line.period_type.to_s != period_type_filter
+      return false if period_start_filter && line.period_start != period_start_filter
+
+      true
+    end
+
+    # Splits an entry's regular and overtime hours across its lines in line
+    # order (regular hours first), so line parts add up to the entry exactly.
+    def items_for(entry, allocations)
+      allocation = allocations.fetch(entry.id, {})
+      regular_left = BigDecimal(allocation[:regular_hours].to_f.to_s)
+      included = included_lines(entry)
+
+      all_lines(entry).filter_map do |line|
+        hours = BigDecimal(line.hours.to_s).round(2)
+        regular = [ hours, regular_left ].min
+        regular_left -= regular
+        next unless included.include?(line)
+
+        Item.new(entry: entry, line: line, hours: hours.to_f, regular_hours: regular.to_f, overtime_hours: (hours - regular).to_f)
+      end
+    end
+
+    def unallocated_items(entry)
+      included_lines(entry).map do |line|
+        Item.new(entry: entry, line: line, hours: line.hours.to_f, regular_hours: 0.0, overtime_hours: 0.0)
+      end
+    end
+
+    def build_days(entries, items_by_entry, review_flags_by_entry)
       entries.group_by(&:work_date).sort_by { |date, _| date }.map do |date, day_entries|
-        regular = day_entries.sum { |entry| allocations.fetch(entry.id, {})[:regular_hours].to_f }
-        overtime = day_entries.sum { |entry| allocations.fetch(entry.id, {})[:overtime_hours].to_f }
+        day_items = day_entries.flat_map { |entry| items_by_entry.fetch(entry.id, []) }
         {
           work_date: date.iso8601,
-          total_hours: round_hours(day_entries.sum { |entry| entry.hours.to_f }),
-          regular_hours: round_hours(regular),
-          overtime_hours: round_hours(overtime),
+          total_hours: round_hours(day_items.sum(&:hours)),
+          regular_hours: round_hours(day_items.sum(&:regular_hours)),
+          overtime_hours: round_hours(day_items.sum(&:overtime_hours)),
           break_hours: round_hours(day_entries.sum { |entry| entry.break_minutes.to_i / 60.0 }),
-          entries: day_entries.map { |entry| serialize_entry(entry, allocations.fetch(entry.id, {}), review_flags_by_entry.fetch(entry.id, [])) }
+          entries: day_entries.map { |entry| serialize_entry(entry, items_by_entry.fetch(entry.id, []), review_flags_by_entry.fetch(entry.id, [])) }
         }
       end
     end
 
-    def build_categories(entries, allocations)
-      grouped_summary(entries.group_by(&:time_category), allocations) do |category|
+    # Legacy flat time categories live on the entry.
+    def build_categories(entries, items_by_entry)
+      entries.group_by(&:time_category).map do |category, group_entries|
+        group_items = group_entries.flat_map { |entry| items_by_entry.fetch(entry.id, []) }
         {
           id: category&.id,
-          name: category&.name || "Uncategorized"
+          name: category&.name || "Uncategorized",
+          total_hours: round_hours(group_items.sum(&:hours)),
+          regular_hours: round_hours(group_items.sum(&:regular_hours)),
+          overtime_hours: round_hours(group_items.sum(&:overtime_hours)),
+          break_hours: round_hours(group_entries.sum { |entry| entry.break_minutes.to_i / 60.0 }),
+          entries_count: group_entries.size
         }
-      end
+      end.sort_by { |row| [ row[:name].to_s, row[:id].to_i ] }
     end
 
-    def build_clients(entries, allocations)
-      grouped_summary(entries.group_by(&:client), allocations) do |client|
+    def build_clients(items)
+      grouped_summary(items.group_by { |item| item.line.client }) do |client|
         {
           id: client&.id,
-          name: client ? client.display_name : "No client"
+          name: client ? client.display_name : UNASSIGNED_LABEL
         }
       end
     end
 
     # Hours grouped by client -> category -> task -> period, the order staff
     # log work in. Legacy entries group under their old category name.
-    def build_work_breakdown(entries, allocations)
-      grouped = entries.group_by do |entry|
-        [ entry.client_id, entry.service_type_id, entry.service_type_id ? nil : entry.time_category_id, entry.service_task_id, entry.period_type, entry.period_start ]
+    def build_work_breakdown(items)
+      grouped = items.group_by do |item|
+        line = item.line
+        [ line.client_id, line.service_type_id, line.service_type_id ? nil : item.entry.time_category_id, line.service_task_id, line.period_type, line.period_start ]
       end
 
-      grouped.map do |_key, group_entries|
-        sample = group_entries.first
-        regular = group_entries.sum { |entry| allocations.fetch(entry.id, {})[:regular_hours].to_f }
-        overtime = group_entries.sum { |entry| allocations.fetch(entry.id, {})[:overtime_hours].to_f }
+      grouped.map do |_key, group_items|
+        sample = group_items.first
+        line = sample.line
         {
-          client_id: sample.client_id,
-          client_name: sample.client ? sample.client.display_name : "No client",
-          service_type_id: sample.service_type_id,
-          time_category_id: sample.service_type_id ? nil : sample.time_category_id,
-          category_name: sample.category_label || "Uncategorized",
-          legacy_category: sample.service_type.nil? && sample.time_category.present?,
-          service_task_id: sample.service_task_id,
-          task_name: sample.service_task&.name || "No task",
-          period_type: sample.period_type,
-          period_start: sample.period_start&.iso8601,
-          period_label: sample.period_label || "No period",
-          total_hours: round_hours(group_entries.sum { |entry| entry.hours.to_f }),
-          regular_hours: round_hours(regular),
-          overtime_hours: round_hours(overtime),
-          entries_count: group_entries.size
+          client_id: line.client_id,
+          client_name: line.client ? line.client.display_name : UNASSIGNED_LABEL,
+          service_type_id: line.service_type_id,
+          time_category_id: line.service_type_id ? nil : sample.entry.time_category_id,
+          category_name: line.category_label || "Uncategorized",
+          legacy_category: line.service_type.nil? && sample.entry.time_category.present?,
+          service_task_id: line.service_task_id,
+          task_name: line.service_task&.name || "No task",
+          period_type: line.period_type,
+          period_start: line.period_start&.iso8601,
+          period_label: line.period_label || "No period",
+          total_hours: round_hours(group_items.sum(&:hours)),
+          regular_hours: round_hours(group_items.sum(&:regular_hours)),
+          overtime_hours: round_hours(group_items.sum(&:overtime_hours)),
+          entries_count: group_items.map { |item| item.entry.id }.uniq.size
         }
       end.sort_by do |row|
         [ row[:client_id] ? 0 : 1, row[:client_name].downcase, row[:category_name].downcase, row[:task_name].downcase, row[:period_start].to_s ]
       end
     end
 
-    def build_services(entries, allocations)
-      grouped_summary(entries.group_by(&:service_type), allocations) do |service|
+    def build_services(items)
+      grouped_summary(items.group_by { |item| item.line.service_type }) do |service|
         {
           id: service&.id,
           name: service&.name || "No service"
@@ -309,45 +383,69 @@ module Payroll
       end
     end
 
-    def grouped_summary(grouped_entries, allocations)
-      grouped_entries.map do |group, group_entries|
-        regular = group_entries.sum { |entry| allocations.fetch(entry.id, {})[:regular_hours].to_f }
-        overtime = group_entries.sum { |entry| allocations.fetch(entry.id, {})[:overtime_hours].to_f }
+    # Break time belongs to the entry; it is counted once, in the group of
+    # the entry's first reported line.
+    def grouped_summary(grouped_items)
+      first_item_ids = grouped_items.values.flatten.group_by { |item| item.entry.id }.transform_values { |entry_items| entry_items.first.object_id }
+
+      grouped_items.map do |group, group_items|
+        break_minutes = group_items.select { |item| first_item_ids[item.entry.id] == item.object_id }.sum { |item| item.entry.break_minutes.to_i }
         yield(group).merge(
-          total_hours: round_hours(group_entries.sum { |entry| entry.hours.to_f }),
-          regular_hours: round_hours(regular),
-          overtime_hours: round_hours(overtime),
-          break_hours: round_hours(group_entries.sum { |entry| entry.break_minutes.to_i / 60.0 }),
-          entries_count: group_entries.size
+          total_hours: round_hours(group_items.sum(&:hours)),
+          regular_hours: round_hours(group_items.sum(&:regular_hours)),
+          overtime_hours: round_hours(group_items.sum(&:overtime_hours)),
+          break_hours: round_hours(break_minutes / 60.0),
+          entries_count: group_items.map { |item| item.entry.id }.uniq.size
         )
       end.sort_by { |row| [ row[:name].to_s, row[:id].to_i ] }
     end
 
-    def build_weeks(context_entries, period_report_entries, allocations)
-      report_entry_ids = period_report_entries.map(&:id).to_set
+    def build_weeks(context_entries, period_items)
+      items_by_week = period_items.group_by { |item| item.entry.work_date.beginning_of_week(:sunday) }
 
       context_entries.group_by { |entry| entry.work_date.beginning_of_week(:sunday) }.sort_by { |date, _| date }.map do |week_start, week_entries|
         week_end = week_start.end_of_week(:sunday)
-        countable = week_entries.select { |entry| countable?(entry) }
-        period_entries = countable.select { |entry| report_entry_ids.include?(entry.id) }
-        context_entries_for_week = countable.reject { |entry| report_entry_ids.include?(entry.id) }
-        next if period_entries.empty?
+        week_items = items_by_week.fetch(week_start, [])
+        next if week_items.empty?
 
-        context_hours = round_hours(context_entries_for_week.sum { |entry| entry.hours.to_f })
+        weekly_total = round_hours(week_entries.select { |entry| countable?(entry) }.sum { |entry| entry.hours.to_f })
+        period_hours = round_hours(week_items.sum(&:hours))
+        context_hours = round_hours(weekly_total - period_hours)
         {
           week_start: week_start.iso8601,
           week_end: week_end.iso8601,
-          weekly_total_hours: round_hours(countable.sum { |entry| entry.hours.to_f }),
-          period_hours: round_hours(period_entries.sum { |entry| entry.hours.to_f }),
+          weekly_total_hours: weekly_total,
+          period_hours: period_hours,
           context_hours: context_hours,
-          regular_hours: round_hours(period_entries.sum { |entry| allocations.fetch(entry.id, {})[:regular_hours].to_f }),
-          overtime_hours: round_hours(period_entries.sum { |entry| allocations.fetch(entry.id, {})[:overtime_hours].to_f }),
+          regular_hours: round_hours(week_items.sum(&:regular_hours)),
+          overtime_hours: round_hours(week_items.sum(&:overtime_hours)),
           context_note: context_hours.positive? ? "Includes #{context_hours}h from outside this filtered report selection to calculate Sunday–Saturday overtime." : nil
         }
       end.compact
     end
 
-    def serialize_entry(entry, allocation, review_flags = [])
+    def serialize_line_item(item)
+      line = item.line
+      {
+        id: line.id,
+        position: line.position,
+        client: line.client ? { id: line.client.id, name: line.client.display_name } : nil,
+        client_label: line.client_label,
+        description: line.description,
+        service_type: line.service_type ? { id: line.service_type.id, name: line.service_type.name, color: line.service_type.color } : nil,
+        service_task: line.service_task ? { id: line.service_task.id, name: line.service_task.name } : nil,
+        category_label: line.category_label,
+        period_type: line.period_type,
+        period_start: line.period_start&.iso8601,
+        period_label: line.period_label,
+        total_hours: round_hours(item.hours),
+        regular_hours: round_hours(item.regular_hours),
+        overtime_hours: round_hours(item.overtime_hours),
+        minutes: line.minutes
+      }
+    end
+
+    def serialize_entry(entry, items, review_flags = [])
       {
         id: entry.id,
         work_date: entry.work_date.iso8601,
@@ -355,9 +453,10 @@ module Payroll
         end_time: entry.end_time&.in_time_zone(BUSINESS_TIMEZONE)&.strftime("%H:%M"),
         formatted_start_time: entry.formatted_start_time,
         formatted_end_time: entry.formatted_end_time,
-        total_hours: round_hours(entry.hours.to_f),
-        regular_hours: allocation[:regular_hours].to_f,
-        overtime_hours: allocation[:overtime_hours].to_f,
+        total_hours: round_hours(items.sum(&:hours)),
+        regular_hours: round_hours(items.sum(&:regular_hours)),
+        overtime_hours: round_hours(items.sum(&:overtime_hours)),
+        entry_total_hours: round_hours(entry.hours.to_f),
         break_minutes: entry.break_minutes.to_i,
         description: entry.description,
         entry_method: entry.entry_method,
@@ -400,6 +499,7 @@ module Payroll
         period_type: entry.period_type,
         period_start: entry.period_start&.iso8601,
         period_label: entry.period_label,
+        work_lines: items.map { |item| serialize_line_item(item) },
         breaks: entry.time_entry_breaks.sort_by(&:start_time).map do |entry_break|
           {
             id: entry_break.id,
@@ -424,9 +524,10 @@ module Payroll
     def quality_for(entries)
       flags_by_entry = entries.to_h do |entry|
         flags = []
-        flags << "uncategorized" if entry.service_type_id.blank? && entry.time_category_id.blank?
-        flags << "missing_client" if entry.client_id.blank?
-        flags << "missing_description" if entry.description.blank?
+        lines = included_lines(entry)
+        flags << "uncategorized" if entry.time_category_id.blank? && lines.any? { |line| line.service_type_id.blank? }
+        flags << "missing_client" if lines.any? { |line| line.client_id.blank? }
+        flags << "missing_description" if lines.any? { |line| line.description.blank? }
         flags << "long_shift" if entry.hours.to_f >= LONG_SHIFT_HOURS
         [ entry.id, flags ]
       end
