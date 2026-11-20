@@ -25,13 +25,20 @@ export default function WorkLinesSheet({
 }) {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
+  // Callers often pass an inline onClose; read the latest one through a ref
+  // so the open/close effect below runs only when `open` changes. Re-running
+  // it on every render would move focus off the field being typed in.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   useEffect(() => {
     if (!open) return
     const previouslyFocused = document.activeElement as HTMLElement | null
     panelRef.current?.focus()
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') onCloseRef.current()
     }
     document.addEventListener('keydown', onKey)
     const { overflow } = document.body.style
@@ -41,7 +48,7 @@ export default function WorkLinesSheet({
       document.body.style.overflow = overflow
       previouslyFocused?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

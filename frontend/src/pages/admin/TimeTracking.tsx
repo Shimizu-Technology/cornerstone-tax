@@ -282,7 +282,13 @@ export default function TimeTracking() {
   const lineSuggestions = useWorkLineSuggestions(showModal, editingEntry?.user?.id ?? (formData.user_id ? Number(formData.user_id) : null))
   const editingActiveClock = Boolean(editingEntry && editingEntry.status !== 'completed')
   const editingDayLog = Boolean(editingEntry?.duration_only)
-  const modalTargetMinutes = editingDayLog ? null : Math.round(calculatedHours * 60)
+  // While the times are untouched, the stored hours are the target (a clock
+  // entry's seconds can make them a minute off what the HH:MM fields give).
+  const modalTimesUntouched = Boolean(editingEntry) && formData.start_time === (editingEntry?.start_time || '08:00') &&
+    formData.end_time === (editingEntry?.end_time || '17:00') && formData.break_minutes === editingEntry?.break_minutes
+  const modalTargetMinutes = editingDayLog
+    ? null
+    : modalTimesUntouched && editingEntry ? Math.round(editingEntry.hours * 60) : Math.round(calculatedHours * 60)
   const modalLinesRequired = detailsRequired(lineSuggestions.requiredFrom, formData.work_date)
   const modalLineCheck = checkLines(lines, { targetMinutes: modalTargetMinutes, required: modalLinesRequired, clients })
   const modalLinesChanged = JSON.stringify(linesPayload(lines, modalTargetMinutes)) !== JSON.stringify(linesPayload(initialLines, modalTargetMinutes))

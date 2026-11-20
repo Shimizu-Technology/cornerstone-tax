@@ -204,4 +204,48 @@ describe('EditTimeEntryModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(onRetryCatalog).toHaveBeenCalled()
   })
+
+  it('reopens a split scaled into a short session and saves a description-only edit', async () => {
+    const clients = [{ id: 6, name: 'C6', client_type: 'business' }, { id: 7, name: 'C7', client_type: 'business' }]
+    const scaled = {
+      ...entry, start_time: '09:00', end_time: '09:07', break_minutes: null, hours: 0.12,
+      work_lines: [
+        { id: 0, position: 0, client: { id: 6, name: 'C6' }, client_label: 'C6', description: 'Line 0', service_type: null, service_task: null, category_label: null, period_type: null, period_start: null, period_label: null, hours: 0.02, minutes: 1 },
+        { id: 1, position: 1, client: { id: 7, name: 'C7' }, client_label: 'C7', description: 'Line 1', service_type: null, service_task: null, category_label: null, period_type: null, period_start: null, period_label: null, hours: 0.02, minutes: 1 },
+        { id: 2, position: 2, client: { id: 6, name: 'C6' }, client_label: 'C6', description: 'Line 2', service_type: null, service_task: null, category_label: null, period_type: null, period_start: null, period_label: null, hours: 0.02, minutes: 1 },
+        { id: 3, position: 3, client: { id: 7, name: 'C7' }, client_label: 'C7', description: 'Line 3', service_type: null, service_task: null, category_label: null, period_type: null, period_start: null, period_label: null, hours: 0.02, minutes: 1 },
+        { id: 4, position: 4, client: { id: 6, name: 'C6' }, client_label: 'C6', description: 'Line 4', service_type: null, service_task: null, category_label: null, period_type: null, period_start: null, period_label: null, hours: 0.02, minutes: 1 },
+        { id: 5, position: 5, client: { id: 7, name: 'C7' }, client_label: 'C7', description: 'Line 5', service_type: null, service_task: null, category_label: null, period_type: null, period_start: null, period_label: null, hours: 0.02, minutes: 1 }
+      ],
+    }
+    render(<EditTimeEntryModal isOpen entry={scaled} clients={clients} canDelete onClose={vi.fn()} onSaved={vi.fn()} onDeleted={vi.fn()} />)
+
+    // Six 0.02h lines show as 1+1+2+1+1+1 = 7 minutes: nothing is left over.
+    expect(screen.getByTestId('work-lines-remaining')).toHaveTextContent('All time is assigned')
+    fireEvent.change(screen.getByLabelText('Line 2 description'), { target: { value: 'Filed checks' } })
+    const update = screen.getByRole('button', { name: /update/i })
+    expect(update).toBeEnabled()
+    fireEvent.click(update)
+
+    await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
+    const sent = apiMock.updateTimeEntry.mock.calls[0][1].work_lines
+    expect(sent.map((line: { minutes: number }) => line.minutes)).toEqual([1, 1, 2, 1, 1, 1])
+    expect(sent[1].description).toBe('Filed checks')
+  })
+
+  it('targets the stored hours while the times are untouched (clock seconds)', async () => {
+    const clockEntry = {
+      ...entry, entry_method: 'clock' as const, start_time: '09:00', end_time: '10:00', break_minutes: null, hours: 0.99,
+      work_lines: [{ id: 9, position: 0, client: { id: 6, name: 'C6' }, client_label: 'C6', description: 'Old', service_type: null, service_task: null, category_label: null, period_type: null, period_start: null, period_label: null, hours: 0.99, minutes: 59 }],
+    }
+    render(<EditTimeEntryModal isOpen entry={clockEntry} clients={[{ id: 6, name: 'C6' }]} canDelete onClose={vi.fn()} onSaved={vi.fn()} onDeleted={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
+    fireEvent.click(screen.getByRole('button', { name: /update/i }))
+
+    await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
+    expect(apiMock.updateTimeEntry.mock.calls[0][1].work_lines).toEqual([
+      expect.objectContaining({ description: 'Payroll run', minutes: 59 }),
+    ])
+  })
 })

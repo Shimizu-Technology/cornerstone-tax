@@ -121,6 +121,8 @@ export default function EditTimeEntryModal({
   const [initialLines, setInitialLines] = useState<WorkLineDraft[]>(() => draftsFromEntry(null))
   const suggestions = useWorkLineSuggestions(isOpen, entry?.user?.id)
   const [breakRows, setBreakRows] = useState<Array<{ id?: number; start_time: string; end_time: string }>>([])
+  const [initialBreakRows, setInitialBreakRows] = useState<Array<{ id?: number; start_time: string; end_time: string }>>([])
+  const breakRowsUntouched = JSON.stringify(breakRows) === JSON.stringify(initialBreakRows)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -141,14 +143,16 @@ export default function EditTimeEntryModal({
     const drafts = draftsFromEntry(entry)
     setLines(drafts)
     setInitialLines(drafts)
-    setBreakRows((entry.breaks || [])
+    const rows = (entry.breaks || [])
       .filter((row) => row.start_time && row.end_time)
       .map((row) => ({
         id: row.id,
         start_time: timeInputValue(row.start_time),
         end_time: timeInputValue(row.end_time),
       }))
-      .filter((row) => row.start_time && row.end_time))
+      .filter((row) => row.start_time && row.end_time)
+    setBreakRows(rows)
+    setInitialBreakRows(rows)
     setError(null)
     setCorrectionReason('')
     setCorrectionReferences([])
@@ -174,7 +178,13 @@ export default function EditTimeEntryModal({
   const isLocked = !!entry?.locked_at
   const isActiveClockEntry = entry?.entry_method === 'clock' && (entry.status === 'clocked_in' || entry.status === 'on_break')
   const isDayLog = Boolean(entry?.duration_only)
-  const targetMinutes = isDayLog ? null : Math.round(calculatedHours * 60)
+  // While the times are untouched, the stored hours are the target (a clock
+  // entry's seconds can make them a minute off what the HH:MM fields give).
+  const timesUntouched = Boolean(entry) && formData.start_time === (entry?.start_time || '08:00') &&
+    formData.end_time === (entry?.end_time || '17:00') && formData.break_minutes === entry?.break_minutes && breakRowsUntouched
+  const targetMinutes = isDayLog
+    ? null
+    : timesUntouched && entry?.hours !== undefined ? Math.round(entry.hours * 60) : Math.round(calculatedHours * 60)
   const linesRequired = detailsRequired(suggestions.requiredFrom, formData.work_date)
   const lineCheck = checkLines(lines, { targetMinutes, required: linesRequired, clients })
   const linesChanged = JSON.stringify(linesPayload(lines, targetMinutes)) !== JSON.stringify(linesPayload(initialLines, targetMinutes))

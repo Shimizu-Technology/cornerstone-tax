@@ -53,7 +53,24 @@ interface EntryLike {
   work_lines?: WorkLine[]
 }
 
-export function draftFromLine(line: WorkLine): WorkLineDraft {
+/**
+ * Whole minutes to show for each stored line, rounded cumulatively from the
+ * lines' decimal hours so they always add up to the entry's minutes. Per-line
+ * rounding would not: six 0.02h lines are 6 x 1m = 6m, but 0.12h is 7m.
+ */
+export function cumulativeMinutes(hoursList: number[]): number[] {
+  let cumulativeHours = 0
+  let previous = 0
+  return hoursList.map((hours) => {
+    cumulativeHours += hours
+    const rounded = Math.round(Math.round(cumulativeHours * 100) / 100 * 60)
+    const minutes = rounded - previous
+    previous = rounded
+    return minutes
+  })
+}
+
+export function draftFromLine(line: WorkLine, minutes: number = line.minutes): WorkLineDraft {
   return newDraft({
     client_id: line.client?.id.toString() || '',
     description: line.description || '',
@@ -61,13 +78,16 @@ export function draftFromLine(line: WorkLine): WorkLineDraft {
     service_task_id: line.service_task?.id.toString() || '',
     period_type: isPeriodType(line.period_type) ? line.period_type : '',
     period_start: isPeriodType(line.period_type) ? line.period_start || '' : '',
-    durationText: String(line.minutes),
+    durationText: String(minutes),
   })
 }
 
 /** The entry's lines as drafts; an entry without lines becomes one line. */
 export function draftsFromEntry(entry: EntryLike | null | undefined): WorkLineDraft[] {
-  if (entry?.work_lines && entry.work_lines.length > 0) return entry.work_lines.map(draftFromLine)
+  if (entry?.work_lines && entry.work_lines.length > 0) {
+    const minutes = cumulativeMinutes(entry.work_lines.map((line) => line.hours))
+    return entry.work_lines.map((line, index) => draftFromLine(line, minutes[index]))
+  }
   return [newDraft({
     client_id: entry?.client?.id.toString() || '',
     description: entry?.description || '',

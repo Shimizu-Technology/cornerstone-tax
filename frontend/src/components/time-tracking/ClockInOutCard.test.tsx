@@ -149,4 +149,16 @@ describe('ClockInOutCard clock-out', () => {
     await waitFor(() => expect(apiMock.clockOut).toHaveBeenCalledTimes(2))
     expect(apiMock.clockOut.mock.calls[1][4]).toEqual(apiMock.clockOut.mock.calls[0][4])
   })
+
+  it('keeps focus in the field while typing several characters', async () => {
+    const sheet = await openClockOut()
+    const field = sheet.getByLabelText('What I did') as HTMLInputElement
+
+    field.focus()
+    for (const text of ['B', 'Ba', 'Ban', 'Bank', 'Bank r', 'Bank rec']) {
+      fireEvent.change(field, { target: { value: text } })
+      expect(field).toHaveFocus()
+    }
+    expect(field.value).toBe('Bank rec')
+  })
 })
