@@ -56,11 +56,13 @@ describe('EditTimeEntryModal', () => {
       />,
     )
 
+    // Change only the end time: just that attendance field is sent.
+    fireEvent.change(screen.getByDisplayValue('17:00'), { target: { value: '16:30' } })
     fireEvent.click(screen.getByRole('button', { name: /update/i }))
 
     await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
     expect(apiMock.updateTimeEntry.mock.calls[0][1]).not.toHaveProperty('breaks')
-    expect(apiMock.updateTimeEntry.mock.calls[0][1]).toMatchObject({ break_minutes: 30 })
+    expect(apiMock.updateTimeEntry.mock.calls[0][1]).toEqual({ end_time: '16:30' })
     // Untouched work details are not sent, so a concurrent edit is never overwritten,
     // and the legacy category is never rewritten.
     for (const key of ['client_id', 'service_type_id', 'service_task_id', 'period_type', 'period_start', 'description', 'time_category_id', 'work_lines']) {
@@ -89,6 +91,7 @@ describe('EditTimeEntryModal', () => {
       />,
     )
 
+    fireEvent.change(screen.getByDisplayValue('17:00'), { target: { value: '16:30' } })
     fireEvent.click(screen.getByRole('button', { name: /update/i }))
 
     const reason = await screen.findByLabelText(/correction reason/i)
@@ -228,9 +231,19 @@ describe('EditTimeEntryModal', () => {
     fireEvent.click(update)
 
     await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
-    const sent = apiMock.updateTimeEntry.mock.calls[0][1].work_lines
-    expect(sent.map((line: { minutes: number }) => line.minutes)).toEqual([1, 1, 2, 1, 1, 1])
+    const payload = apiMock.updateTimeEntry.mock.calls[0][1]
+    const sent = payload.work_lines
+    // Untouched times go back as their exact stored hours, so no hours move
+    // between clients (rounded display minutes would have sent 1,1,2,1,1,1).
+    expect(sent.map((line: { hours?: number; minutes?: number }) => [line.hours, line.minutes])).toEqual(Array(6).fill([0.02, undefined]))
+    const perClient = (lines: Array<{ client_id: number; hours: number }>) => lines.reduce<Record<number, number>>((totals, line) => {
+      totals[line.client_id] = Math.round(((totals[line.client_id] ?? 0) + line.hours) * 100) / 100
+      return totals
+    }, {})
+    expect(perClient(sent)).toEqual(perClient(scaled.work_lines.map((line) => ({ client_id: line.client.id, hours: line.hours }))))
     expect(sent[1].description).toBe('Filed checks')
+    // And no attendance fields: the times were not touched.
+    expect(Object.keys(payload)).toEqual(['work_lines'])
   })
 
   it('targets the stored hours while the times are untouched (clock seconds)', async () => {
@@ -244,8 +257,23 @@ describe('EditTimeEntryModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /update/i }))
 
     await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
-    expect(apiMock.updateTimeEntry.mock.calls[0][1].work_lines).toEqual([
+    const payload = apiMock.updateTimeEntry.mock.calls[0][1]
+    expect(payload.work_lines).toEqual([
       expect.objectContaining({ description: 'Payroll run', minutes: 59 }),
     ])
+    // A work-only edit leaves the clock times (and their seconds) alone.
+    for (const key of ['work_date', 'start_time', 'end_time', 'break_minutes', 'breaks']) {
+      expect(payload).not.toHaveProperty(key)
+    }
+  })
+
+  it('closes without a request when nothing changed', async () => {
+    const onSaved = vi.fn()
+    render(<EditTimeEntryModal isOpen entry={entry} canDelete onClose={vi.fn()} onSaved={onSaved} onDeleted={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /update/i }))
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(apiMock.updateTimeEntry).not.toHaveBeenCalled()
   })
 })

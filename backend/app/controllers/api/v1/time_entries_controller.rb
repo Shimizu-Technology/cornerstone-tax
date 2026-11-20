@@ -871,6 +871,10 @@ module Api
         return unless entry.clock_entry?
 
         target_work_date = raw_params[:work_date].presence || params_hash[:work_date].presence || entry.work_date
+        # A form that resends the clock times it showed (HH:MM) must not
+        # truncate the recorded seconds: an unchanged time is left as it is.
+        drop_unchanged_clock_time(entry, params_hash, raw_params, :start_time, target_work_date)
+        drop_unchanged_clock_time(entry, params_hash, raw_params, :end_time, target_work_date) unless entry.active?
         start_value = raw_params[:start_time].presence || params_hash[:start_time]
         corrected_start = time_on_work_date(start_value, Date.parse(target_work_date.to_s)) if start_value.present?
 
@@ -909,6 +913,19 @@ module Api
         end
       rescue Date::Error, ArgumentError
         render json: { error: "Clock times are invalid" }, status: :unprocessable_entity
+      end
+
+      def drop_unchanged_clock_time(entry, params_hash, raw_params, field, target_work_date)
+        value = raw_params[field].presence
+        current = entry.public_send(field)
+        return unless value.is_a?(String) && current.present? && target_work_date.to_s == entry.work_date.iso8601
+
+        match = value.match(/\A(\d{1,2}):(\d{2})\z/)
+        return unless match
+        return unless format("%02d:%02d", match[1].to_i, match[2].to_i) == current.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")
+
+        raw_params.delete(field)
+        params_hash.delete(field)
       end
 
       def raw_time_entry_params

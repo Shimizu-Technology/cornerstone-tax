@@ -15,6 +15,14 @@ export interface WorkLineDraft {
   period_start: string
   durationText: string
   unit: DurationUnit
+  /**
+   * For a line loaded from the server: its exact stored hours and the time
+   * text it was shown with. While the time is untouched the line is sent
+   * back with these hours, so editing only a description never moves hours
+   * between lines (display minutes are rounded; stored hours are not).
+   */
+  storedHours?: number
+  storedText?: string
 }
 
 let keySeed = 0
@@ -38,7 +46,7 @@ export function newDraft(patch: Partial<WorkLineDraft> = {}): WorkLineDraft {
 /** Copy a line's work (not its time) for "Duplicate previous". */
 export function duplicateDraft(line: WorkLineDraft): WorkLineDraft {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { key, ...work } = line
+  const { key, storedHours, storedText, ...work } = line
   return newDraft({ ...work, durationText: '' })
 }
 
@@ -79,7 +87,14 @@ export function draftFromLine(line: WorkLine, minutes: number = line.minutes): W
     period_type: isPeriodType(line.period_type) ? line.period_type : '',
     period_start: isPeriodType(line.period_type) ? line.period_start || '' : '',
     durationText: String(minutes),
+    storedHours: line.hours,
+    storedText: String(minutes),
   })
+}
+
+/** True while a loaded line's time is exactly as it was shown. */
+export function timeUnchanged(line: WorkLineDraft): boolean {
+  return line.storedHours !== undefined && line.unit === 'minutes' && line.durationText.trim() === line.storedText
 }
 
 /** The entry's lines as drafts; an entry without lines becomes one line. */
@@ -113,16 +128,45 @@ export function linesPayload(lines: WorkLineDraft[], targetMinutes: number | nul
   const single = singleCoversTarget && lines.length === 1 && targetMinutes !== null
   return lines.map((line) => {
     const hasPeriod = isPeriodType(line.period_type) && Boolean(line.period_start)
-    return {
+    const work = {
       client_id: toId(line.client_id),
       description: line.description.trim(),
       service_type_id: toId(line.service_type_id),
       service_task_id: line.service_type_id ? toId(line.service_task_id) : null,
       period_type: hasPeriod ? line.period_type as PeriodType : null,
       period_start: hasPeriod ? line.period_start : null,
-      minutes: single ? targetMinutes! : draftMinutes(line) ?? 0,
     }
+    if (single) return { ...work, minutes: targetMinutes! }
+    // An untouched time goes back as its exact stored hours.
+    if (timeUnchanged(line)) return { ...work, hours: line.storedHours! }
+    return { ...work, minutes: draftMinutes(line) ?? 0 }
   })
+}
+
+type Pair<T> = [current: T, original: T] | null
+
+/**
+ * The attendance fields of an edit that differ from the saved entry, as
+ * API params. Unchanged fields are left out so the server keeps them exactly
+ * (a clock entry's seconds, its hours and its approval). null skips a field.
+ */
+export function attendanceChanges({
+  workDate,
+  startTime,
+  endTime,
+  breakMinutes,
+}: {
+  workDate: Pair<string>
+  startTime: Pair<string>
+  endTime: Pair<string>
+  breakMinutes: Pair<number | null>
+}): { work_date?: string; start_time?: string; end_time?: string; break_minutes?: number | null } {
+  const changes: { work_date?: string; start_time?: string; end_time?: string; break_minutes?: number | null } = {}
+  if (workDate && workDate[0] !== workDate[1]) changes.work_date = workDate[0]
+  if (startTime && startTime[0] !== startTime[1]) changes.start_time = startTime[0]
+  if (endTime && endTime[0] !== endTime[1]) changes.end_time = endTime[0]
+  if (breakMinutes && (breakMinutes[0] ?? null) !== (breakMinutes[1] ?? null)) changes.break_minutes = breakMinutes[0]
+  return changes
 }
 
 export interface LineCheck {

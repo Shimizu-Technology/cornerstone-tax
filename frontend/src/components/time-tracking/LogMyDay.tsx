@@ -23,6 +23,50 @@ function longDate(iso: string) {
   return new Date(year, month - 1, day).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
 }
 
+interface DayDraft {
+  lines: WorkLineDraft[]
+  /** updated_at of the entry when the draft started (null for a new day log). */
+  baseUpdatedAt: string | null
+  /** Short label for the "Also unsaved" list. */
+  label: string
+}
+
+const DRAFTS_STORAGE_PREFIX = 'cst.logMyDay.drafts.'
+
+function readDrafts(userId: number | null): Record<string, DayDraft> {
+  if (!userId) return {}
+  try {
+    const raw = window.sessionStorage.getItem(`${DRAFTS_STORAGE_PREFIX}${userId}`)
+    return raw ? JSON.parse(raw) as Record<string, DayDraft> : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Unsaved drafts for one person, mirrored to sessionStorage (best effort). */
+function useDayDrafts(userId: number | null): [Record<string, DayDraft>, (next: Record<string, DayDraft>) => void] {
+  const [state, setState] = useState<{ userId: number | null; drafts: Record<string, DayDraft> }>(() => ({ userId, drafts: readDrafts(userId) }))
+  const drafts = state.userId === userId ? state.drafts : readDrafts(userId)
+  const update = (next: Record<string, DayDraft>) => {
+    setState({ userId, drafts: next })
+    try {
+      if (userId) {
+        if (Object.keys(next).length) window.sessionStorage.setItem(`${DRAFTS_STORAGE_PREFIX}${userId}`, JSON.stringify(next))
+        else window.sessionStorage.removeItem(`${DRAFTS_STORAGE_PREFIX}${userId}`)
+      }
+    } catch {
+      // Storage can be unavailable (private mode); drafts still live in state.
+    }
+  }
+  return [drafts, update]
+}
+
+function draftLabel(date: string, session: TimeEntry | null): string {
+  const [year, month, day] = date.split('-').map(Number)
+  const dayText = new Date(year, month - 1, day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+  return session ? `${dayText}, clock ${session.formatted_start_time}–${session.formatted_end_time}` : `${dayText}, day log`
+}
+
 const entryMinutes = (entry: TimeEntry) => Math.round(entry.hours * 60)
 const assignedMinutes = (entry: TimeEntry) =>
   (entry.work_lines || []).filter((line) => line.client).reduce((sum, line) => sum + line.minutes, 0)
@@ -79,18 +123,29 @@ export default function LogMyDay({
   const timedManual = entries.filter((entry) => entry.entry_method === 'manual' && !entry.duration_only && entry.approval_status !== 'denied')
 
   // Which record the grid edits: a clock session (by id) or the day log.
+  // Kept per day (not per reload), so saving doesn't jump to another session.
+  const dayKey = `${userId}:${date}`
   const [selection, setSelection] = useState<{ key: string; target: string } | null>(null)
   const defaultTarget = sessions.find((entry) => assignedMinutes(entry) < entryMinutes(entry))?.id ?? sessions[0]?.id
-  const target = selection?.key === requestKey ? selection.target : String(defaultTarget ?? DAY_LOG)
+  const target = selection?.key === dayKey ? selection.target : String(defaultTarget ?? DAY_LOG)
   const session = sessions.find((entry) => String(entry.id) === target) ?? null
   const editing = session ?? dayLog ?? null
 
-  const [draft, setDraft] = useState<{ key: string; lines: WorkLineDraft[] } | null>(null)
-  const draftKey = `${requestKey}:${target}`
-  const lines = draft?.key === draftKey
-    ? draft.lines
-    : editing ? draftsFromEntry(editing) : [newDraft()]
-  const setLines = (next: WorkLineDraft[]) => setDraft({ key: draftKey, lines: next })
+  // Unsaved lines are kept per day and session (and in sessionStorage), so
+  // switching dates, sessions or tabs never drops or overwrites them.
+  const [drafts, setDrafts] = useDayDrafts(userId)
+  const draftKey = `${dayKey}:${target}`
+  const draft = drafts[draftKey]
+  const lines = draft ? draft.lines : editing ? draftsFromEntry(editing) : [newDraft()]
+  const setLines = (next: WorkLineDraft[]) =>
+    setDrafts({ ...drafts, [draftKey]: { lines: next, baseUpdatedAt: draft ? draft.baseUpdatedAt : editing?.updated_at ?? null, label: draftLabel(date, session) } })
+  const discardDraft = () => {
+    const rest = { ...drafts }
+    delete rest[draftKey]
+    setDrafts(rest)
+  }
+  const otherDrafts = Object.entries(drafts).filter(([key]) => key !== draftKey)
+  const changedSinceDraft = Boolean(draft && editing && draft.baseUpdatedAt && editing.updated_at !== draft.baseUpdatedAt)
 
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
@@ -98,7 +153,19 @@ export default function LogMyDay({
   const targetMinutes = session ? entryMinutes(session) : null
   const required = detailsRequired(suggestions.requiredFrom, date)
   const check = checkLines(lines, { targetMinutes, required, clients, singleCoversTarget: false })
-  const dirty = draft?.key === draftKey
+  const dirty = Boolean(draft)
+
+  // Warn before leaving the page while anything is unsaved.
+  const hasUnsaved = Object.keys(drafts).length > 0
+  useEffect(() => {
+    if (!hasUnsaved) return
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [hasUnsaved])
 
   const clockMinutes = sessions.reduce((sum, entry) => sum + entryMinutes(entry), 0)
   const clockAssigned = sessions.reduce((sum, entry) => {
@@ -115,7 +182,16 @@ export default function LogMyDay({
   const unallocated = Math.max(0, clockMinutes - clockAssigned)
 
   const changeDate = (next: string) => {
+    if (saving) return
     setDate(next)
+    setMessage(null)
+  }
+
+  const openDraft = (key: string) => {
+    if (saving) return
+    const [, draftDate, draftTarget] = key.split(':')
+    setDate(draftDate)
+    setSelection({ key: `${userId}:${draftDate}`, target: draftTarget })
     setMessage(null)
   }
 
@@ -135,7 +211,7 @@ export default function LogMyDay({
     }
     const saved = response.data?.time_entry
     setMessage({ tone: 'ok', text: saved?.approval_status === 'pending' ? 'Saved. It will show as pending until an admin approves it.' : 'Saved.' })
-    setDraft(null)
+    discardDraft()
     setReload((value) => value + 1)
     onSaved?.()
   }
@@ -153,7 +229,7 @@ export default function LogMyDay({
             </p>
           </div>
           <div className="flex items-center gap-1">
-            <button type="button" onClick={() => changeDate(shiftDate(date, -1))} className="min-h-11 min-w-11 rounded-lg border border-neutral-warm text-lg" aria-label="Previous day">‹</button>
+            <button type="button" onClick={() => changeDate(shiftDate(date, -1))} disabled={saving} className="min-h-11 min-w-11 rounded-lg border border-neutral-warm text-lg" aria-label="Previous day">‹</button>
             <label htmlFor="log-my-day-date" className="sr-only">Day</label>
             <input
               id="log-my-day-date"
@@ -161,9 +237,10 @@ export default function LogMyDay({
               value={date}
               max={guamToday()}
               onChange={(event) => event.target.value && changeDate(event.target.value)}
+              disabled={saving}
               className="min-h-11 rounded-lg border border-neutral-warm px-3 text-base md:text-sm"
             />
-            <button type="button" onClick={() => changeDate(shiftDate(date, 1))} disabled={date >= guamToday()} className="min-h-11 min-w-11 rounded-lg border border-neutral-warm text-lg disabled:opacity-40" aria-label="Next day">›</button>
+            <button type="button" onClick={() => changeDate(shiftDate(date, 1))} disabled={saving || date >= guamToday()} className="min-h-11 min-w-11 rounded-lg border border-neutral-warm text-lg disabled:opacity-40" aria-label="Next day">›</button>
           </div>
         </div>
         <p className="mt-2 text-sm font-medium text-primary-dark">{longDate(date)}</p>
@@ -207,11 +284,13 @@ export default function LogMyDay({
                 type="button"
                 role="radio"
                 aria-checked={target === String(entry.id)}
-                onClick={() => setSelection({ key: requestKey, target: String(entry.id) })}
-                className={`min-h-11 rounded-xl border px-3 text-left text-sm ${target === String(entry.id) ? 'border-primary bg-primary/5 font-semibold text-primary' : 'border-neutral-warm text-primary-dark'}`}
+                onClick={() => setSelection({ key: dayKey, target: String(entry.id) })}
+                disabled={saving}
+                className={`min-h-11 rounded-xl border px-3 text-left text-sm disabled:opacity-50 ${target === String(entry.id) ? 'border-primary bg-primary/5 font-semibold text-primary' : 'border-neutral-warm text-primary-dark'}`}
               >
                 Clock {entry.formatted_start_time}–{entry.formatted_end_time} · {formatMinutes(entryMinutes(entry))}
                 {left > 0 && <span className="ml-1 text-amber-700">({formatMinutes(left)} unassigned)</span>}
+                {drafts[`${dayKey}:${entry.id}`] && <span className="ml-1 text-amber-700">· unsaved</span>}
               </button>
             )
           })}
@@ -219,12 +298,30 @@ export default function LogMyDay({
             type="button"
             role="radio"
             aria-checked={target === DAY_LOG}
-            onClick={() => setSelection({ key: requestKey, target: DAY_LOG })}
-            className={`min-h-11 rounded-xl border px-3 text-sm ${target === DAY_LOG ? 'border-primary bg-primary/5 font-semibold text-primary' : 'border-neutral-warm text-primary-dark'}`}
+            onClick={() => setSelection({ key: dayKey, target: DAY_LOG })}
+            disabled={saving}
+            className={`min-h-11 rounded-xl border px-3 text-sm disabled:opacity-50 ${target === DAY_LOG ? 'border-primary bg-primary/5 font-semibold text-primary' : 'border-neutral-warm text-primary-dark'}`}
           >
             {sessions.length ? 'Work off the clock' : 'My day'}{dayLog ? ` · ${formatMinutes(entryMinutes(dayLog))}` : ''}
+            {drafts[`${dayKey}:${DAY_LOG}`] && <span className="ml-1 text-amber-700">· unsaved</span>}
           </button>
         </div>
+
+        {dirty && (
+          <p role="status" className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Unsaved changes{changedSinceDraft ? ' — this entry was changed elsewhere since you started; check the lines before saving.' : '. They stay here if you switch days, sessions or tabs; save or undo them.'}
+          </p>
+        )}
+        {otherDrafts.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-amber-900" aria-label="Other unsaved work">
+            <span>Also unsaved:</span>
+            {otherDrafts.map(([key, other]) => (
+              <button key={key} type="button" onClick={() => openDraft(key)} disabled={saving} className="min-h-11 rounded-full border border-amber-300 bg-white px-3 hover:bg-amber-50 disabled:opacity-50">
+                {other.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           <p className="text-sm text-text-muted">Loading…</p>
@@ -257,7 +354,7 @@ export default function LogMyDay({
             <p role={message.tone === 'error' ? 'alert' : 'status'} className={`text-sm md:mr-auto ${message.tone === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>{message.text}</p>
           )}
           {dirty && (
-            <button type="button" onClick={() => setDraft(null)} disabled={saving} className="min-h-11 rounded-xl border border-neutral-warm px-4 text-sm font-medium text-primary-dark">
+            <button type="button" onClick={discardDraft} disabled={saving} className="min-h-11 rounded-xl border border-neutral-warm px-4 text-sm font-medium text-primary-dark">
               Undo changes
             </button>
           )}

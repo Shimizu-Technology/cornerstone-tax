@@ -6,7 +6,7 @@ import { api } from '../../lib/api'
 import UnassignedTime from '../../components/time-tracking/UnassignedTime'
 import WorkLinesEditor from '../../components/time-tracking/WorkLinesEditor'
 import LogMyDay from '../../components/time-tracking/LogMyDay'
-import { checkLines, detailsRequired, draftsFromEntry, linesPayload, newDraft, useWorkLineSuggestions, type WorkLineDraft } from '../../components/time-tracking/workLinesModel'
+import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, linesPayload, newDraft, useWorkLineSuggestions, type WorkLineDraft } from '../../components/time-tracking/workLinesModel'
 import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary, TimeEntry as TimeEntryItem } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeIn } from '../../components/ui/FadeIn'
@@ -744,7 +744,14 @@ export default function TimeTracking() {
     setError(null)
 
     try {
-      const timeFields = editingDayLog ? { work_date: formData.work_date } : {
+      // Edits send only the attendance fields that changed (resending an
+      // unchanged HH:MM would drop a clock entry's seconds and its approval).
+      const timeFields = editingEntry ? attendanceChanges({
+        workDate: [formData.work_date, editingEntry.work_date],
+        startTime: editingDayLog ? null : [formData.start_time, editingEntry.start_time || '08:00'],
+        endTime: editingDayLog || editingActiveClock ? null : [formData.end_time, editingEntry.end_time || '17:00'],
+        breakMinutes: editingDayLog || editingActiveClock ? null : [formData.break_minutes, editingEntry.break_minutes],
+      }) : {
         work_date: formData.work_date,
         start_time: formData.start_time,
         end_time: formData.end_time,
@@ -752,16 +759,17 @@ export default function TimeTracking() {
       }
       const linesField = modalSendsLines ? { work_lines: linesPayload(lines, modalTargetMinutes) } : {}
 
-      if (editingEntry) {
+      const editPayload = editingEntry ? {
+        ...timeFields,
+        ...(editingActiveClock ? changedWorkFieldsPayload(workFieldsFromEntry(editingEntry), workFields) : linesField),
+      } : {}
+
+      if (editingEntry && Object.keys(editPayload).length === 0) {
+        // Nothing changed: close without a request (an empty update is an error).
+        setShowModal(false)
+      } else if (editingEntry) {
         // Send only what the user changed so a concurrent edit is not overwritten.
-        const response = await api.updateTimeEntry(
-          editingEntry.id,
-          {
-            ...timeFields,
-            ...(editingActiveClock ? changedWorkFieldsPayload(workFieldsFromEntry(editingEntry), workFields) : linesField),
-          },
-          correctionReason,
-        )
+        const response = await api.updateTimeEntry(editingEntry.id, editPayload, correctionReason)
         if (response.error) {
           if (response.code === 'correction_reason_required') {
             setRequiresCorrectionReason(true)

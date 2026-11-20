@@ -512,8 +512,8 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
             <h3 className="text-sm font-medium text-gray-700">What did you work on?</h3>
             <p className="mt-0.5 text-xs text-gray-500">
               {linesRequired
-                ? 'Say who each part of this session was for and what you did. Use Internal – Cornerstone for office work and errands.'
-                : 'Pick the client and say what you did. Split the session if you worked for more than one client.'}
+                ? 'Every line needs a client and a description; internal lines (Internal – Cornerstone, for office work and errands) also need a category; the task is always optional.'
+                : 'Pick the client and say what you did; category and task are optional. Split the session if you worked for more than one client.'}
             </p>
           </div>
 

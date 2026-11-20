@@ -6,7 +6,7 @@ import type { ClientOption } from '../../lib/timeEntryWork'
 import TimeEntryWorkFields from './TimeEntryWorkFields'
 import WorkLinesEditor from './WorkLinesEditor'
 import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, workFieldsFromEntry, type WorkFieldsValue } from './timeEntryWorkForm'
-import { checkLines, detailsRequired, draftsFromEntry, linesPayload, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
+import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, linesPayload, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
 
 interface EditableTimeEntry {
   id: number
@@ -206,20 +206,31 @@ export default function EditTimeEntryModal({
       // Work lines are sent when they changed, or when the hours changed and
       // the entry is split (its lines must be re-balanced to the new hours).
       const sendLines = !isActiveClockEntry && (linesChanged || (hoursChanged && lines.length > 1))
+      // Only attendance fields the user actually changed are sent. Resending
+      // an unchanged HH:MM would drop a clock entry's seconds, change its
+      // hours and send an approved entry back for review.
+      const attendance = attendanceChanges({
+        workDate: [formData.work_date, entry.work_date],
+        startTime: [formData.start_time, entry.start_time || '08:00'],
+        endTime: isActiveClockEntry ? null : [formData.end_time, entry.end_time || '17:00'],
+        breakMinutes: isActiveClockEntry ? null : [formData.break_minutes, entry.break_minutes],
+      })
+      const breaksChanged = !isActiveClockEntry && shouldSubmitDetailedBreaks && !breakRowsUntouched
       const payload = isDayLog ? {
-        work_date: formData.work_date,
+        ...attendance,
         ...(linesChanged ? { work_lines: linesPayload(lines, null) } : {}),
       } : {
-        work_date: formData.work_date,
-        start_time: formData.start_time,
+        ...attendance,
         // Only what the user changed, so concurrent edits are not overwritten.
         ...(isActiveClockEntry ? changedWorkFieldsPayload(workFieldsFromEntry(entry), workFields) : {}),
-        ...(isActiveClockEntry ? {} : {
-          end_time: formData.end_time,
-          break_minutes: formData.break_minutes,
-          ...(shouldSubmitDetailedBreaks ? { breaks: breakRows } : {}),
-        }),
+        ...(breaksChanged ? { breaks: breakRows } : {}),
         ...(sendLines ? { work_lines: linesPayload(lines, targetMinutes) } : {}),
+      }
+
+      // Nothing changed: close without a request (an empty update is an error).
+      if (Object.keys(payload).length === 0) {
+        await onSaved()
+        return
       }
 
       const response = await api.updateTimeEntry(entry.id, payload, correctionReason)

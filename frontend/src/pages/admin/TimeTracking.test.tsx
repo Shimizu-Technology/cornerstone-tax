@@ -349,14 +349,21 @@ describe('TimeTracking log time', () => {
     expect((editor.getByLabelText('Client', { selector: 'select' }) as HTMLSelectElement).value).toBe('6')
     expect((editor.getByLabelText('What I did') as HTMLInputElement).value).toBe('Old work')
 
+    // Nothing changed: the modal closes without sending anything, so neither
+    // the legacy category nor the clock times can be rewritten.
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await waitFor(() => expect(screen.queryByTestId('work-lines-editor')).not.toBeInTheDocument())
+    expect(apiMocks.updateTimeEntry).not.toHaveBeenCalled()
+
+    // A description-only edit sends just the work lines, no attendance fields.
+    fireEvent.click(screen.getByText('Jose Cruz'))
+    const reopened = within(await screen.findByTestId('work-lines-editor'))
+    fireEvent.change(reopened.getByLabelText('What I did'), { target: { value: 'Old work, filed' } })
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
     await waitFor(() => expect(apiMocks.updateTimeEntry).toHaveBeenCalled())
     const payload = apiMocks.updateTimeEntry.mock.calls[0][1]
-    // Nothing in the work changed, so no lines (and never the legacy category) are sent.
-    for (const key of ['time_category_id', 'client_id', 'service_type_id', 'service_task_id', 'period_type', 'period_start', 'description', 'work_lines']) {
-      expect(payload).not.toHaveProperty(key)
-    }
-    expect(payload).toMatchObject({ start_time: '09:00', end_time: '10:00' })
+    expect(Object.keys(payload)).toEqual(['work_lines'])
+    expect(payload.work_lines).toEqual([expect.objectContaining({ client_id: 6, description: 'Old work, filed', minutes: 60 })])
   })
 
   it('shows a retry when categories or clients fail to load', async () => {

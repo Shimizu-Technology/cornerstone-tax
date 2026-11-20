@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiMock = vi.hoisted(() => ({
@@ -22,6 +22,7 @@ const session = {
 describe('LogMyDay', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.sessionStorage.clear()
     apiMock.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: null } })
     apiMock.createTimeEntry.mockResolvedValue({ data: { time_entry: { approval_status: 'pending' } } })
     apiMock.updateTimeEntry.mockResolvedValue({ data: { time_entry: { approval_status: null } } })
@@ -64,5 +65,71 @@ describe('LogMyDay', () => {
     await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
     expect(apiMock.updateTimeEntry.mock.calls[0][0]).toBe(50)
     expect(apiMock.updateTimeEntry.mock.calls[0][1].work_lines.map((line: { minutes: number }) => line.minutes)).toEqual([90, 30])
+  })
+
+  it('keeps unsaved lines when switching days and back, and lists them meanwhile', async () => {
+    apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [] } })
+    render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+
+    fireEvent.change(await screen.findByLabelText('Work client'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Work description'), { target: { value: 'Bank recs' } })
+    fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '45' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous day' }))
+    await waitFor(() => expect((screen.getByLabelText('Work client') as HTMLSelectElement).value).toBe(''))
+    const unsaved = screen.getByLabelText('Other unsaved work')
+    expect(unsaved).toHaveTextContent('day log')
+
+    fireEvent.click(within(unsaved).getByRole('button'))
+    await waitFor(() => expect((screen.getByLabelText('Work client') as HTMLSelectElement).value).toBe('2'))
+    expect((screen.getByLabelText('Work description') as HTMLInputElement).value).toBe('Bank recs')
+    expect(screen.getByText(/Unsaved changes/)).toBeInTheDocument()
+  })
+
+  it('keeps a separate draft per clock session and marks the unsaved one', async () => {
+    const second = { ...session, id: 51, start_time: '13:00', end_time: '15:00', formatted_start_time: '1:00 PM', formatted_end_time: '3:00 PM' }
+    apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [session, second] } })
+    render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+
+    const first = await screen.findByRole('radio', { name: /Clock 9:00 AM/ })
+    fireEvent.change(screen.getByLabelText('Work client'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('radio', { name: /Clock 1:00 PM/ }))
+    expect((screen.getByLabelText('Work client') as HTMLSelectElement).value).toBe('')
+    expect(first).toHaveTextContent('unsaved')
+
+    fireEvent.click(first)
+    expect((screen.getByLabelText('Work client') as HTMLSelectElement).value).toBe('2')
+  })
+
+  it('keeps drafts across a remount (e.g. switching tabs) and warns before leaving the page', async () => {
+    apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [] } })
+    const { unmount } = render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+    fireEvent.change(await screen.findByLabelText('Work client'), { target: { value: '3' } })
+
+    const event = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+
+    unmount()
+    render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+    await waitFor(() => expect((screen.getByLabelText('Work client') as HTMLSelectElement).value).toBe('3'))
+  })
+
+  it('blocks switching days or sessions while a save is in flight', async () => {
+    apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [] } })
+    let finish: (value: unknown) => void = () => undefined
+    apiMock.createTimeEntry.mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+
+    fireEvent.change(await screen.findByLabelText('Work client'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Log day' }))
+
+    expect(screen.getByRole('button', { name: 'Previous day' })).toBeDisabled()
+    expect(screen.getByLabelText('Day')).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /My day/ })).toBeDisabled()
+    finish({ data: { time_entry: { approval_status: 'pending' } } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Previous day' })).toBeEnabled())
+    expect(window.sessionStorage.length).toBe(0)
   })
 })
