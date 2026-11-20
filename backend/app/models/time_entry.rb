@@ -289,8 +289,13 @@ class TimeEntry < ApplicationRecord
 
     first = built.first
     assign_attributes(first.work_attributes)
-    descriptions = built.filter_map { |line| line.description.to_s.strip.presence }.uniq
-    self.description = descriptions.join("; ").presence if descriptions.any? || built.size > 1
+    # One line: the entry mirrors it exactly (so the legacy columns hold the
+    # whole story). Several lines: their descriptions, joined.
+    self.description = if built.size == 1
+      first.description
+    else
+      built.filter_map { |line| line.description.to_s.strip.presence }.uniq.join("; ").presence
+    end
   end
 
   def sync_single_work_line

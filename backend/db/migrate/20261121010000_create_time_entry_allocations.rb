@@ -50,7 +50,41 @@ class CreateTimeEntryAllocations < ActiveRecord::Migration[8.1]
     execute BACKFILL_SQL
   end
 
+  # Entries whose work lines say more than the legacy entry columns can
+  # hold: split across several lines, or a single line that differs from
+  # the entry's own client, category, task, period, description or hours.
+  # Rolling back would silently lose that attribution.
+  LOSSY_ROLLBACK_SQL = <<~SQL
+    SELECT time_entries.id
+    FROM time_entries
+    JOIN time_entry_allocations lines ON lines.time_entry_id = time_entries.id
+    GROUP BY time_entries.id
+    HAVING COUNT(lines.id) > 1
+        OR BOOL_OR(
+             lines.client_id IS DISTINCT FROM time_entries.client_id
+          OR lines.service_type_id IS DISTINCT FROM time_entries.service_type_id
+          OR lines.service_task_id IS DISTINCT FROM time_entries.service_task_id
+          OR lines.period_type IS DISTINCT FROM time_entries.period_type
+          OR lines.period_start IS DISTINCT FROM time_entries.period_start
+          OR NULLIF(BTRIM(lines.description), '') IS DISTINCT FROM NULLIF(BTRIM(time_entries.description), '')
+          OR lines.hours IS DISTINCT FROM time_entries.hours
+        )
+    ORDER BY time_entries.id
+  SQL
+
+  # Refuses to roll back once work lines hold attribution the legacy columns
+  # can't represent. See docs/TIME_ENTRY_WORK_LINES_ROLLBACK.md.
   def down
+    lossy_ids = select_values(LOSSY_ROLLBACK_SQL)
+    if lossy_ids.any?
+      sample = lossy_ids.first(20).join(", ")
+      raise ActiveRecord::IrreversibleMigration,
+            "Refusing to drop time_entry_allocations: #{lossy_ids.size} time entr#{lossy_ids.size == 1 ? 'y has' : 'ies have'} " \
+            "work lines the entry columns can't represent (split across clients, or a line that differs from its entry). " \
+            "Rolling back would lose that client attribution. Entry ids: #{sample}#{lossy_ids.size > 20 ? ', …' : ''}. " \
+            "Roll forward instead, or follow docs/TIME_ENTRY_WORK_LINES_ROLLBACK.md."
+    end
+
     drop_table :time_entry_allocations
   end
 end
