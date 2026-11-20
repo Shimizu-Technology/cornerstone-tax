@@ -18,6 +18,7 @@ const apiMocks = vi.hoisted(() => ({
   getTimePeriodLockStatus: vi.fn(),
   getHoursReport: vi.fn(),
   downloadHoursReport: vi.fn(),
+  getUnassignedTime: vi.fn(),
 }))
 
 vi.mock('../../lib/api', () => ({ api: apiMocks }))
@@ -373,5 +374,38 @@ describe('TimeTracking log time', () => {
     expect(apiMocks.getServiceTypes).toHaveBeenCalledTimes(2)
     // Clients loaded the first time and are not refetched.
     expect(apiMocks.getClientOptions).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('TimeTracking unassigned time', () => {
+  it('opens the entry editor from the Unassigned tab', async () => {
+    vi.clearAllMocks()
+    const entry = {
+      id: 88, work_date: '2026-11-16', start_time: '09:00', end_time: '17:00', formatted_start_time: '9:00 AM', formatted_end_time: '5:00 PM',
+      hours: 8, break_minutes: null, description: null, entry_method: 'clock', status: 'completed', approval_status: null,
+      overtime_status: 'none', approved_by: null, approval_note: null, locked_at: null,
+      user: { id: 2, email: 'sam@example.com', display_name: 'Sam', full_name: 'Sam Staff' },
+      time_category: null, client: null, tax_return: null, service_type: null, service_task: null, breaks: [],
+      work_lines: [{ id: 5, position: 0, client: null, client_label: 'Unassigned', description: null, minutes: 480, hours: 8 }],
+      line_issues: [{ id: 5, missing: ['client'] }],
+    }
+    apiMocks.getTimeEntries.mockResolvedValue({ data: { time_entries: [], summary: { total_hours: 0, total_break_hours: 0, entry_count: 0 } } })
+    apiMocks.getTimeCategories.mockResolvedValue({ data: { time_categories: [] } })
+    apiMocks.getClientOptions.mockResolvedValue({ data: { clients: [] } })
+    apiMocks.getServiceTypes.mockResolvedValue({ data: { service_types: [] } })
+    apiMocks.getUsers.mockResolvedValue({ data: { users: [] } })
+    apiMocks.getCurrentUser.mockResolvedValue({ data: { user: { id: 1, is_admin: true } } })
+    apiMocks.getPendingApprovals.mockResolvedValue({ data: { summary: null } })
+    apiMocks.getTimePeriodLockStatus.mockResolvedValue({ data: { locked: false, lock: null } })
+    apiMocks.getUnassignedTime.mockResolvedValue({ data: {
+      time_entries: [entry],
+      summary: { entry_count: 1, hours: 8, by_user: [], cutover_date: null },
+      pagination: { current_page: 1, per_page: 50, total_count: 1, total_pages: 1 },
+    } })
+
+    renderPage('/admin/time?tab=unassigned')
+    fireEvent.click(await screen.findByRole('button', { name: /^Fix Sam Staff/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Edit Time Entry' })).toBeInTheDocument()
   })
 })

@@ -1512,7 +1512,65 @@ export default function TimeTracking() {
         </FadeIn>
       )}
 
-      {/* Entry Modal */}
+      </>
+      )}
+
+      {/* Approvals Tab */}
+      {activeTab === 'approvals' && isAdmin && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-bold text-primary-dark">Approval Review</h2>
+            <p className="mt-1 text-sm text-text-muted">Filter pending time, edit exceptions inline, and approve entries in batches.</p>
+          </div>
+          <ApprovalQueue
+            onUpdate={() => {
+              void loadEntries()
+              void loadPendingApprovalSummary()
+            }}
+            canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry) : false}
+            clients={clients}
+            serviceTypes={serviceTypes}
+            catalogError={workOptions.error}
+            onRetryCatalog={workOptions.retry}
+          />
+        </div>
+      )}
+
+      {/* Unassigned time (admin clean-up) */}
+      {activeTab === 'unassigned' && isAdmin && (
+        <UnassignedTime users={users} onEditEntry={openEditEntry} refreshKey={unassignedRefresh} />
+      )}
+
+      {/* Reports Tab */}
+      {activeTab === 'reports' && isAdmin && (
+        <>
+          <HoursReportWorkspace
+            filters={reportFilters}
+            onFiltersChange={setReportFilters}
+            report={hoursReport}
+            entries={reportData}
+            loading={reportLoading}
+            error={reportError}
+            users={users}
+            categories={categories}
+            serviceTypes={serviceTypes}
+            clients={clients}
+            exporting={reportExporting}
+            onExport={(type) => void downloadReport(type)}
+            onOpenEmployee={setSelectedReportEmployee}
+            onEditEntry={openEditEntry}
+            view={reportView}
+            onViewChange={setReportView}
+          />
+          <EmployeeReportDrawer
+            employee={selectedReportEmployee}
+            overtimePolicy={hoursReport?.overtime_policy ?? null}
+            onClose={handleCloseEmployeeReportDrawer}
+          />
+        </>
+      )}
+
+      {/* Entry Modal: mounted for every tab so Unassigned and Reports can open it */}
       <AnimatePresence>
       {showModal && (
         <motion.div 
@@ -1763,63 +1821,6 @@ export default function TimeTracking() {
         </motion.div>
       )}
       </AnimatePresence>
-      </>
-      )}
-
-      {/* Approvals Tab */}
-      {activeTab === 'approvals' && isAdmin && (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
-            <h2 className="text-lg font-bold text-primary-dark">Approval Review</h2>
-            <p className="mt-1 text-sm text-text-muted">Filter pending time, edit exceptions inline, and approve entries in batches.</p>
-          </div>
-          <ApprovalQueue
-            onUpdate={() => {
-              void loadEntries()
-              void loadPendingApprovalSummary()
-            }}
-            canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry) : false}
-            clients={clients}
-            serviceTypes={serviceTypes}
-            catalogError={workOptions.error}
-            onRetryCatalog={workOptions.retry}
-          />
-        </div>
-      )}
-
-      {/* Unassigned time (admin clean-up) */}
-      {activeTab === 'unassigned' && isAdmin && (
-        <UnassignedTime users={users} onEditEntry={openEditEntry} refreshKey={unassignedRefresh} />
-      )}
-
-      {/* Reports Tab */}
-      {activeTab === 'reports' && isAdmin && (
-        <>
-          <HoursReportWorkspace
-            filters={reportFilters}
-            onFiltersChange={setReportFilters}
-            report={hoursReport}
-            entries={reportData}
-            loading={reportLoading}
-            error={reportError}
-            users={users}
-            categories={categories}
-            serviceTypes={serviceTypes}
-            clients={clients}
-            exporting={reportExporting}
-            onExport={(type) => void downloadReport(type)}
-            onOpenEmployee={setSelectedReportEmployee}
-            onEditEntry={openEditEntry}
-            view={reportView}
-            onViewChange={setReportView}
-          />
-          <EmployeeReportDrawer
-            employee={selectedReportEmployee}
-            overtimePolicy={hoursReport?.overtime_policy ?? null}
-            onClose={handleCloseEmployeeReportDrawer}
-          />
-        </>
-      )}
 
     </div>
   )
