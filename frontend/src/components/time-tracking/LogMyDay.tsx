@@ -126,14 +126,16 @@ export default function LogMyDay({
   // Kept per day (not per reload), so saving doesn't jump to another session.
   const dayKey = `${userId}:${date}`
   const [selection, setSelection] = useState<{ key: string; target: string } | null>(null)
-  const defaultTarget = sessions.find((entry) => assignedMinutes(entry) < entryMinutes(entry))?.id ?? sessions[0]?.id
+  const [drafts, setDrafts] = useDayDrafts(userId)
+  // Reopening a day lands on the session (or day log) that has unsaved lines.
+  const draftTargetForDay = Object.keys(drafts).find((key) => key.startsWith(`${dayKey}:`))?.split(':')[2]
+  const defaultTarget = draftTargetForDay ?? sessions.find((entry) => assignedMinutes(entry) < entryMinutes(entry))?.id ?? sessions[0]?.id
   const target = selection?.key === dayKey ? selection.target : String(defaultTarget ?? DAY_LOG)
   const session = sessions.find((entry) => String(entry.id) === target) ?? null
   const editing = session ?? dayLog ?? null
 
   // Unsaved lines are kept per day and session (and in sessionStorage), so
   // switching dates, sessions or tabs never drops or overwrites them.
-  const [drafts, setDrafts] = useDayDrafts(userId)
   const draftKey = `${dayKey}:${target}`
   const draft = drafts[draftKey]
   const lines = draft ? draft.lines : editing ? draftsFromEntry(editing) : [newDraft()]

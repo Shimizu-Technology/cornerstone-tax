@@ -132,4 +132,17 @@ describe('LogMyDay', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Previous day' })).toBeEnabled())
     expect(window.sessionStorage.length).toBe(0)
   })
+
+  it('reopens on the session or day log that has unsaved lines after a remount', async () => {
+    apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [session] } })
+    const { unmount } = render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+    fireEvent.click(await screen.findByRole('radio', { name: /Work off the clock/ }))
+    fireEvent.change(screen.getByLabelText('Work client'), { target: { value: '3' } })
+
+    unmount()
+    render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+
+    await waitFor(() => expect(screen.getByRole('radio', { name: /Work off the clock/ })).toHaveAttribute('aria-checked', 'true'))
+    expect((screen.getByLabelText('Work client') as HTMLSelectElement).value).toBe('3')
+  })
 })
