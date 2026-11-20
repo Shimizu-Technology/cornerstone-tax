@@ -177,8 +177,7 @@ Rails.application.routes.draw do
         end
       end
 
-      # Payroll ingest (shared-secret auth, service-to-service)
-      post "payroll/ingest", to: "payroll_ingest#create"
+      # Payroll reads staff hours from here (shared-secret auth, service-to-service)
       namespace :payroll do
         resource :time_summary, only: [ :show ], controller: :time_summaries
       end
@@ -233,9 +232,6 @@ Rails.application.routes.draw do
           get :detailed_csv
           get :summary_csv
         end
-
-        # Payroll import batches (read-only admin visibility)
-        resources :payroll_import_batches, only: [:index, :show]
 
         # System settings
         resource :settings, only: [:show, :update]
