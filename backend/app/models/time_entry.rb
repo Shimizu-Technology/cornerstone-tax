@@ -46,6 +46,10 @@ class TimeEntry < ApplicationRecord
   validate :period_fields_consistent
   validate :selected_work_records_exist
   validate :work_lines_match_hours
+  # Set by user-facing flows (clock-out, manual create/edit) so the
+  # client/description cutover is enforced there; see TimeEntryWorkRequirement.
+  attr_accessor :enforce_work_requirement
+  validate :work_requirement_met, if: :enforce_work_requirement
 
   before_validation :normalize_blank_period
 
@@ -381,6 +385,10 @@ class TimeEntry < ApplicationRecord
     return if total == hours.to_d.round(2)
 
     errors.add(:base, "Work lines add up to #{format('%.2f', total)}h but this entry is #{format('%.2f', hours.to_d)}h. Update the work lines to match.")
+  end
+
+  def work_requirement_met
+    TimeEntryWorkRequirement.errors_for(self).each { |message| errors.add(:base, message) }
   end
 
   def set_zero_hours_if_clocked_in

@@ -75,7 +75,7 @@ module Api
         end
 
         def service_type_params
-          params.require(:service_type).permit(:name, :description, :color, :is_active, :position)
+          params.require(:service_type).permit(:name, :description, :color, :is_active, :position, :internal)
         end
 
         def serialize_service_type(service_type, include_tasks: false)
@@ -84,6 +84,7 @@ module Api
             name: service_type.name,
             description: service_type.description,
             color: service_type.color,
+            internal: service_type.internal,
             is_active: service_type.is_active,
             position: service_type.position,
             created_at: service_type.created_at,

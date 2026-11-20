@@ -6,6 +6,7 @@ module Api
       PENDING_APPROVAL_SORTS = %w[work_date created_at employee hours approval_type category client service].freeze
       PENDING_APPROVAL_DIRECTIONS = %w[asc desc].freeze
       PENDING_APPROVAL_TYPES = %w[time_entry overtime both].freeze
+      UNASSIGNED_ISSUES = %w[client any].freeze
       WORK_LINE_PARAMS = %i[client_id description service_type_id service_task_id period_type period_start hours minutes duration exact_hours].freeze
       WORK_LINE_INCLUDES = [ :client, :service_type, :service_task, { time_entry: :time_category } ].freeze
 
@@ -102,6 +103,7 @@ module Api
         @time_entry = entry_owner.time_entries.build(time_entry_params.except(:user_id, :breaks, :work_lines))
         @time_entry.entry_method = "manual"
         @time_entry.work_lines_input = submitted_work_lines
+        @time_entry.enforce_work_requirement = true
 
         if current_user.admin?
           @time_entry.admin_override = true if entry_owner.id != current_user.id
@@ -156,6 +158,8 @@ module Api
 
         update_params = time_entry_params.except(:user_id, :breaks, :work_lines).to_h.symbolize_keys
         @time_entry.work_lines_input = submitted_work_lines
+        @time_entry.enforce_work_requirement = true
+        old_break_signature = break_signature(@time_entry)
         raw_clock_params = raw_time_entry_params.slice(:work_date, :start_time, :end_time)
         normalize_clock_entry_time_update(@time_entry, update_params, raw_clock_params)
         return if performed?
@@ -184,6 +188,20 @@ module Api
             raise ActiveRecord::Rollback if break_replace_error
           end
           raise ActiveRecord::Rollback unless saved
+
+          # Staff edits that change attendance (date, times, hours, breaks)
+          # go back to an admin. Edits to work lines only (client, what was
+          # done, category, task, period) keep the approval as it is, as long
+          # as the hours stay the same.
+          if !current_user.admin? && @time_entry.status == "completed" &&
+             attendance_changed?(old_values, old_break_signature)
+            @time_entry.update!(
+              approval_status: "pending",
+              approved_by_id: nil,
+              approved_at: nil,
+              approval_note: append_review_note(@time_entry.approval_note)
+            )
+          end
 
           if @time_entry.status == "completed" &&
              (old_values[:hours] != @time_entry.hours.to_f || old_values[:work_date] != @time_entry.work_date.iso8601)
@@ -497,6 +515,68 @@ module Api
         render json: { error: e.message }, status: :unprocessable_entity
       end
 
+      # GET /api/v1/time_entries/unassigned
+      # Admin clean-up list: completed, non-denied entries with at least one
+      # work line that has no client (issue=client, the default) or that
+      # misses anything the cutover rule asks for (issue=any).
+      def unassigned
+        return render json: { error: "Admin access required" }, status: :forbidden unless current_user.admin?
+
+        start_date = parse_pending_date_param(:start_date)
+        return if performed?
+        end_date = parse_pending_date_param(:end_date)
+        return if performed?
+        user_id = positive_integer_filter_param(:user_id)
+        return if performed?
+        issue = allowed_filter_param(:issue, UNASSIGNED_ISSUES)
+        return if performed?
+        issue ||= "client"
+
+        lines = unassigned_lines_scope(issue)
+        entries = TimeEntry.where(status: "completed")
+                           .where("time_entries.approval_status IS NULL OR time_entries.approval_status <> 'denied'")
+                           .where(id: lines.select(:time_entry_id))
+        entries = entries.where("time_entries.work_date >= ?", start_date) if start_date
+        entries = entries.where("time_entries.work_date <= ?", end_date) if end_date
+        entries = entries.where(user_id: user_id) if user_id
+
+        matching_lines = lines.where(time_entry_id: entries.select(:id))
+        by_user = matching_lines.joins(time_entry: :user).group("users.id")
+                                .pluck("users.id", Arel.sql("MIN(users.first_name)"), Arel.sql("MIN(users.last_name)"),
+                                       Arel.sql("COUNT(DISTINCT time_entry_allocations.time_entry_id)"),
+                                       Arel.sql("COALESCE(SUM(time_entry_allocations.hours), 0)"))
+                                .map { |id, first, last, count, hours| { id: id, name: "#{first} #{last}".strip, entry_count: count.to_i, hours: hours.to_f.round(2) } }
+                                .sort_by { |row| -row[:hours] }
+
+        page = [ (params[:page] || 1).to_i, 1 ].max
+        per_page = (params[:per_page] || 50).to_i.clamp(1, 200)
+        total_count = entries.count
+        page_entries = time_entry_serializer_scope.where(id: entries.select(:id))
+                                                  .order(work_date: :desc, start_time: :desc, id: :desc)
+                                                  .offset((page - 1) * per_page).limit(per_page)
+
+        render json: {
+          time_entries: page_entries.map do |entry|
+            serialize_time_entry(entry).merge(
+              line_issues: entry.work_lines.map { |line| { id: line.id, missing: TimeEntryWorkRequirement.missing_for_line(line) } }
+            )
+          end,
+          summary: {
+            entry_count: total_count,
+            hours: matching_lines.sum(:hours).to_f.round(2),
+            by_user: by_user,
+            cutover_date: TimeEntryWorkRequirement.cutover_date&.iso8601
+          },
+          pagination: {
+            current_page: page,
+            per_page: per_page,
+            total_count: total_count,
+            total_pages: (total_count.to_f / per_page).ceil
+          },
+          filters: { start_date: start_date&.iso8601, end_date: end_date&.iso8601, user_id: user_id, issue: issue }.compact
+        }
+      end
+
       # GET /api/v1/time_entries/whos_working
       def whos_working
         return render json: { error: "Admin access required" }, status: :forbidden unless current_user.admin?
@@ -505,6 +585,16 @@ module Api
       end
 
       private
+
+      def unassigned_lines_scope(issue)
+        lines = TimeEntryAllocation.left_outer_joins(:client)
+        return lines.where(client_id: nil) if issue == "client"
+
+        lines.where(
+          "time_entry_allocations.client_id IS NULL OR COALESCE(TRIM(time_entry_allocations.description), '') = '' OR " \
+          "(clients.system_kind = 'internal' AND time_entry_allocations.service_type_id IS NULL)"
+        )
+      end
 
       def with_export_invalidation(entry, reason)
         TimeEntry.transaction do
@@ -584,6 +674,18 @@ module Api
         Array(params.require(:time_entry).permit(work_lines: WORK_LINE_PARAMS)[:work_lines]).map(&:to_h)
       end
 
+      def break_signature(entry)
+        entry.time_entry_breaks.reload.sort_by(&:start_time).map { |entry_break| [ entry_break.start_time.to_i, entry_break.end_time&.to_i ] }
+      end
+
+      def attendance_changed?(old_values, old_break_signature)
+        old_values[:hours] != @time_entry.hours.to_f ||
+          old_values[:work_date] != @time_entry.work_date.iso8601 ||
+          old_values[:start_time] != @time_entry.formatted_start_time ||
+          old_values[:end_time] != @time_entry.formatted_end_time ||
+          old_break_signature != break_signature(@time_entry)
+      end
+
       def work_lines_audit_value(entry)
         entry.work_lines.map do |line|
           [ line.client_id, line.service_type_id, line.service_task_id, line.period_type, line.period_start&.iso8601,
@@ -592,6 +694,9 @@ module Api
       end
 
       def approve_bulk_time_entry(entry, note, overtime_context)
+        requirement_errors = TimeEntryWorkRequirement.errors_for(entry)
+        return "Entry ##{entry.id} can't be approved yet: #{requirement_errors.to_sentence}" if requirement_errors.any?
+
         overtime_check_required = bulk_overtime_check_required?(entry)
         attrs = {
           approval_status: "approved",

@@ -79,8 +79,8 @@ module Api
       # Lightweight list of every active client for pickers (time entries,
       # filters, reports), labeled and sorted by Client#display_name.
       def options
-        clients = Client.active.order_by_display_name
-                        .select(:id, :first_name, :last_name, :business_name, :client_type)
+        clients = Client.active.order_for_pickers
+                        .select(:id, :first_name, :last_name, :business_name, :client_type, :system_kind)
 
         render json: {
           clients: clients.map do |client|
@@ -88,6 +88,7 @@ module Api
               id: client.id,
               name: client.display_name,
               client_type: client.client_type,
+              system_kind: client.system_kind,
               business_name: client.business_name,
               first_name: client.first_name,
               last_name: client.last_name
@@ -240,6 +241,9 @@ module Api
       # POST /api/v1/clients/:id/archive
       def archive
         client = Client.find(params[:id])
+        if client.system?
+          return render json: { errors: [ "#{Client::INTERNAL_NAME} is a system client and can't be archived" ] }, status: :unprocessable_entity
+        end
         client.archive!
 
         AuditLog.create!(
@@ -345,6 +349,7 @@ module Api
 
         {
           id: client.id,
+          system_kind: client.system_kind,
           first_name: client.first_name,
           last_name: client.last_name,
           full_name: client.full_name,
@@ -376,6 +381,7 @@ module Api
       def client_detail(client)
         {
           id: client.id,
+          system_kind: client.system_kind,
           first_name: client.first_name,
           last_name: client.last_name,
           full_name: client.full_name,

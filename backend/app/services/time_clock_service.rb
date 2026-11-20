@@ -100,6 +100,7 @@ class TimeClockService
 
         entry.description = description if description.present?
         apply_clock_out_work_details(entry, work_details)
+        entry.enforce_work_requirement = true
         unless work_lines.nil?
           entry.work_lines_input = work_lines
           entry.work_lines_tolerance_minutes = WorkLineHours::CLOCK_OUT_TOLERANCE_MINUTES
@@ -202,6 +203,8 @@ class TimeClockService
           end_time: schedule.formatted_end_time,
           hours: schedule.hours
         } : nil,
+        # From this date, every work line needs a client and a description.
+        work_details_required_from: TimeEntryWorkRequirement.cutover_date&.iso8601,
         can_clock_in: clock_in_info[:allowed],
         clock_in_blocked_reason: clock_in_info[:reason],
         minutes_until: clock_in_info[:minutes_until]
@@ -215,6 +218,11 @@ class TimeClockService
       entry.transaction do
         entry.lock_for_work_lines!
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
+
+        requirement_errors = TimeEntryWorkRequirement.errors_for(entry)
+        if requirement_errors.any?
+          raise ClockError, "This entry can't be approved yet: #{requirement_errors.to_sentence}. Edit its work lines first."
+        end
 
         combined_note = build_approval_note(entry.approval_note, note)
         attrs = {

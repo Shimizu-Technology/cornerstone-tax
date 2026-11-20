@@ -8,6 +8,7 @@ import {
   periodStartContaining,
   periodStartFor,
   sortClientOptions,
+  categoriesForClient,
   workCategoryText,
   workSummary,
 } from './timeEntryWork'
@@ -58,8 +59,16 @@ describe('client options', () => {
     expect(clientOptionLabel({ id: 10 })).toBe('Client #10')
   })
 
-  it('sorts by label', () => {
-    expect(sortClientOptions(clients).map(client => client.name)).toEqual(['Jose Cruz', "MoSa's", 'SCR'])
+  it('sorts the internal client first, then businesses, then individuals', () => {
+    const internal = { id: 4, name: 'Internal – Cornerstone', client_type: 'business', system_kind: 'internal' }
+    expect(sortClientOptions([...clients, internal]).map(client => client.name)).toEqual(['Internal – Cornerstone', "MoSa's", 'SCR', 'Jose Cruz'])
+  })
+
+  it('offers internal categories only for internal work', () => {
+    const categories = [{ id: 1, internal: false }, { id: 2, internal: true }]
+    expect(categoriesForClient(categories, { id: 4, system_kind: 'internal' }).map(c => c.id)).toEqual([2])
+    expect(categoriesForClient(categories, clients[0]).map(c => c.id)).toEqual([1])
+    expect(categoriesForClient(categories, null).map(c => c.id)).toEqual([1, 2])
   })
 
   it('searches business name, first name and last name', () => {

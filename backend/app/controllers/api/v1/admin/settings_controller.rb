@@ -16,11 +16,14 @@ module Api
         def update
           float_keys = %w[overtime_daily_threshold_hours overtime_weekly_threshold_hours]
           integer_keys = %w[early_clock_in_buffer_minutes]
+          date_keys = %w[time_work_details_required_from]
           errors = []
 
           settings_params.each do |key, value|
             key_str = key.to_s
-            if integer_keys.include?(key_str)
+            if date_keys.include?(key_str)
+              Date.iso8601(value.to_s) if value.present?
+            elsif integer_keys.include?(key_str)
               numeric = Float(value)
               raise ArgumentError, "out of range" if numeric.infinite? || numeric.nan?
               errors << "#{key_str.humanize} must be a whole number" if numeric != numeric.to_i
@@ -30,6 +33,8 @@ module Api
               raise ArgumentError, "out of range" if numeric.infinite? || numeric.nan?
               errors << "#{key_str.humanize} must be greater than 0" if numeric <= 0
             end
+          rescue Date::Error
+            errors << "#{key.to_s.humanize} must be a date (YYYY-MM-DD) or blank"
           rescue ArgumentError, TypeError
             errors << "#{key.to_s.humanize} must be a valid number"
           end
@@ -55,7 +60,8 @@ module Api
             :report_email,
             :overtime_daily_threshold_hours,
             :overtime_weekly_threshold_hours,
-            :early_clock_in_buffer_minutes
+            :early_clock_in_buffer_minutes,
+            :time_work_details_required_from
           )
         end
       end

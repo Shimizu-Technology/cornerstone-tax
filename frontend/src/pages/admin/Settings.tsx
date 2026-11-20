@@ -59,6 +59,7 @@ export default function Settings() {
   const [overtimeDailyHours, setOvertimeDailyHours] = useState('8')
   const [overtimeWeeklyHours, setOvertimeWeeklyHours] = useState('40')
   const [earlyClockInBuffer, setEarlyClockInBuffer] = useState('5')
+  const [workDetailsRequiredFrom, setWorkDetailsRequiredFrom] = useState('')
   
   // Workflow Stages state
   const [stages, setStages] = useState<AdminWorkflowStageLocal[]>([])
@@ -194,6 +195,7 @@ export default function Settings() {
       setOvertimeDailyHours(response.data.overtime_daily_threshold_hours || '8')
       setOvertimeWeeklyHours(response.data.overtime_weekly_threshold_hours || '40')
       setEarlyClockInBuffer(response.data.early_clock_in_buffer_minutes || '5')
+      setWorkDetailsRequiredFrom(response.data.time_work_details_required_from || '')
     }
     setLoadingSystemSettings(false)
   }, [])
@@ -213,6 +215,7 @@ export default function Settings() {
       overtime_daily_threshold_hours: overtimeDailyHours,
       overtime_weekly_threshold_hours: overtimeWeeklyHours,
       early_clock_in_buffer_minutes: earlyClockInBuffer,
+      time_work_details_required_from: workDetailsRequiredFrom,
     })
     
     if (response.error) {
@@ -1986,6 +1989,35 @@ export default function Settings() {
                       />
                       <p className="text-xs text-text-muted mt-1">Minutes before shift that clock-in is allowed</p>
                     </div>
+                  </div>
+                  <div className="mt-4 max-w-md">
+                    <label htmlFor="work-details-required-from" className="block text-sm font-medium text-primary-dark mb-1">
+                      Require client and description from
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="work-details-required-from"
+                        type="date"
+                        value={workDetailsRequiredFrom}
+                        onChange={(e) => setWorkDetailsRequiredFrom(e.target.value)}
+                        className="w-full min-h-11 px-4 py-2.5 border border-neutral-warm rounded-xl text-base sm:text-sm focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                        aria-describedby="work-details-required-from-hint"
+                      />
+                      {workDetailsRequiredFrom && (
+                        <button
+                          type="button"
+                          onClick={() => setWorkDetailsRequiredFrom('')}
+                          className="min-h-11 shrink-0 rounded-xl border border-neutral-warm px-3 text-sm font-medium text-primary-dark hover:bg-secondary"
+                        >
+                          Turn off
+                        </button>
+                      )}
+                    </div>
+                    <p id="work-details-required-from-hint" className="text-xs text-text-muted mt-1">
+                      {workDetailsRequiredFrom
+                        ? 'Time dated on or after this day needs a client and what was done on every line (and a category for internal work) before it can be saved or approved.'
+                        : 'Off. Leave blank until staff are used to logging work by client.'}
+                    </p>
                   </div>
                 </div>
               </div>

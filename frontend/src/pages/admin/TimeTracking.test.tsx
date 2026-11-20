@@ -264,7 +264,7 @@ describe('TimeTracking log time', () => {
       expect(labels[index].compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
     expect(screen.queryByText('Description')).not.toBeInTheDocument()
-    expect(fields.getByRole('option', { name: 'Internal – no client' })).toBeInTheDocument()
+    expect(fields.getByRole('option', { name: 'No client (unassigned)' })).toBeInTheDocument()
     // Legacy time categories are not offered for new entries.
     expect(fields.queryByRole('option', { name: /Tax Prep/ })).not.toBeInTheDocument()
   })
@@ -275,7 +275,7 @@ describe('TimeTracking log time', () => {
 
     const clientSelect = await screen.findByLabelText(/^Client/, { selector: '#log-time-client' })
     await waitFor(() => expect(within(clientSelect).getAllByRole('option').map(option => option.textContent)).toEqual([
-      'Internal – no client', 'Jose Cruz', "MoSa's",
+      'No client (unassigned)', "MoSa's", 'Jose Cruz',
     ]))
   })
 

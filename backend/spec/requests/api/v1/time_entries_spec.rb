@@ -102,11 +102,22 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
         expect(json.dig(:time_entry, :description)).to eq("updated")
       end
 
-      it "resets stale approval metadata and queues the edit for review" do
+      it "keeps the approval when only the work details change" do
         entry.update!(approval_status: "approved", approved_by: admin, approved_at: 1.day.ago, approval_note: "Looks good")
 
         patch "/api/v1/time_entries/#{entry.id}",
               params: { time_entry: { description: "employee correction" } },
+              headers: auth_headers_for[employee]
+
+        expect(response).to have_http_status(:ok)
+        expect(entry.reload).to have_attributes(approval_status: "approved", approved_by_id: admin.id, description: "employee correction")
+      end
+
+      it "resets stale approval metadata and queues the edit for review when the hours change" do
+        entry.update!(approval_status: "approved", approved_by: admin, approved_at: 1.day.ago, approval_note: "Looks good")
+
+        patch "/api/v1/time_entries/#{entry.id}",
+              params: { time_entry: { description: "employee correction", end_time: "16:00" } },
               headers: auth_headers_for[employee]
 
         expect(response).to have_http_status(:ok)

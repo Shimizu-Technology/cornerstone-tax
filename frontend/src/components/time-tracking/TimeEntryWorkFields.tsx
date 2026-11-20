@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from 'react'
 import type { ServiceType } from '../../lib/api'
 import {
   INTERNAL_CLIENT_LABEL,
+  categoriesForClient,
   MONTH_NAMES,
   PERIOD_TYPES,
   clientOptionLabel,
@@ -243,8 +244,9 @@ export default function TimeEntryWorkFields({
 }) {
   const generatedId = useId()
   const prefix = idPrefix || generatedId
+  const selectedClient = clients.find((client) => String(client.id) === value.client_id) ?? null
   const categoryOptions = withCurrent<NamedRef & { inactive?: boolean }>(
-    [...serviceTypes].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name)),
+    [...categoriesForClient(serviceTypes, selectedClient)].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name)),
     current?.service_type ? { ...current.service_type, inactive: true } : null,
   )
   const selectedCategory = serviceTypes.find((type) => String(type.id) === value.service_type_id)

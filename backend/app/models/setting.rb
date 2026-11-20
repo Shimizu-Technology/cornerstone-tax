@@ -13,7 +13,10 @@ class Setting < ApplicationRecord
     "report_email" => "dmshimizucpa@gmail.com",
     "overtime_daily_threshold_hours" => "8",
     "overtime_weekly_threshold_hours" => "40",
-    "early_clock_in_buffer_minutes" => "5"
+    "early_clock_in_buffer_minutes" => "5",
+    # ISO date. From this work date on, every work line needs a client and a
+    # description (and a category for internal work). Blank means off.
+    "time_work_details_required_from" => ""
   }.freeze
 
   # Get a setting value (with default fallback)
