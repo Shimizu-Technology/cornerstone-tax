@@ -77,7 +77,7 @@ export default function UnassignedTime({
         <p className="mt-1 text-sm text-text-muted">
           Hours that aren't attributed to a client. Open an entry to add the client and what was done; changing only the work
           lines keeps an approved entry approved.
-          {summary?.cutover_date && <> Client and description are required from {formatDate(summary.cutover_date)}.</>}
+          {summary?.cutover_date && <> From {formatDate(summary.cutover_date)}, every line needs a client and a description; internal lines also need a category; the task is always optional.</>}
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>

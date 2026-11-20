@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
 # The "require client and description" cutover. Off until an admin sets
-# Settings > time_work_details_required_from. For entries dated on or after
-# that date, every work line needs:
-#   - a client (use "Internal – Cornerstone" for office work), and
-#   - a description of what was done (free text), and
-#   - a category, but only when the client is the internal client.
-# Tasks stay optional: staff describe their work in their own words.
+# Settings > time_work_details_required_from. The rule, for entries dated on
+# or after that date:
+#   - every line needs a client and a description (free text of what was
+#     done; use "Internal – Cornerstone" as the client for office work);
+#   - internal lines (client is Internal – Cornerstone) also need a category;
+#   - the task is always optional.
+# This is how staff actually report time: client plus a free-text
+# description. Keep this wording in step with the Settings and editor hints.
 #
 # Checked on clock-out, manual create, edit and approval. Background jobs
 # (stale clock auto-close) are not blocked; those entries are caught at

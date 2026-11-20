@@ -80,6 +80,27 @@ RSpec.describe "Internal client and work details cutover", type: :request do
       expect(response).to have_http_status(:created)
     end
 
+    it "accepts an external-client line with a description and no category or task" do
+      manual([ { client_id: client_a.id, description: "Reconciled June and July cc accounts", minutes: 60 } ])
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig(:time_entry, :work_lines, 0)).to include(service_type: nil, service_task: nil)
+    end
+
+    it "rejects an internal line without a category, even with a description" do
+      manual([ { client_id: internal.id, description: "Weekly meeting", minutes: 60 } ])
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to eq("This entry needs category")
+    end
+
+    it "accepts an internal line with a category and no task" do
+      manual([ { client_id: internal.id, description: "Weekly meeting", service_type_id: office.id, minutes: 60 } ])
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig(:time_entry, :work_lines, 0, :service_task)).to be_nil
+    end
+
     it "does not apply to entries dated before the cutover" do
       manual([ { minutes: 60 } ], date: work_date - 1)
       expect(response).to have_http_status(:created)

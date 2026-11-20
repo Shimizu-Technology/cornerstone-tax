@@ -2015,7 +2015,7 @@ export default function Settings() {
                     </div>
                     <p id="work-details-required-from-hint" className="text-xs text-text-muted mt-1">
                       {workDetailsRequiredFrom
-                        ? 'Time dated on or after this day needs a client and what was done on every line (and a category for internal work) before it can be saved or approved.'
+                        ? 'From this day, every line needs a client and a description; internal lines also need a category; the task is always optional. Time that misses this can’t be saved or approved.'
                         : 'Off. Leave blank until staff are used to logging work by client.'}
                     </p>
                   </div>
