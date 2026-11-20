@@ -12,7 +12,7 @@ module Api
 
       # GET /api/v1/intake_submissions?status=needs_review
       def index
-        submissions = IntakeSubmission.includes(:client, :matched_client)
+        submissions = IntakeSubmission.includes(:client, :matched_client, :tax_return)
                                       .where(status: params[:status].presence || "needs_review")
                                       .order(submitted_at: :desc)
                                       .limit(100)

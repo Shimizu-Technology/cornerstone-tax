@@ -149,11 +149,28 @@ class IntakeMergeService
       RETURN_CHILDREN.each do |model|
         model.where(tax_return_id: intake_return.id).update_all(tax_return_id: target_return.id)
       end
-      intake_return.reload.destroy!
+      retire_folded_return(intake_return.reload, target_return)
     end
 
     @existing_client.update!(has_tax_returns: true) unless @existing_client.has_tax_returns
     target_return || intake_return
+  end
+
+  # The emptied intake return is removed so it doesn't linger on the returns
+  # board. Its notes carry over and its row is kept in the audit log.
+  def retire_folded_return(intake_return, target_return)
+    if intake_return.notes.present?
+      target_return.update!(notes: [ target_return.notes.presence, "From public intake: #{intake_return.notes}" ].compact.join("\n\n"))
+    end
+
+    AuditLog.log(
+      auditable: intake_return,
+      action: "deleted",
+      user: @user,
+      changes_made: intake_return.attributes.except("id"),
+      metadata: "Public intake return folded into tax return ##{target_return.id} (intake ##{@submission.id})"
+    )
+    intake_return.destroy!
   end
 
   def reassign_client_scoped_rows(from_return, to_return)

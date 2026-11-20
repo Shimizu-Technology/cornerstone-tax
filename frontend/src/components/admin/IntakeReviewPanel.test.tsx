@@ -79,6 +79,29 @@ describe('IntakeReviewPanel', () => {
     expect(apiMocks.mergeIntakeSubmission).toHaveBeenCalledWith(7, { fields: ['phone'], include_dependents: true })
   })
 
+  it('moves focus into the dialog, keeps Tab inside it and returns focus on Escape', async () => {
+    renderPanel()
+    const trigger = screen.getByRole('button', { name: 'Review intake' })
+    trigger.focus()
+    fireEvent.click(trigger)
+
+    const dialog = await screen.findByRole('dialog')
+    await screen.findByLabelText('Phone')
+    expect(dialog).toHaveFocus()
+
+    const merge = screen.getByRole('button', { name: 'Merge into Jane Doe' })
+    merge.focus()
+    fireEvent.keyDown(window, { key: 'Tab' })
+    expect(screen.getByLabelText('Phone')).toHaveFocus()
+
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(merge).toHaveFocus()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(trigger).toHaveFocus()
+  })
+
   it('keeps the records apart and shows server errors', async () => {
     apiMocks.keepIntakeSubmissionSeparate
       .mockResolvedValueOnce({ error: 'This intake is no longer waiting for review' })

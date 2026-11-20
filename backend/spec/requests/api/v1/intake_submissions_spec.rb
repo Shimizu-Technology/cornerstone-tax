@@ -130,6 +130,8 @@ RSpec.describe "Api::V1::IntakeSubmissions", type: :request do
       submission = submit_matching_intake
       intake_return = submission.tax_return
       document = intake_return.documents.create!(filename: "w2.pdf", s3_key: "tax_returns/#{intake_return.id}/w2.pdf", upload_source: "intake")
+      existing_return.update!(notes: "Prepared by staff")
+      intake_return.update!(notes: "Client called about a 1099")
 
       post "/api/v1/intake_submissions/#{submission.id}/merge",
            params: { fields: [] },
@@ -142,6 +144,11 @@ RSpec.describe "Api::V1::IntakeSubmissions", type: :request do
       expect(submission.reload.tax_return).to eq(existing_return)
       expect(existing_client.reload.phone).to eq("671-555-0199")
       expect(existing_client.dependents).to be_empty
+      expect(existing_return.notes).to eq("Prepared by staff\n\nFrom public intake: Client called about a 1099")
+
+      snapshot = AuditLog.find_by!(auditable_type: "TaxReturn", auditable_id: intake_return.id, action: "deleted")
+      expect(snapshot.changes_made).to include("client_id" => intake_return.client_id, "notes" => "Client called about a 1099")
+      expect(snapshot.metadata).to include("folded into tax return ##{existing_return.id}")
     end
 
     it "does not add a submitted dependent the existing client already has" do

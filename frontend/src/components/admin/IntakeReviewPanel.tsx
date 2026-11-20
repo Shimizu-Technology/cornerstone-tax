@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
@@ -41,7 +41,7 @@ export default function IntakeReviewPanel({ reviews, onResolved }: IntakeReviewP
           <button
             type="button"
             onClick={() => setOpenId(review.id)}
-            className="shrink-0 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-dark"
+            className="shrink-0 px-4 py-3.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-dark"
           >
             Review intake
           </button>
@@ -75,6 +75,7 @@ interface IntakeReviewModalProps {
 
 function IntakeReviewModal({ submissionId, onClose, onResolved }: IntakeReviewModalProps) {
   const navigate = useNavigate()
+  const dialogRef = useRef<HTMLDivElement>(null)
   const [detail, setDetail] = useState<IntakeSubmissionDetail | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -94,9 +95,33 @@ function IntakeReviewModal({ submissionId, onClose, onResolved }: IntakeReviewMo
     }
   }, [submissionId])
 
+  // Move focus into the dialog on open and give it back to the trigger on close.
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    dialogRef.current?.focus()
+    return () => opener?.focus()
+  }, [])
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !saving) onClose()
+      if (event.key !== 'Tab' || !dialogRef.current) return
+
+      // Keep Tab and Shift+Tab inside the dialog.
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (event.shiftKey && (active === first || active === dialogRef.current)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -152,10 +177,12 @@ function IntakeReviewModal({ submissionId, onClose, onResolved }: IntakeReviewMo
       onClick={() => !saving && onClose()}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="intake-review-title"
-        className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden focus:outline-none"
         onClick={event => event.stopPropagation()}
       >
         <div className="p-6 border-b border-secondary-dark">
@@ -271,7 +298,7 @@ function IntakeReviewModal({ submissionId, onClose, onResolved }: IntakeReviewMo
               type="button"
               onClick={handleKeepSeparate}
               disabled={!detail || !!saving}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="px-4 py-3.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               {saving === 'separate' ? 'Saving…' : 'Keep as separate client'}
             </button>
@@ -279,7 +306,7 @@ function IntakeReviewModal({ submissionId, onClose, onResolved }: IntakeReviewMo
               type="button"
               onClick={handleMerge}
               disabled={!detail?.matched_client || !!saving}
-              className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-dark disabled:opacity-50"
+              className="px-4 py-3.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-dark disabled:opacity-50"
             >
               {saving === 'merge' ? 'Merging…' : `Merge into ${existingName}`}
             </button>
