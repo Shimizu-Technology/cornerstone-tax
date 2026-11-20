@@ -42,6 +42,12 @@ module Payroll
     end
 
     def call
+      TimeEntry.consistent_read { build }
+    end
+
+    private
+
+    def build
       scoped_users = users_scope.to_a
       user_ids = scoped_users.map(&:id)
       control_entries = overtime_context_entries_scope(context_start_date..context_end_date, user_ids).to_a
@@ -70,7 +76,6 @@ module Payroll
       }
     end
 
-    private
 
     def parse_date!(value, name)
       raise ArgumentError, "#{name} is required" if value.blank?

@@ -96,6 +96,30 @@ class TimeEntry < ApplicationRecord
     locked_at.present?
   end
 
+  # Every write that can change an entry's work lines (edit, clock-out,
+  # approval, deletion, stale auto-close) calls this inside its transaction
+  # first: it takes the row lock (SELECT ... FOR UPDATE) and re-reads the
+  # entry with its lines dropped from cache, so the lines are loaded only
+  # while the lock is held. Two concurrent saves therefore cannot both
+  # replace the same old lines and leave lines summing to more than the
+  # entry's hours. Submitted work lines (work_lines_input) survive the reload.
+  def lock_for_work_lines!
+    raise ActiveRecord::TransactionIsolationError, "lock_for_work_lines! must run inside a transaction" unless self.class.connection.transaction_open?
+
+    lock!
+    work_lines.reset
+    self
+  end
+
+  # Runs a multi-query read (reports, exports, feeds) against one snapshot,
+  # so entries and their work lines come from the same moment. Inside an
+  # existing transaction (e.g. tests) it just yields.
+  def self.consistent_read(&block)
+    return yield if connection.transaction_open?
+
+    transaction(isolation: :repeatable_read, &block)
+  end
+
   # Replace this entry's work lines on the next save. Each line is a hash of
   # client_id, description, service_type_id, service_task_id, period_type,
   # period_start and a duration (minutes, hours or a "45m"/"1.5h" string).

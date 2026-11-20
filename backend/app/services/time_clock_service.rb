@@ -62,8 +62,9 @@ class TimeClockService
       ensure_expected_entry!(entry, expected_entry_id)
 
       ActiveRecord::Base.transaction do
-        # Re-read under a row lock so two clock-outs cannot both complete it.
-        entry.lock!
+        # Re-read under a row lock so two clock-outs cannot both complete it
+        # (and its work lines are read only while the lock is held).
+        entry.lock_for_work_lines!
         raise ClockError, "This clock-in has already ended. Refresh to see your current status." unless entry.active?
 
         if entry.status == "on_break"
@@ -203,7 +204,8 @@ class TimeClockService
     def approve_entry(entry:, approved_by:, note: nil)
       raise AuthorizationError, "Only admins can approve entries" unless approved_by.admin?
 
-      entry.with_lock do
+      entry.transaction do
+        entry.lock_for_work_lines!
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
         combined_note = build_approval_note(entry.approval_note, note)
@@ -229,7 +231,8 @@ class TimeClockService
     def deny_entry(entry:, denied_by:, note: nil)
       raise AuthorizationError, "Only admins can deny entries" unless denied_by.admin?
 
-      entry.with_lock do
+      entry.transaction do
+        entry.lock_for_work_lines!
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
         combined_note = build_approval_note(entry.approval_note, note)
@@ -247,7 +250,8 @@ class TimeClockService
     def approve_overtime(entry:, approved_by:, note: nil)
       raise AuthorizationError, "Only admins can approve overtime" unless approved_by.admin?
 
-      entry.with_lock do
+      entry.transaction do
+        entry.lock_for_work_lines!
         raise ClockError, "Entry does not have pending overtime" unless entry.overtime_status == "pending"
 
         entry.update!(
@@ -264,7 +268,8 @@ class TimeClockService
     def deny_overtime(entry:, denied_by:, note: nil)
       raise AuthorizationError, "Only admins can deny overtime" unless denied_by.admin?
 
-      entry.with_lock do
+      entry.transaction do
+        entry.lock_for_work_lines!
         raise ClockError, "Entry does not have pending overtime" unless entry.overtime_status == "pending"
 
         entry.update!(
@@ -312,6 +317,10 @@ class TimeClockService
       stale.find_each do |entry|
         begin
           ActiveRecord::Base.transaction do
+            # A clock-out may have completed it since the query above.
+            entry.lock_for_work_lines!
+            next unless entry.active?
+
             if entry.status == "on_break"
               entry.active_break&.close!
             end
