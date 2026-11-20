@@ -314,6 +314,32 @@ module Api
         )
       end
 
+      # Clients involved in a public intake that matched an existing client
+      # and is still waiting for staff review (either side of the match).
+      def intake_review_client_ids
+        @intake_review_client_ids ||= IntakeSubmission.needs_review
+                                                      .pluck(:client_id, :matched_client_id)
+                                                      .flatten.compact.to_set
+      end
+
+      def pending_intake_reviews(client)
+        IntakeSubmission.needs_review
+                        .where(client_id: client.id).or(IntakeSubmission.needs_review.where(matched_client_id: client.id))
+                        .includes(:client, :matched_client)
+                        .order(submitted_at: :desc)
+                        .map do |submission|
+          submitted_here = submission.client_id == client.id
+          other = submitted_here ? submission.matched_client : submission.client
+
+          {
+            id: submission.id,
+            submitted_at: submission.submitted_at,
+            role: submitted_here ? "submitted" : "existing",
+            other_client: other && { id: other.id, full_name: other.full_name }
+          }
+        end
+      end
+
       def client_summary(client)
         latest_return = client.tax_returns.max_by(&:created_at)
 
@@ -331,6 +357,7 @@ module Api
           is_service_only: !client.has_tax_returns,  # Backward compatibility
           archived_at: client.archived_at,
           created_at: client.created_at,
+          needs_intake_review: intake_review_client_ids.include?(client.id),
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color }
           end,
@@ -376,6 +403,7 @@ module Api
           notification_preference: client.notification_preference,
           has_portal_access: client.user&.portal_active? || false,
           portal_invite_pending: client.user&.portal_invite_pending? || false,
+          intake_reviews: pending_intake_reviews(client),
           service_types: client.service_types.map do |st|
             { id: st.id, name: st.name, color: st.color, description: st.description }
           end,

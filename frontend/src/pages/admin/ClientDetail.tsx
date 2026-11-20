@@ -9,6 +9,7 @@ import type {
   OperationTemplateTask,
   ClientOperationAssignment,
   CurrentUser,
+  ClientIntakeReview,
 } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
 import { getFilingStatusLabel } from '../../lib/constants'
@@ -16,6 +17,7 @@ import NotFound from '../../components/common/NotFound'
 import PrintableIntakeForm from '../../components/admin/PrintableIntakeForm'
 import { FadeUp } from '../../components/ui/MotionComponents'
 import NewTaxReturnModal from '../../components/admin/NewTaxReturnModal'
+import IntakeReviewPanel from '../../components/admin/IntakeReviewPanel'
 
 interface Dependent {
   id: number
@@ -94,6 +96,7 @@ interface ClientDetail {
   archived_at: string | null
   has_portal_access: boolean
   portal_invite_pending: boolean
+  intake_reviews?: ClientIntakeReview[]
   service_types: ClientServiceType[]
   contacts: ClientContact[]
   created_at: string
@@ -750,6 +753,8 @@ export default function ClientDetailPage() {
         </div>
       )}
 
+      <IntakeReviewPanel reviews={client.intake_reviews ?? []} onResolved={loadClient} />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -948,7 +953,7 @@ export default function ClientDetailPage() {
                       <span className="text-sm text-gray-500">{dep.relationship}</span>
                     </div>
                     <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                      <span>DOB: {formatDate(dep.date_of_birth)}</span>
+                      <span>DOB: {dep.date_of_birth ? formatDate(dep.date_of_birth) : '—'}</span>
                       <span>{dep.months_lived_with_client} months</span>
                       {dep.is_student && <span className="text-blue-600">Student</span>}
                       {dep.is_disabled && <span className="text-orange-600">Disabled</span>}

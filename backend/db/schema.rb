@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_18_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_20_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -185,13 +185,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_010000) do
   create_table "intake_submissions", force: :cascade do |t|
     t.bigint "client_id", null: false
     t.datetime "created_at", null: false
+    t.bigint "matched_client_id"
     t.jsonb "payload", default: {}, null: false
+    t.datetime "reviewed_at"
+    t.bigint "reviewed_by_id"
     t.string "source", default: "public_intake", null: false
     t.string "status", default: "received", null: false
     t.datetime "submitted_at", null: false
     t.bigint "tax_return_id", null: false
     t.datetime "updated_at", null: false
     t.index ["client_id"], name: "index_intake_submissions_on_client_id"
+    t.index ["matched_client_id"], name: "index_intake_submissions_on_matched_client_id"
+    t.index ["reviewed_by_id"], name: "index_intake_submissions_on_reviewed_by_id"
     t.index ["source"], name: "index_intake_submissions_on_source"
     t.index ["status"], name: "index_intake_submissions_on_status"
     t.index ["submitted_at"], name: "index_intake_submissions_on_submitted_at"
@@ -653,7 +658,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_010000) do
   add_foreign_key "documents", "users", column: "uploaded_by_id"
   add_foreign_key "income_sources", "tax_returns"
   add_foreign_key "intake_submissions", "clients"
+  add_foreign_key "intake_submissions", "clients", column: "matched_client_id"
   add_foreign_key "intake_submissions", "tax_returns"
+  add_foreign_key "intake_submissions", "users", column: "reviewed_by_id"
   add_foreign_key "notifications", "clients"
   add_foreign_key "notifications", "tax_returns"
   add_foreign_key "operation_cycles", "client_operation_assignments"

@@ -16,6 +16,7 @@ interface Client {
   business_name: string | null
   is_service_only: boolean
   archived_at: string | null
+  needs_intake_review?: boolean
   service_types: ClientServiceType[]
   created_at: string
   tax_return: {
@@ -345,6 +346,9 @@ export default function ClientList() {
                               {client.archived_at && (
                                 <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Archived</span>
                               )}
+                              {client.needs_intake_review && (
+                                <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded whitespace-nowrap">Intake to review</span>
+                              )}
                             </div>
                           </div>
                         </Link>
@@ -438,6 +442,9 @@ export default function ClientList() {
                           )}
                           {client.archived_at && (
                             <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Archived</span>
+                          )}
+                          {client.needs_intake_review && (
+                            <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded whitespace-nowrap">Intake to review</span>
                           )}
                           {(client.service_types ?? []).slice(0, 2).map(st => (
                             <span 

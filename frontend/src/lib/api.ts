@@ -248,6 +248,7 @@ export interface ClientSummary {
   business_name: string | null;
   is_service_only: boolean;
   archived_at: string | null;
+  needs_intake_review?: boolean;
   service_types: ClientServiceType[];
   contacts: ClientContact[];
   created_at: string;
@@ -258,6 +259,58 @@ export interface ClientSummary {
     status_slug: string;
     status_color: string;
     assigned_to: string | null;
+  } | null;
+}
+
+// A public intake whose email matched a client already on file. The intake
+// lives on its own client until staff merge it or keep the two apart.
+export interface ClientIntakeReview {
+  id: number;
+  submitted_at: string;
+  role: 'submitted' | 'existing';
+  other_client: { id: number; full_name: string } | null;
+}
+
+export interface IntakeReviewClientRef {
+  id: number;
+  full_name: string;
+  email: string | null;
+  archived: boolean;
+}
+
+export interface IntakeReviewField {
+  key: string;
+  label: string;
+  submitted: string | number | boolean | null;
+  existing: string | number | boolean | null;
+  differs: boolean;
+}
+
+export interface IntakeReviewDependent {
+  name: string;
+  date_of_birth: string | null;
+  relationship: string | null;
+}
+
+export interface IntakeSubmissionSummary {
+  id: number;
+  status: 'received' | 'needs_review' | 'reviewed' | 'linked' | 'archived';
+  submitted_at: string;
+  reviewed_at: string | null;
+  tax_year: number | null;
+  client: IntakeReviewClientRef | null;
+  matched_client: IntakeReviewClientRef | null;
+}
+
+export interface IntakeSubmissionDetail extends IntakeSubmissionSummary {
+  fields: IntakeReviewField[];
+  submitted_dependents: IntakeReviewDependent[];
+  existing_dependents: IntakeReviewDependent[];
+  tax_return: {
+    id: number;
+    tax_year: number;
+    documents_count: number;
+    income_sources_count: number;
   } | null;
 }
 
@@ -298,6 +351,7 @@ export interface ClientDetailResponse {
     notification_preference: string;
     has_portal_access: boolean;
     portal_invite_pending: boolean;
+    intake_reviews?: ClientIntakeReview[];
     service_types: ClientServiceType[];
     contacts: ClientContact[];
     created_at: string;
@@ -1586,6 +1640,21 @@ export const api = {
 
   unarchiveClient: (id: number) =>
     fetchApi<{ client: ClientDetailResponse['client'] }>(`/api/v1/clients/${id}/unarchive`, {
+      method: 'POST',
+    }),
+
+  // Intake review (public intakes that matched an existing client)
+  getIntakeSubmission: (id: number) =>
+    fetchApi<{ intake_submission: IntakeSubmissionDetail }>(`/api/v1/intake_submissions/${id}`),
+
+  mergeIntakeSubmission: (id: number, data: { fields: string[]; include_dependents: boolean }) =>
+    fetchApi<{ intake_submission: IntakeSubmissionSummary; client_id: number }>(`/api/v1/intake_submissions/${id}/merge`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  keepIntakeSubmissionSeparate: (id: number) =>
+    fetchApi<{ intake_submission: IntakeSubmissionSummary }>(`/api/v1/intake_submissions/${id}/keep_separate`, {
       method: 'POST',
     }),
 

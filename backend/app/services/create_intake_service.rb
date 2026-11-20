@@ -2,6 +2,11 @@
 
 # Service to process client intake form submissions
 # Creates: Client, Dependents, TaxReturn, IncomeSources, and IntakeSubmission snapshot
+#
+# The form is public, so a submission never changes an existing client. When
+# the email matches a client already on file, the submission still gets its
+# own client and return, and the intake is flagged "needs_review" with the
+# match so staff can merge it (IntakeMergeService) or keep the two apart.
 class CreateIntakeService
   INTAKE_SUBMISSION_PAYLOAD_KEYS = %i[
     first_name
@@ -30,11 +35,6 @@ class CreateIntakeService
     dependents
     income_sources
   ].freeze
-
-  CLIENT_ATTRIBUTE_PARAM_KEYS = {
-    bank_routing_number_encrypted: :bank_routing_number,
-    bank_account_number_encrypted: :bank_account_number
-  }.freeze
 
   Result = Struct.new(:success?, :client, :tax_return, :errors, keyword_init: true)
 
@@ -71,8 +71,8 @@ class CreateIntakeService
   private
 
   def create_client
-    @client = find_existing_client
-    attrs = {
+    @matched_client = find_matching_client
+    @client = Client.create!(
       first_name: @params[:first_name],
       last_name: @params[:last_name],
       date_of_birth: @params[:date_of_birth],
@@ -94,20 +94,10 @@ class CreateIntakeService
       bank_account_type: @params[:bank_account_type],
       other_income: @params[:other_income],
       comments: @params[:comments]
-    }
-
-    if @client
-      @client.update!(submitted_client_attrs(attrs))
-    else
-      @client = Client.create!(attrs)
-    end
+    )
   end
 
   def create_dependents
-    return unless @params.key?(:dependents)
-
-    @client.dependents.destroy_all
-
     Array(@params[:dependents]).each do |dep_params|
       next if dep_params[:name].blank?
 
@@ -127,26 +117,20 @@ class CreateIntakeService
     initial_stage = WorkflowStage.find_by(slug: "intake_received") ||
                     WorkflowStage.active.ordered.first
 
-    tax_year = @params[:tax_year] || Date.current.year
-
-    @tax_return = find_or_initialize_tax_return(tax_year)
-
-    @tax_return.assign_attributes(
-      workflow_stage: @tax_return.workflow_stage || initial_stage,
-      source: @tax_return.new_record? ? "public_intake" : @tax_return.source,
-      jurisdiction: @tax_return.new_record? ? "both" : @tax_return.jurisdiction,
-      portal_visible: @tax_return.new_record? ? true : @tax_return.portal_visible,
-      documents_enabled: @tax_return.new_record? ? true : @tax_return.documents_enabled,
-      received_at: @tax_return.received_at || Time.current
+    @tax_return = @client.tax_returns.create!(
+      tax_year: @params[:tax_year] || Date.current.year,
+      return_type: "individual",
+      form_type: "1040",
+      workflow_stage: initial_stage,
+      source: "public_intake",
+      jurisdiction: "both",
+      portal_visible: true,
+      documents_enabled: true,
+      received_at: Time.current
     )
-    @tax_return.save!
   end
 
   def create_income_sources
-    return unless @params.key?(:income_sources)
-
-    @tax_return.income_sources.destroy_all
-
     Array(@params[:income_sources]).each do |source_params|
       next if source_params[:source_type].blank? && source_params[:payer_name].blank?
 
@@ -162,39 +146,29 @@ class CreateIntakeService
     IntakeSubmission.create!(
       client: @client,
       tax_return: @tax_return,
+      matched_client: @matched_client,
       payload: intake_submission_payload,
       source: "public_intake",
-      status: "received",
+      status: @matched_client ? "needs_review" : "received",
       submitted_at: Time.current
     )
   end
 
-  def find_existing_client
+  # The client already on file with this email, if any. Records created by
+  # earlier unreviewed intakes are skipped so a repeat submission points staff
+  # at the original client rather than at another pending copy.
+  def find_matching_client
     email = @params[:email].to_s.strip.downcase
     return nil if email.blank?
 
-    Client.active.find_by("LOWER(email) = ?", email)
-  end
+    candidates = Client.where("LOWER(email) = ?", email)
+    pending_copies = IntakeSubmission.needs_review.select(:client_id)
 
-  def find_or_initialize_tax_return(tax_year)
-    @client.tax_returns
-      .where(tax_year: tax_year, return_type: "individual", form_type: %w[1040 general])
-      .order(Arel.sql("CASE form_type WHEN '1040' THEN 0 WHEN 'general' THEN 1 ELSE 2 END"))
-      .first ||
-      @client.tax_returns.build(
-        tax_year: tax_year,
-        return_type: "individual",
-        form_type: "1040"
-      )
+    candidates.where.not(id: pending_copies).order(Arel.sql("archived_at IS NOT NULL"), :created_at).first ||
+      candidates.order(:created_at).first
   end
 
   def intake_submission_payload
     @params.slice(*INTAKE_SUBMISSION_PAYLOAD_KEYS).to_h
-  end
-
-  def submitted_client_attrs(attrs)
-    attrs.select do |attr, _value|
-      @params.key?(CLIENT_ATTRIBUTE_PARAM_KEYS.fetch(attr, attr))
-    end
   end
 end
