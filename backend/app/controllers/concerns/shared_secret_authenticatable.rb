@@ -2,7 +2,8 @@
 
 # Concern for shared-secret authentication on service-to-service API endpoints.
 # Include in controllers that accept requests from trusted internal services
-# (e.g., CPR payroll system) rather than Clerk-authenticated users.
+# rather than Clerk-authenticated users. Today that is only Cornerstone
+# Payroll reading staff hours (GET /api/v1/payroll/time_summary).
 module SharedSecretAuthenticatable
   extend ActiveSupport::Concern
 
