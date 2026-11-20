@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "rails_helper"
-require Rails.root.join("db/migrate/20261120010000_create_time_entry_allocations").to_s
+require Rails.root.join("db/migrate/20261121010000_create_time_entry_allocations").to_s
 
 # Moving reports onto work lines must not change hours per person or per day.
 # The same ledger is reported (1) before the backfill (no stored lines),
