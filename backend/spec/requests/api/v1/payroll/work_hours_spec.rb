@@ -4,7 +4,20 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::Payroll::WorkHours", type: :request do
   let(:secret) { "spec-work-hours-secret" }
-  let(:headers) { { "X-Work-Hours-Secret" => secret } }
+
+  # Signs like Payroll will (docs/PAYROLL_WORK_HOURS_FEED.md).
+  def signature_headers(query_string, at: Time.current, key: secret, method: "GET", path: "/api/v1/payroll/work_hours")
+    timestamp = at.to_i.to_s
+    {
+      "X-Work-Hours-Timestamp" => timestamp,
+      "X-Work-Hours-Signature" => Payroll::WorkHoursSignature.sign(secret: key, method: method, path: path, query_string: query_string, timestamp: timestamp)
+    }
+  end
+
+  def signed_get(params, **options)
+    query = params.to_query
+    get "/api/v1/payroll/work_hours?#{query}", headers: signature_headers(query, **options)
+  end
   let(:tz) { ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE] }
   let(:monday) { Date.new(2026, 11, 16) }
   let(:alice) { create(:user, :employee, email: "alice@example.test") }
@@ -59,32 +72,83 @@ RSpec.describe "Api::V1::Payroll::WorkHours", type: :request do
 
   let(:range) { { start: monday.iso8601, end: (monday + 6).iso8601 } }
 
-  describe "authentication" do
-    it "requires its own secret, compared in constant time" do
-      get "/api/v1/payroll/work_hours", params: range
-      expect(response).to have_http_status(:unauthorized)
-
-      get "/api/v1/payroll/work_hours", params: range, headers: { "X-Work-Hours-Secret" => "wrong" }
-      expect(response).to have_http_status(:unauthorized)
-
-      # The time summary's secret does not open this feed.
-      get "/api/v1/payroll/work_hours", params: range, headers: { "X-Shared-Secret" => "spec-time-summary-secret", "X-Work-Hours-Secret" => "spec-time-summary-secret" }
-      expect(response).to have_http_status(:unauthorized)
-
-      expect(ActiveSupport::SecurityUtils).to receive(:secure_compare).with(secret, secret).and_call_original
-      get "/api/v1/payroll/work_hours", params: range, headers: headers
+  describe "authentication (HMAC-SHA256 request signature)" do
+    it "accepts a correctly signed request" do
+      signed_get(range)
       expect(response).to have_http_status(:ok)
+    end
+
+    it "accepts the query in any order and percent-encoding" do
+      query = "end=#{range[:end]}&start=#{range[:start]}"
+      get "/api/v1/payroll/work_hours?#{query.sub('-', '%2D')}", headers: signature_headers("start=#{range[:start]}&end=#{range[:end]}")
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "rejects a bad signature" do
+      signed_get(range, key: "not-the-secret")
+      expect(response).to have_http_status(:unauthorized)
+      expect(json[:error]).to include("signature does not match")
+    end
+
+    it "rejects a request outside the 5-minute window, either way" do
+      signed_get(range, at: 6.minutes.ago)
+      expect(response).to have_http_status(:unauthorized)
+      expect(json[:error]).to include("5-minute window")
+
+      signed_get(range, at: 6.minutes.from_now)
+      expect(response).to have_http_status(:unauthorized)
+
+      signed_get(range, at: 4.minutes.ago)
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "rejects a tampered query" do
+      signed = signature_headers(range.to_query)
+      get "/api/v1/payroll/work_hours?#{range.merge(end: (monday + 30).iso8601).to_query}", headers: signed
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "rejects missing headers and the old raw-secret header" do
+      get "/api/v1/payroll/work_hours?#{range.to_query}"
+      expect(response).to have_http_status(:unauthorized)
+      expect(json[:error]).to include("missing X-Work-Hours-Timestamp")
+
+      get "/api/v1/payroll/work_hours?#{range.to_query}", headers: { "X-Work-Hours-Secret" => secret }
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "compares signatures in constant time" do
+      expect(ActiveSupport::SecurityUtils).to receive(:secure_compare).and_call_original
+      signed_get(range)
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "does not accept the time summary's secret" do
+      signed_get(range, key: "spec-time-summary-secret")
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "accepts a request signed with the documented Ruby signer" do
+      doc = Rails.root.join("../docs/PAYROLL_WORK_HOURS_FEED.md").read
+      snippet = doc[/```ruby\n(.*?)```/m, 1]
+      # Defines WorkHoursSigner exactly as Payroll would copy it.
+      Object.class_eval(snippet) unless defined?(WorkHoursSigner)
+
+      uri, signed_headers = WorkHoursSigner.signed(secret: secret, query: { start: range[:start], end: range[:end] })
+      get uri, headers: signed_headers
+      expect(response).to have_http_status(:ok)
+      expect(json[:schema_version]).to eq("1.0")
     end
 
     it "is unavailable when the secret is not configured" do
       ENV["PAYROLL_WORK_HOURS_SECRET"] = ""
-      get "/api/v1/payroll/work_hours", params: range, headers: headers
+      signed_get(range)
       expect(response).to have_http_status(:service_unavailable)
     end
   end
 
   it "returns hours by person, date, client, category, task and period with entry ids and approval state" do
-    get "/api/v1/payroll/work_hours", params: range, headers: headers
+    signed_get(range)
 
     expect(response).to have_http_status(:ok)
     expect(json).to include(schema_version: "1.0", source: "cornerstone_tax", start_date: "2026-11-16", end_date: "2026-11-22")
@@ -103,14 +167,14 @@ RSpec.describe "Api::V1::Payroll::WorkHours", type: :request do
   end
 
   it "counts pending, denied and open-clock entries, per person and overall" do
-    get "/api/v1/payroll/work_hours", params: range, headers: headers
+    signed_get(range)
 
     expect(json[:counts]).to include(pending_entries: 1, denied_entries: 1, open_clock_entries: 1)
     expect(json.dig(:counts, :by_user).find { |row| row[:tax_user_id] == bob.id }).to include(open_clock_entries: 1, pending_entries: 0)
   end
 
   it "has per-day countable totals that match the payroll time summary" do
-    get "/api/v1/payroll/work_hours", params: range, headers: headers
+    signed_get(range)
     day_totals = json[:day_totals].to_h { |row| [ [ row[:tax_user_id], row[:work_date] ], row ] }
 
     summary = Payroll::TimeSummaryBuilder.new(start_date: range[:start], end_date: range[:end]).call
@@ -132,14 +196,14 @@ RSpec.describe "Api::V1::Payroll::WorkHours", type: :request do
 
   it "does not lock entries or record a payroll export" do
     expect do
-      get "/api/v1/payroll/work_hours", params: range, headers: headers
+      signed_get(range)
     end.not_to change(ReportExport, :count)
     expect(ReportExport.active_for_entry(split.id)).to be_empty
     expect(split.reload.locked_at).to be_nil
   end
 
   it "never includes pay, rates, SSNs or bank data" do
-    get "/api/v1/payroll/work_hours", params: range, headers: headers
+    signed_get(range)
     keys = json[:rows].flat_map(&:keys).uniq.map(&:to_s)
     expect(keys).to contain_exactly(*%w[tax_user_id email work_date client_id client_name system_kind unassigned category_id category
                                         task_id task period_type period_start period_label hours minutes entry_ids approval_state])
@@ -148,9 +212,9 @@ RSpec.describe "Api::V1::Payroll::WorkHours", type: :request do
   end
 
   it "validates the range" do
-    get "/api/v1/payroll/work_hours", params: { start: "2026-11-20", end: "2026-11-01" }, headers: headers
+    signed_get({ start: "2026-11-20", end: "2026-11-01" })
     expect(response).to have_http_status(:unprocessable_entity)
-    get "/api/v1/payroll/work_hours", params: { start: "2026-01-01", end: "2026-06-01" }, headers: headers
+    signed_get({ start: "2026-01-01", end: "2026-06-01" })
     expect(json[:error]).to include("may not exceed 62 days")
   end
 end

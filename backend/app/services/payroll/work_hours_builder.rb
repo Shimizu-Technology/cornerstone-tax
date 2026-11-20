@@ -9,7 +9,7 @@ module Payroll
   # Read-only: unlike the time summary it does not capture a payroll export
   # or protect (lock) entries.
   #
-  # Contract: docs/PAYROLL_WORK_HOURS_V1.md
+  # Contract: docs/PAYROLL_WORK_HOURS_FEED.md
   class WorkHoursBuilder
     SCHEMA_VERSION = "1.0"
     SOURCE = "cornerstone_tax"
@@ -26,6 +26,12 @@ module Payroll
     end
 
     def call
+      TimeEntry.consistent_read { build }
+    end
+
+    private
+
+    def build
       staff_ids = User.staff.pluck(:id)
       entries = TimeEntry.where(work_date: start_date..end_date, user_id: staff_ids)
                          .includes(:user, :time_category, work_lines: [ :client, :service_type, :service_task ])
@@ -45,7 +51,6 @@ module Payroll
       }
     end
 
-    private
 
     def parse_date!(value, name)
       raise ArgumentError, "#{name} is required" if value.blank?

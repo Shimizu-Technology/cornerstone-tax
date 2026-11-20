@@ -1,4 +1,4 @@
-# Payroll Work Hours v1
+# Payroll Work Hours feed (v1)
 
 Cornerstone Tax sends Cornerstone Payroll the hours each person worked, by client, category, task and period. Payroll adds staff pay, employer taxes and client fees on its side to work out cost and profit per client.
 
@@ -12,7 +12,8 @@ This feed is separate from the [Time Summary v1](https://github.com/Shimizu-Tech
 
 ```
 GET /api/v1/payroll/work_hours?start=YYYY-MM-DD&end=YYYY-MM-DD
-X-Work-Hours-Secret: <PAYROLL_WORK_HOURS_SECRET>
+X-Work-Hours-Timestamp: <unix seconds>
+X-Work-Hours-Signature: <hex HMAC-SHA256>
 ```
 
 | Parameter | Required | Notes |
@@ -20,15 +21,73 @@ X-Work-Hours-Secret: <PAYROLL_WORK_HOURS_SECRET>
 | `start` | yes | First work date, inclusive. `start_date` is accepted as an alias. |
 | `end` | yes | Last work date, inclusive, at most 62 days after `start`. `end_date` is accepted as an alias. |
 
-**Authentication.** Set `PAYROLL_WORK_HOURS_SECRET` on both apps, and send it in the `X-Work-Hours-Secret` header.
+### Authentication: signed requests
 
-- This secret is **separate from `PAYROLL_SHARED_SECRET`**. Rotate each one on its own.
-- The server compares the header with `ActiveSupport::SecurityUtils.secure_compare`, which digests both values first, so the comparison takes the same time whatever is sent.
+Every request is signed with HMAC-SHA256, using the shared secret `PAYROLL_WORK_HOURS_SECRET`. The secret itself is never sent.
+
+- **Separate secret.** It is separate from the time summary's `PAYROLL_SHARED_SECRET`. Rotate each one on its own, and never reuse one for the other.
+- **`X-Work-Hours-Timestamp`:** the current time in unix seconds, as a plain integer.
+- **`X-Work-Hours-Signature`:** lower-case hex `HMAC-SHA256(secret, string_to_sign)`, where `string_to_sign` is these five lines joined with `\n` and no trailing newline:
+  1. the HTTP method in upper case, e.g. `GET`;
+  2. the path without the query string: `/api/v1/payroll/work_hours`;
+  3. the **canonical query**:
+     - take every `name=value` pair and percent-decode it;
+     - re-encode the name and the value per RFC 3986: keep `A–Z a–z 0–9 - _ . ~`, and encode everything else as `%XX` with upper-case hex (a space is `%20`, not `+`);
+     - sort the pairs by name, then by value;
+     - join them with `&`;
+     - the line is empty when there is no query;
+  4. the timestamp, exactly as sent in the header;
+  5. the lower-case hex SHA-256 of the raw request body (for a GET, the hash of the empty string: `e3b0c442…b855`).
+
+The server rejects:
+- a timestamp more than **5 minutes** from its own clock, in either direction;
+- a signature that doesn't match. The comparison is constant-time (`ActiveSupport::SecurityUtils.secure_compare`).
+
+Changing any part of the query after signing (dates, extra parameters) invalidates the signature. Pair order and percent-encoding don't matter, because both sides canonicalize.
+
+The 5-minute window limits how long a captured request can be replayed. The feed is read-only and returns the same data to a replay, so no nonce store is kept. Keep both servers' clocks synced (NTP).
+
+#### Ruby signer for Payroll
+
+The spec `spec/requests/api/v1/payroll/work_hours_spec.rb` loads this exact block from this file and calls the endpoint with it, so it stays correct.
+
+```ruby
+require "erb"
+require "net/http"
+require "openssl"
+require "uri"
+
+# Signs a Work Hours v1 request. query is a Hash of params; returns
+# [request_uri, headers]. Matches Payroll::WorkHoursSignature in Tax.
+module WorkHoursSigner
+  module_function
+
+  def canonical_query(query)
+    query.map { |name, value| [ name.to_s, value.to_s ] }.sort
+         .map { |name, value| "#{ERB::Util.url_encode(name)}=#{ERB::Util.url_encode(value)}" }.join("&")
+  end
+
+  def signed(secret:, query:, path: "/api/v1/payroll/work_hours", method: "GET", body: "", now: Time.now)
+    canonical = canonical_query(query)
+    timestamp = now.to_i.to_s
+    string_to_sign = [ method.upcase, path, canonical, timestamp, OpenSSL::Digest::SHA256.hexdigest(body) ].join("\n")
+    signature = OpenSSL::HMAC.hexdigest("SHA256", secret, string_to_sign)
+    [ canonical.empty? ? path : "#{path}?#{canonical}",
+      { "X-Work-Hours-Timestamp" => timestamp, "X-Work-Hours-Signature" => signature } ]
+  end
+end
+
+# Example:
+#   uri, headers = WorkHoursSigner.signed(secret: ENV.fetch("PAYROLL_WORK_HOURS_SECRET"),
+#                                         query: { start: "2026-11-16", end: "2026-11-29" })
+#   http = Net::HTTP.new("tax.example.com", 443).tap { |h| h.use_ssl = true }
+#   response = http.get(uri, headers)
+```
 
 | Status | Meaning |
 |---|---|
 | 200 | Payload below |
-| 401 | Missing or wrong `X-Work-Hours-Secret` |
+| 401 | Missing headers, a timestamp outside the window, or a signature that doesn't match (`{ "error": "Unauthorized: ..." }`) |
 | 422 | Missing or invalid dates, `end` before `start`, or a range over 62 days (`{ "error": "..." }`) |
 | 503 | `PAYROLL_WORK_HOURS_SECRET` is not configured on Tax |
 
