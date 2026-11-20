@@ -953,7 +953,7 @@ export default function ClientDetailPage() {
                       <span className="text-sm text-gray-500">{dep.relationship}</span>
                     </div>
                     <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                      <span>DOB: {formatDate(dep.date_of_birth)}</span>
+                      <span>DOB: {dep.date_of_birth ? formatDate(dep.date_of_birth) : '—'}</span>
                       <span>{dep.months_lived_with_client} months</span>
                       {dep.is_student && <span className="text-blue-600">Student</span>}
                       {dep.is_disabled && <span className="text-orange-600">Disabled</span>}

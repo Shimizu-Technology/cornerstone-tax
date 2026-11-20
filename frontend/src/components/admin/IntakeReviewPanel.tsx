@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import type { ClientIntakeReview, IntakeSubmissionDetail, IntakeReviewField } from '../../lib/api'
@@ -144,7 +145,8 @@ function IntakeReviewModal({ submissionId, onClose, onResolved }: IntakeReviewMo
     onResolved()
   }
 
-  return (
+  // Portaled so the overlay covers the page even inside animated containers.
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       onClick={() => !saving && onClose()}
@@ -284,6 +286,7 @@ function IntakeReviewModal({ submissionId, onClose, onResolved }: IntakeReviewMo
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
