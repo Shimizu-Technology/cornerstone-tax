@@ -7,6 +7,7 @@ import EditTimeEntryModal from './EditTimeEntryModal'
 const apiMock = vi.hoisted(() => ({
   updateTimeEntry: vi.fn(),
   deleteTimeEntry: vi.fn(),
+  getWorkLineSuggestions: vi.fn(),
 }))
 
 vi.mock('../../lib/api', () => ({
@@ -40,6 +41,7 @@ describe('EditTimeEntryModal', () => {
     apiMock.updateTimeEntry.mockReset()
     apiMock.deleteTimeEntry.mockReset()
     apiMock.updateTimeEntry.mockResolvedValue({ data: { time_entry: {} } })
+    apiMock.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: null } })
   })
 
   it('does not submit an empty detailed breaks array for aggregate-only breaks', async () => {
@@ -61,7 +63,7 @@ describe('EditTimeEntryModal', () => {
     expect(apiMock.updateTimeEntry.mock.calls[0][1]).toMatchObject({ break_minutes: 30 })
     // Untouched work details are not sent, so a concurrent edit is never overwritten,
     // and the legacy category is never rewritten.
-    for (const key of ['client_id', 'service_type_id', 'service_task_id', 'period_type', 'period_start', 'description', 'time_category_id']) {
+    for (const key of ['client_id', 'service_type_id', 'service_task_id', 'period_type', 'period_start', 'description', 'time_category_id', 'work_lines']) {
       expect(apiMock.updateTimeEntry.mock.calls[0][1]).not.toHaveProperty(key)
     }
   })
@@ -133,8 +135,8 @@ describe('EditTimeEntryModal', () => {
     expect(apiMock.deleteTimeEntry).toHaveBeenLastCalledWith(3, 'Duplicate confirmed by payroll.')
   })
 
-  it('sends only the work details the user changed, keeping the period pair together', async () => {
-    const withPeriod = { ...entry, client: { id: 6, name: 'Jose Cruz' }, period_type: 'month', period_start: '2026-07-01', description: 'Bank rec' }
+  it('sends the work lines only when they change, keeping the period pair together', async () => {
+    const withPeriod = { ...entry, hours: 7.5, client: { id: 6, name: 'Jose Cruz' }, period_type: 'month', period_start: '2026-07-01', description: 'Bank rec' }
     render(
       <EditTimeEntryModal
         isOpen
@@ -152,9 +154,35 @@ describe('EditTimeEntryModal', () => {
 
     await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
     const payload = apiMock.updateTimeEntry.mock.calls[0][1]
-    expect(payload).toMatchObject({ period_type: 'month', period_start: '2026-08-01' })
+    expect(payload.work_lines).toEqual([
+      { client_id: 6, description: 'Bank rec', service_type_id: null, service_task_id: null, period_type: 'month', period_start: '2026-08-01', minutes: 450 },
+    ])
     expect(payload).not.toHaveProperty('client_id')
     expect(payload).not.toHaveProperty('description')
+  })
+
+  it('splits an entry across clients and blocks saving until no time is left over', async () => {
+    const clients = [{ id: 6, name: 'Jose Cruz', client_type: 'individual' }, { id: 7, name: 'Alpha Co', client_type: 'business' }]
+    render(
+      <EditTimeEntryModal isOpen entry={{ ...entry, hours: 7.5, client: { id: 6, name: 'Jose Cruz' } }} clients={clients}
+        canDelete onClose={vi.fn()} onSaved={vi.fn()} onDeleted={vi.fn()} />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Split across clients' }))
+    expect((screen.getByLabelText('Line 1 time') as HTMLInputElement).value).toBe('450')
+    fireEvent.change(screen.getByLabelText('Line 2 client'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Line 2 time'), { target: { value: '1.5h' } })
+
+    expect(screen.getByTestId('work-lines-remaining')).toHaveTextContent('1h 30m over')
+    expect(screen.getByRole('button', { name: /update/i })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Take 1h 30m from line 1' }))
+    expect(screen.getByTestId('work-lines-remaining')).toHaveTextContent('All time is assigned')
+    fireEvent.click(screen.getByRole('button', { name: /update/i }))
+
+    await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
+    expect(apiMock.updateTimeEntry.mock.calls[0][1].work_lines.map((line: { client_id: number; minutes: number }) => [line.client_id, line.minutes]))
+      .toEqual([[6, 360], [7, 90]])
   })
 
   it('shows a catalog load error with a retry inside the form', () => {

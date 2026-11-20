@@ -570,6 +570,35 @@ module Api
         }
       end
 
+      # GET /api/v1/time_entries/work_line_suggestions
+      # Shortcuts for the work-line editor, from the person's own lines in the
+      # last 90 days: recent clients (most recent first) and recent
+      # descriptions per client. Admins may pass user_id.
+      def work_line_suggestions
+        owner_id = current_user.admin? && params[:user_id].present? ? params[:user_id].to_i : current_user.id
+        rows = TimeEntryAllocation.joins(:time_entry)
+                                  .where(time_entries: { user_id: owner_id, work_date: 90.days.ago.to_date.. })
+                                  .order("time_entries.work_date DESC", "time_entry_allocations.id DESC")
+                                  .limit(400)
+                                  .pluck(:client_id, :description)
+
+        recent_client_ids = rows.filter_map(&:first).uniq.first(8)
+        clients_by_id = Client.active.where(id: recent_client_ids).index_by(&:id)
+        descriptions = rows.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |(client_id, description), memo|
+          text = description.to_s.strip
+          next if text.empty?
+
+          list = memo[client_id.to_s]
+          list << text unless list.include?(text) || list.size >= 6
+        end
+
+        render json: {
+          recent_clients: recent_client_ids.filter_map { |id| clients_by_id[id] && WorkLineSerializer.client_payload(clients_by_id[id]) },
+          descriptions_by_client: descriptions,
+          work_details_required_from: TimeEntryWorkRequirement.cutover_date&.iso8601
+        }
+      end
+
       # GET /api/v1/time_entries/whos_working
       def whos_working
         return render json: { error: "Admin access required" }, status: :forbidden unless current_user.admin?

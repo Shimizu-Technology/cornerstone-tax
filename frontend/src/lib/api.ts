@@ -2212,8 +2212,10 @@ export const api = {
 
   createTimeEntry: (data: {
     work_date: string;
-    start_time: string;
-    end_time: string;
+    /** Omit both times for a day log; its hours are then the sum of work_lines. */
+    start_time?: string;
+    end_time?: string;
+    work_lines?: WorkLineInput[];
     description?: string;
     time_category_id?: number;
     client_id?: number | null;
@@ -2249,6 +2251,7 @@ export const api = {
     period_start: string | null;
     operation_task_id: number;
     breaks: Array<{ id?: number; start_time: string; end_time: string; _destroy?: boolean }>;
+    work_lines: WorkLineInput[];
   }>, correctionReason?: string) =>
     fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}`, (() => {
       const { operation_task_id, ...timeEntryData } = data;
@@ -2279,13 +2282,14 @@ export const api = {
    * omitted keys are kept. timeEntryId makes the server reject the request if
    * the active clock-in changed since the form opened.
    */
-  clockOut: (correctedEndTime?: string, description?: string, workDetails?: ClockOutWorkDetails, timeEntryId?: number | null) => {
+  clockOut: (correctedEndTime?: string, description?: string, workDetails?: ClockOutWorkDetails, timeEntryId?: number | null, workLines?: WorkLineInput[]) => {
     const details = Object.fromEntries(Object.entries(workDetails || {}).filter(([, value]) => value !== undefined));
     const body = {
       ...(correctedEndTime ? { corrected_end_time: correctedEndTime } : {}),
       ...(description ? { description } : {}),
       ...(timeEntryId ? { time_entry_id: timeEntryId } : {}),
       ...details,
+      ...(workLines ? { work_lines: workLines } : {}),
     };
     return fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/clock_out', {
       method: 'POST',
@@ -2358,6 +2362,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ note }),
     }),
+
+  getWorkLineSuggestions: (userId?: number) =>
+    fetchApi<{
+      recent_clients: ClientPickerOption[];
+      descriptions_by_client: Record<string, string[]>;
+      work_details_required_from: string | null;
+    }>(`/api/v1/time_entries/work_line_suggestions${userId ? `?user_id=${userId}` : ''}`),
 
   getUnassignedTime: (params: { start_date?: string; end_date?: string; user_id?: number; issue?: 'client' | 'any'; page?: number }) => {
     const searchParams = new URLSearchParams();

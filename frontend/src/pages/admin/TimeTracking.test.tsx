@@ -18,6 +18,7 @@ const apiMocks = vi.hoisted(() => ({
   getTimePeriodLockStatus: vi.fn(),
   getHoursReport: vi.fn(),
   downloadHoursReport: vi.fn(),
+  getWorkLineSuggestions: vi.fn(),
   getUnassignedTime: vi.fn(),
 }))
 
@@ -247,65 +248,64 @@ describe('TimeTracking log time', () => {
     apiMocks.getTimePeriodLockStatus.mockResolvedValue({ data: { locked: false, lock: null } })
     apiMocks.createTimeEntry.mockResolvedValue({ data: { time_entry: {} } })
     apiMocks.updateTimeEntry.mockResolvedValue({ data: { time_entry: {} } })
+    apiMocks.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: null } })
   })
 
-  it('asks for client, category, task, period and comments in that order', async () => {
+  it('asks for the client, what was done, then the category, with task and period optional', async () => {
     renderPage('/admin/time')
     fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
 
-    const fields = within(await screen.findByTestId('time-entry-work-fields'))
+    const editor = within(await screen.findByTestId('work-lines-editor'))
     const labels = [
-      fields.getByLabelText(/^Client/),
-      fields.getByLabelText('Category'),
-      fields.getByLabelText('Task'),
-      fields.getByLabelText('Period type'),
-      fields.getByLabelText('Comments'),
+      editor.getByLabelText('Client', { selector: 'select' }),
+      editor.getByLabelText('What I did'),
+      editor.getByLabelText(/^Category/),
     ]
     labels.slice(1).forEach((element, index) => {
       expect(labels[index].compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
-    expect(screen.queryByText('Description')).not.toBeInTheDocument()
-    expect(fields.getByRole('option', { name: 'No client (unassigned)' })).toBeInTheDocument()
+    expect(editor.getByRole('option', { name: 'No client (unassigned)' })).toBeInTheDocument()
     // Legacy time categories are not offered for new entries.
-    expect(fields.queryByRole('option', { name: /Tax Prep/ })).not.toBeInTheDocument()
+    expect(editor.queryByRole('option', { name: /Tax Prep/ })).not.toBeInTheDocument()
+    // Inputs are 16px on phones so iOS does not zoom.
+    expect(editor.getByLabelText('What I did').className).toContain('text-base')
   })
 
-  it('labels clients by business name and sorts them', async () => {
+  it('lists businesses before individuals in the client picker', async () => {
     renderPage('/admin/time')
     fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
 
-    const clientSelect = await screen.findByLabelText(/^Client/, { selector: '#log-time-client' })
+    const clientSelect = await within(await screen.findByTestId('work-lines-editor')).findByLabelText('Client', { selector: 'select' })
     await waitFor(() => expect(within(clientSelect).getAllByRole('option').map(option => option.textContent)).toEqual([
       'No client (unassigned)', "MoSa's", 'Jose Cruz',
     ]))
+    expect(within(clientSelect).getAllByRole('group').map(group => group.getAttribute('label'))).toEqual(['Businesses', 'Individuals'])
   })
 
-  it('submits the chosen client, category, task and period', async () => {
+  it('submits the chosen client, category, task and period as one work line', async () => {
     renderPage('/admin/time')
     fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
-    const fields = within(await screen.findByTestId('time-entry-work-fields'))
+    const editor = within(await screen.findByTestId('work-lines-editor'))
 
-    await waitFor(() => expect(fields.getAllByRole('option', { name: "MoSa's" }).length).toBeGreaterThan(0))
-    fireEvent.change(fields.getByLabelText(/^Client/, { selector: 'select' }), { target: { value: '5' } })
-    fireEvent.change(fields.getByLabelText('Category'), { target: { value: '1' } })
-    fireEvent.change(fields.getByLabelText('Task'), { target: { value: '11' } })
-    fireEvent.change(fields.getByLabelText('Period type'), { target: { value: 'month' } })
-    fireEvent.change(fields.getByLabelText('Period month'), { target: { value: '7' } })
-    fireEvent.change(fields.getByLabelText('Period year'), { target: { value: '2026' } })
-    expect(fields.getByText('July 2026')).toBeInTheDocument()
+    await waitFor(() => expect(editor.getAllByRole('option', { name: "MoSa's" }).length).toBeGreaterThan(0))
+    fireEvent.change(editor.getByLabelText('Client', { selector: 'select' }), { target: { value: '5' } })
+    fireEvent.change(editor.getByLabelText('What I did'), { target: { value: 'July bank rec' } })
+    fireEvent.change(editor.getByLabelText(/^Category/), { target: { value: '1' } })
+    fireEvent.click(editor.getByRole('button', { name: 'Task and period' }))
+    fireEvent.change(editor.getByLabelText(/^Task/), { target: { value: '11' } })
+    fireEvent.change(editor.getByLabelText('Period type'), { target: { value: 'month' } })
+    fireEvent.change(editor.getByLabelText('Period month'), { target: { value: '7' } })
+    fireEvent.change(editor.getByLabelText('Period year'), { target: { value: '2026' } })
+    expect(editor.getByText('July 2026')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => expect(apiMocks.createTimeEntry).toHaveBeenCalled())
     const payload = apiMocks.createTimeEntry.mock.calls[0][0]
-    expect(payload).toMatchObject({
-      client_id: 5,
-      service_type_id: 1,
-      service_task_id: 11,
-      period_type: 'month',
-      period_start: '2026-07-01',
-    })
+    expect(payload.work_lines).toEqual([{
+      client_id: 5, description: 'July bank rec', service_type_id: 1, service_task_id: 11,
+      period_type: 'month', period_start: '2026-07-01', minutes: 540,
+    }])
     expect(payload).not.toHaveProperty('time_category_id')
-    expect(payload.description).toBeUndefined()
   })
 
   it('shows and keeps the legacy category when editing an old entry', async () => {
@@ -336,6 +336,7 @@ describe('TimeTracking log time', () => {
       period_start: null,
       period_label: null,
       breaks: [],
+      work_lines: [{ id: 1, position: 0, client: { id: 6, name: 'Jose Cruz' }, client_label: 'Jose Cruz', description: 'Old work', service_type: null, service_task: null, category_label: 'Tax Prep (legacy)', period_type: null, period_start: null, period_label: null, hours: 1, minutes: 60 }],
     }
     apiMocks.getTimeEntries.mockResolvedValue(emptyEntryResponse([legacyEntry]))
 
@@ -343,17 +344,16 @@ describe('TimeTracking log time', () => {
     expect(await screen.findByTitle(/Tax Prep \(legacy\)/)).toBeInTheDocument()
     fireEvent.click(screen.getByText('Jose Cruz'))
 
-    const fields = within(await screen.findByTestId('time-entry-work-fields'))
-    expect(fields.getByText('Tax Prep')).toBeInTheDocument()
-    expect(fields.getByText(/Legacy category/)).toBeInTheDocument()
-    expect((fields.getByLabelText(/^Client/, { selector: 'select' }) as HTMLSelectElement).value).toBe('6')
-    expect((fields.getByLabelText('Comments') as HTMLTextAreaElement).value).toBe('Old work')
+    const editor = within(await screen.findByTestId('work-lines-editor'))
+    expect(screen.getByText(/Legacy category:/)).toBeInTheDocument()
+    expect((editor.getByLabelText('Client', { selector: 'select' }) as HTMLSelectElement).value).toBe('6')
+    expect((editor.getByLabelText('What I did') as HTMLInputElement).value).toBe('Old work')
 
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
     await waitFor(() => expect(apiMocks.updateTimeEntry).toHaveBeenCalled())
     const payload = apiMocks.updateTimeEntry.mock.calls[0][1]
-    // Nothing in the work details changed, so none of them (and never the legacy category) are sent.
-    for (const key of ['time_category_id', 'client_id', 'service_type_id', 'service_task_id', 'period_type', 'period_start', 'description']) {
+    // Nothing in the work changed, so no lines (and never the legacy category) are sent.
+    for (const key of ['time_category_id', 'client_id', 'service_type_id', 'service_task_id', 'period_type', 'period_start', 'description', 'work_lines']) {
       expect(payload).not.toHaveProperty(key)
     }
     expect(payload).toMatchObject({ start_time: '09:00', end_time: '10:00' })
@@ -397,6 +397,7 @@ describe('TimeTracking unassigned time', () => {
     apiMocks.getCurrentUser.mockResolvedValue({ data: { user: { id: 1, is_admin: true } } })
     apiMocks.getPendingApprovals.mockResolvedValue({ data: { summary: null } })
     apiMocks.getTimePeriodLockStatus.mockResolvedValue({ data: { locked: false, lock: null } })
+    apiMocks.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: null } })
     apiMocks.getUnassignedTime.mockResolvedValue({ data: {
       time_entries: [entry],
       summary: { entry_count: 1, hours: 8, by_user: [], cutover_date: null },

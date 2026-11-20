@@ -232,4 +232,20 @@ RSpec.describe "Time entry work lines API", type: :request do
     expect(response).to have_http_status(:ok)
     expect(json.dig(:time_entry, :work_lines).map { |line| line[:hours] }.last).to eq(stored[2])
   end
+
+  it "suggests the person's recent clients and descriptions" do
+    entry = create(:time_entry, user: employee, work_date: Date.current - 2, approval_status: "approved")
+    entry.work_lines_input = [ { client_id: client_a.id, description: "Bank recs", minutes: 240 },
+                               { client_id: client_b.id, description: "Payroll inputs", minutes: 120 },
+                               { client_id: client_a.id, description: "Credit card recs", minutes: 120 } ]
+    entry.save!
+    create(:time_entry, user: admin, work_date: Date.current - 1, client: client_b, description: "Not mine")
+
+    get "/api/v1/time_entries/work_line_suggestions", headers: headers_for(employee)
+
+    expect(response).to have_http_status(:ok)
+    expect(json[:recent_clients].map { |client| client[:name] }).to eq([ "Alpha Co", "Beta Co" ])
+    expect(json[:descriptions_by_client][client_a.id.to_s.to_sym]).to contain_exactly("Bank recs", "Credit card recs")
+    expect(json[:descriptions_by_client].values.flatten).not_to include("Not mine")
+  end
 end

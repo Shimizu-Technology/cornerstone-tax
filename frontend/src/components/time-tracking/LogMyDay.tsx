@@ -1,0 +1,276 @@
+import { useEffect, useMemo, useState } from 'react'
+import { api } from '../../lib/api'
+import type { ServiceType, TimeEntry } from '../../lib/api'
+import type { ClientOption } from '../../lib/timeEntryWork'
+import { formatMinutes, minutesToHoursText } from '../../lib/workDuration'
+import WorkLinesEditor from './WorkLinesEditor'
+import { checkLines, detailsRequired, draftMinutes, draftsFromEntry, linesPayload, newDraft, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
+
+const DAY_LOG = 'day-log'
+
+function guamToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Guam', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+}
+
+function shiftDate(iso: string, days: number): string {
+  const [year, month, day] = iso.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day + days))
+  return date.toISOString().slice(0, 10)
+}
+
+function longDate(iso: string) {
+  const [year, month, day] = iso.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+}
+
+const entryMinutes = (entry: TimeEntry) => Math.round(entry.hours * 60)
+const assignedMinutes = (entry: TimeEntry) =>
+  (entry.work_lines || []).filter((line) => line.client).reduce((sum, line) => sum + line.minutes, 0)
+
+/**
+ * "Log my day": a quick grid for one day's work, filled in after the fact.
+ * With clock sessions, each session's time is split across clients (the
+ * remaining counter shows what is still unassigned). Work done off the clock
+ * goes in a day log: a manual entry with no times whose hours are the total
+ * of its lines.
+ */
+export default function LogMyDay({
+  userId,
+  userName,
+  clients,
+  serviceTypes,
+  catalogError,
+  onRetryCatalog,
+  onSaved,
+}: {
+  userId: number | null
+  userName?: string
+  clients: ClientOption[]
+  serviceTypes: ServiceType[]
+  catalogError?: string | null
+  onRetryCatalog?: () => void
+  onSaved?: () => void
+}) {
+  const [date, setDate] = useState(guamToday)
+  const [reload, setReload] = useState(0)
+  const [result, setResult] = useState<{ key: string; entries: TimeEntry[]; error: string | null } | null>(null)
+  const requestKey = `${userId}:${date}:${reload}`
+  const loading = result?.key !== requestKey
+  const entries = useMemo(() => result?.entries ?? [], [result])
+  const suggestions = useWorkLineSuggestions(Boolean(userId), userId)
+
+  useEffect(() => {
+    if (!userId) return
+    let cancelled = false
+    void api.getTimeEntries({ date, user_id: userId, per_page: 100 }).then((response) => {
+      if (cancelled) return
+      setResult({ key: requestKey, entries: response.data?.time_entries ?? [], error: response.error ?? null })
+    })
+    return () => { cancelled = true }
+  }, [date, userId, requestKey])
+
+  const sessions = useMemo(
+    () => entries.filter((entry) => entry.entry_method === 'clock' && entry.status === 'completed' && entry.hours > 0)
+      .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || '')),
+    [entries],
+  )
+  const activeClock = entries.find((entry) => entry.status !== 'completed')
+  const dayLog = entries.find((entry) => entry.duration_only)
+  const timedManual = entries.filter((entry) => entry.entry_method === 'manual' && !entry.duration_only && entry.approval_status !== 'denied')
+
+  // Which record the grid edits: a clock session (by id) or the day log.
+  const [selection, setSelection] = useState<{ key: string; target: string } | null>(null)
+  const defaultTarget = sessions.find((entry) => assignedMinutes(entry) < entryMinutes(entry))?.id ?? sessions[0]?.id
+  const target = selection?.key === requestKey ? selection.target : String(defaultTarget ?? DAY_LOG)
+  const session = sessions.find((entry) => String(entry.id) === target) ?? null
+  const editing = session ?? dayLog ?? null
+
+  const [draft, setDraft] = useState<{ key: string; lines: WorkLineDraft[] } | null>(null)
+  const draftKey = `${requestKey}:${target}`
+  const lines = draft?.key === draftKey
+    ? draft.lines
+    : editing ? draftsFromEntry(editing) : [newDraft()]
+  const setLines = (next: WorkLineDraft[]) => setDraft({ key: draftKey, lines: next })
+
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+
+  const targetMinutes = session ? entryMinutes(session) : null
+  const required = detailsRequired(suggestions.requiredFrom, date)
+  const check = checkLines(lines, { targetMinutes, required, clients, singleCoversTarget: false })
+  const dirty = draft?.key === draftKey
+
+  const clockMinutes = sessions.reduce((sum, entry) => sum + entryMinutes(entry), 0)
+  const clockAssigned = sessions.reduce((sum, entry) => {
+    if (session && entry.id === session.id) {
+      return sum + lines.filter((line) => line.client_id).reduce((acc, line) => acc + (draftMinutes(line) ?? 0), 0)
+    }
+    return sum + assignedMinutes(entry)
+  }, 0)
+  const dayLogMinutes = session
+    ? (dayLog ? entryMinutes(dayLog) : 0)
+    : lines.reduce((sum, line) => sum + (draftMinutes(line) ?? 0), 0)
+  const manualMinutes = timedManual.filter((entry) => !entry.duration_only).reduce((sum, entry) => sum + entryMinutes(entry), 0)
+  const totalLogged = clockMinutes + dayLogMinutes + manualMinutes
+  const unallocated = Math.max(0, clockMinutes - clockAssigned)
+
+  const changeDate = (next: string) => {
+    setDate(next)
+    setMessage(null)
+  }
+
+  const save = async () => {
+    if (!userId || !check.canSubmit) return
+    setSaving(true)
+    setMessage(null)
+    const response = session
+      ? await api.updateTimeEntry(session.id, { work_lines: linesPayload(lines, targetMinutes, false) })
+      : dayLog
+        ? await api.updateTimeEntry(dayLog.id, { work_date: date, work_lines: linesPayload(lines, null) })
+        : await api.createTimeEntry({ work_date: date, work_lines: linesPayload(lines, null) })
+    setSaving(false)
+    if (response.error) {
+      setMessage({ tone: 'error', text: response.error })
+      return
+    }
+    const saved = response.data?.time_entry
+    setMessage({ tone: 'ok', text: saved?.approval_status === 'pending' ? 'Saved. It will show as pending until an admin approves it.' : 'Saved.' })
+    setDraft(null)
+    setReload((value) => value + 1)
+    onSaved?.()
+  }
+
+  if (!userId) return null
+
+  return (
+    <section aria-labelledby="log-my-day-heading" className="space-y-4">
+      <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="log-my-day-heading" className="text-lg font-bold text-primary-dark">Log my day</h2>
+            <p className="text-sm text-text-muted">
+              {userName ? `${userName} · ` : ''}List each client and what you did, in minutes or hours. Enter on a time adds a row.
+            </p>
+          </div>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => changeDate(shiftDate(date, -1))} className="min-h-11 min-w-11 rounded-lg border border-neutral-warm text-lg" aria-label="Previous day">‹</button>
+            <label htmlFor="log-my-day-date" className="sr-only">Day</label>
+            <input
+              id="log-my-day-date"
+              type="date"
+              value={date}
+              max={guamToday()}
+              onChange={(event) => event.target.value && changeDate(event.target.value)}
+              className="min-h-11 rounded-lg border border-neutral-warm px-3 text-base md:text-sm"
+            />
+            <button type="button" onClick={() => changeDate(shiftDate(date, 1))} disabled={date >= guamToday()} className="min-h-11 min-w-11 rounded-lg border border-neutral-warm text-lg disabled:opacity-40" aria-label="Next day">›</button>
+          </div>
+        </div>
+        <p className="mt-2 text-sm font-medium text-primary-dark">{longDate(date)}</p>
+
+        <dl className="mt-3 grid grid-cols-3 gap-2 text-center" aria-live="polite">
+          <div className="rounded-xl bg-secondary/40 p-2">
+            <dt className="text-xs text-text-muted">On the clock</dt>
+            <dd className="font-semibold tabular-nums text-primary-dark">{formatMinutes(clockMinutes)}</dd>
+          </div>
+          <div className="rounded-xl bg-secondary/40 p-2">
+            <dt className="text-xs text-text-muted">Total logged</dt>
+            <dd className="font-semibold tabular-nums text-primary-dark">{formatMinutes(totalLogged)}</dd>
+          </div>
+          <div className={`rounded-xl p-2 ${unallocated ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+            <dt className="text-xs text-text-muted">Clock time without a client</dt>
+            <dd className={`font-semibold tabular-nums ${unallocated ? 'text-amber-800' : 'text-emerald-800'}`}>{formatMinutes(unallocated)}</dd>
+          </div>
+        </dl>
+      </div>
+
+      {result?.error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{result.error}</div>}
+      {catalogError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <span>{catalogError}</span>
+          {onRetryCatalog && <button type="button" onClick={onRetryCatalog} className="min-h-11 rounded-lg border border-red-300 bg-white px-3 font-semibold">Try again</button>}
+        </div>
+      )}
+      {activeClock && (
+        <p className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+          You're clocked in. Split the current session when you clock out; finished sessions show here.
+        </p>
+      )}
+
+      <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
+        <div role="radiogroup" aria-label="What to fill in" className="mb-4 flex flex-wrap gap-2">
+          {sessions.map((entry) => {
+            const left = entryMinutes(entry) - assignedMinutes(entry)
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                role="radio"
+                aria-checked={target === String(entry.id)}
+                onClick={() => setSelection({ key: requestKey, target: String(entry.id) })}
+                className={`min-h-11 rounded-xl border px-3 text-left text-sm ${target === String(entry.id) ? 'border-primary bg-primary/5 font-semibold text-primary' : 'border-neutral-warm text-primary-dark'}`}
+              >
+                Clock {entry.formatted_start_time}–{entry.formatted_end_time} · {formatMinutes(entryMinutes(entry))}
+                {left > 0 && <span className="ml-1 text-amber-700">({formatMinutes(left)} unassigned)</span>}
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            role="radio"
+            aria-checked={target === DAY_LOG}
+            onClick={() => setSelection({ key: requestKey, target: DAY_LOG })}
+            className={`min-h-11 rounded-xl border px-3 text-sm ${target === DAY_LOG ? 'border-primary bg-primary/5 font-semibold text-primary' : 'border-neutral-warm text-primary-dark'}`}
+          >
+            {sessions.length ? 'Work off the clock' : 'My day'}{dayLog ? ` · ${formatMinutes(entryMinutes(dayLog))}` : ''}
+          </button>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-text-muted">Loading…</p>
+        ) : editing?.locked_at ? (
+          <p className="text-sm text-text-muted">This entry is locked and can't be changed.</p>
+        ) : (
+          <WorkLinesEditor
+            idPrefix={`day-${target}`}
+            lines={lines}
+            onChange={setLines}
+            targetMinutes={targetMinutes}
+            clients={clients}
+            serviceTypes={serviceTypes}
+            suggestions={suggestions}
+            required={required}
+            referenceDate={date}
+            mode="day"
+            disabled={saving}
+          />
+        )}
+
+        {timedManual.length > 0 && (
+          <p className="mt-3 text-sm text-text-muted">
+            Also on this day: {timedManual.map((entry) => `${entry.formatted_start_time}–${entry.formatted_end_time} (${minutesToHoursText(entryMinutes(entry))}h)`).join(', ')}. Edit those from Time Entries.
+          </p>
+        )}
+
+        <div className="sticky bottom-0 -mx-4 mt-4 flex flex-col gap-2 border-t border-neutral-warm bg-white px-4 pt-3 md:static md:flex-row md:items-center md:justify-end" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+          {message && (
+            <p role={message.tone === 'error' ? 'alert' : 'status'} className={`text-sm md:mr-auto ${message.tone === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>{message.text}</p>
+          )}
+          {dirty && (
+            <button type="button" onClick={() => setDraft(null)} disabled={saving} className="min-h-11 rounded-xl border border-neutral-warm px-4 text-sm font-medium text-primary-dark">
+              Undo changes
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving || !check.canSubmit || !dirty || Boolean(editing?.locked_at)}
+            className="min-h-11 rounded-xl bg-primary px-6 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : session ? 'Save session' : dayLog ? 'Save day' : 'Log day'}
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
