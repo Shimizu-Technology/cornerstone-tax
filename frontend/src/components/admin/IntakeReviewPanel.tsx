@@ -111,7 +111,12 @@ function IntakeReviewModal({ submissionId, onClose, onResolved }: IntakeReviewMo
       const focusable = Array.from(
         dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')
       )
-      if (focusable.length === 0) return
+      if (focusable.length === 0) {
+        // Everything is disabled while saving; hold focus on the dialog itself.
+        event.preventDefault()
+        dialogRef.current.focus()
+        return
+      }
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
       const active = document.activeElement

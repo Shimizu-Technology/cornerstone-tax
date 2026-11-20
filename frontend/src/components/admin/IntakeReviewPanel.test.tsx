@@ -102,6 +102,31 @@ describe('IntakeReviewPanel', () => {
     expect(trigger).toHaveFocus()
   })
 
+  it('holds focus on the dialog while saving disables every control', async () => {
+    apiMocks.getIntakeSubmission.mockResolvedValue({
+      data: { intake_submission: { ...detail, fields: detail.fields.map(field => ({ ...field, differs: false })), submitted_dependents: [] } },
+    })
+    apiMocks.keepIntakeSubmissionSeparate.mockReturnValue(new Promise(() => {}))
+    renderPanel()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review intake' }))
+    const dialog = await screen.findByRole('dialog')
+    await screen.findByText(/Every submitted client field already matches/)
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as separate client' }))
+    await screen.findByRole('button', { name: 'Saving…' })
+    expect(dialog.querySelectorAll('button:not([disabled]), input:not([disabled])')).toHaveLength(0)
+
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    outside.focus()
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    window.dispatchEvent(tab)
+
+    expect(tab.defaultPrevented).toBe(true)
+    expect(dialog).toHaveFocus()
+    outside.remove()
+  })
+
   it('keeps the records apart and shows server errors', async () => {
     apiMocks.keepIntakeSubmissionSeparate
       .mockResolvedValueOnce({ error: 'This intake is no longer waiting for review' })
