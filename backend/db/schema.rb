@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_21_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_21_020000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -102,6 +102,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_21_010000) do
     t.string "phone"
     t.date "spouse_dob"
     t.string "spouse_name"
+    t.string "system_kind"
     t.datetime "updated_at", null: false
     t.boolean "wants_direct_deposit", default: false
     t.index ["archived_at"], name: "index_clients_on_archived_at"
@@ -109,6 +110,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_21_010000) do
     t.index ["email"], name: "index_clients_on_email"
     t.index ["has_tax_returns"], name: "index_clients_on_has_tax_returns"
     t.index ["last_name", "first_name"], name: "index_clients_on_last_name_and_first_name"
+    t.index ["system_kind"], name: "index_clients_on_system_kind", unique: true, where: "(system_kind IS NOT NULL)"
+    t.check_constraint "system_kind IS NULL OR system_kind::text = 'internal'::text", name: "check_clients_system_kind"
   end
 
   create_table "daily_tasks", force: :cascade do |t|
@@ -397,10 +400,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_21_010000) do
     t.string "color"
     t.datetime "created_at", null: false
     t.text "description"
+    t.boolean "internal", default: false, null: false
     t.boolean "is_active", default: true, null: false
     t.string "name", null: false
     t.integer "position", default: 0, null: false
     t.datetime "updated_at", null: false
+    t.index ["internal"], name: "index_service_types_on_internal"
     t.index ["is_active"], name: "index_service_types_on_is_active"
     t.index ["name"], name: "index_service_types_on_name_unique", unique: true
     t.index ["position"], name: "index_service_types_on_position"
@@ -548,7 +553,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_21_010000) do
     t.check_constraint "(period_type IS NULL) = (period_start IS NULL)", name: "check_time_entry_allocations_period_pair"
     t.check_constraint "hours > 0::numeric AND hours <= 24::numeric", name: "check_time_entry_allocations_hours"
     t.check_constraint "period_start IS NULL OR EXTRACT(day FROM period_start) = 1::numeric AND (period_type::text = 'month'::text OR period_type::text = 'quarter'::text AND (EXTRACT(month FROM period_start) = ANY (ARRAY[1::numeric, 4::numeric, 7::numeric, 10::numeric])) OR period_type::text = 'year'::text AND EXTRACT(month FROM period_start) = 1::numeric)", name: "check_time_entry_allocations_period_alignment"
-    t.check_constraint "period_type IS NULL OR (period_type::text = ANY (ARRAY['month'::character varying, 'quarter'::character varying, 'year'::character varying]::text[]))", name: "check_time_entry_allocations_period_type"
+    t.check_constraint "period_type IS NULL OR (period_type::text = ANY (ARRAY['month'::character varying::text, 'quarter'::character varying::text, 'year'::character varying::text]))", name: "check_time_entry_allocations_period_type"
   end
 
   create_table "time_entry_breaks", force: :cascade do |t|
