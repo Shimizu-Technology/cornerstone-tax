@@ -23,6 +23,13 @@ module Reports
     end
 
     def call
+      TimeEntry.consistent_read { build }
+    end
+
+    private
+
+    # Entries and their work lines are read from one snapshot.
+    def build
       entries = TimeEntry.where(user_id: user.id, work_date: start_date..end_date)
                          .includes(:time_category, work_lines: [ :client, :service_type, :service_task ])
                          .order(:work_date, :start_time, :created_at, :id)
@@ -67,7 +74,6 @@ module Reports
       }
     end
 
-    private
 
     def parse_date!(value, name)
       raise ArgumentError, "#{name} is required" if value.blank?
