@@ -73,13 +73,13 @@ RSpec.describe "Concurrent work-line saves", type: :request do
     User.where(id: admin.id).delete_all
   end
 
-  def patch_lines(lines)
+  def patch_lines(lines, as: admin, entry_id: entry.id)
     env = Rack::MockRequest.env_for(
-      "/api/v1/time_entries/#{entry.id}",
+      "/api/v1/time_entries/#{entry_id}",
       method: "PATCH",
       input: { time_entry: { work_lines: lines } }.to_json,
       "CONTENT_TYPE" => "application/json",
-      "HTTP_AUTHORIZATION" => "Bearer test_token_#{admin.id}",
+      "HTTP_AUTHORIZATION" => "Bearer test_token_#{as.id}",
       "HTTP_HOST" => "www.example.com"
     )
     status, _headers, body = Rails.application.call(env)
@@ -104,5 +104,50 @@ RSpec.describe "Concurrent work-line saves", type: :request do
     lines = entry.work_lines.reload
     expect(lines.sum(&:hours)).to eq(entry.hours)
     expect(lines.map(&:description).uniq.size).to eq(1)
+  end
+
+  describe "a staff edit racing a clock-out" do
+    let!(:staff) { User.create!(email: "conc-staff-#{SecureRandom.hex(4)}@example.test", clerk_id: "conc_s_#{SecureRandom.hex(4)}", first_name: "C", last_name: "Staff", role: "employee") }
+
+    after do
+      entry_ids = TimeEntry.where(user_id: staff.id).pluck(:id)
+      AuditLog.where(auditable_type: "TimeEntry", auditable_id: entry_ids).delete_all
+      TimeEntry.where(id: entry_ids).delete_all
+      User.where(id: staff.id).delete_all
+    end
+
+    it "decides approval on the locked row, so an entry completed meanwhile goes to review" do
+      BarrierOnLineRead.barrier = nil
+      # Holds the PATCH thread just before it takes the row lock (a stub, so
+      # it is removed after this example).
+      allow_any_instance_of(TimeEntry).to receive(:lock_for_work_lines!).and_wrap_original do |original, *args|
+        if (pause = Thread.current[:pause_before_lock])
+          pause[:paused] << true
+          pause[:resume].pop
+        end
+        original.call(*args)
+      end
+      started = 2.hours.ago
+      active = TimeEntry.create!(user: staff, work_date: started.in_time_zone(tz).to_date, entry_method: "clock", status: "clocked_in", hours: 0,
+                                 start_time: started.in_time_zone(tz), clock_in_at: started)
+      # Load routes before racing (an empty update of an open clock changes nothing).
+      expect(patch_lines([], as: staff, entry_id: active.id).first).to eq(200)
+
+      gate = { paused: Queue.new, resume: Queue.new }
+      edit = Thread.new do
+        Thread.current[:pause_before_lock] = gate
+        patch_lines([ { client_id: clients[0].id, description: "Bank recs", minutes: 120 } ], as: staff, entry_id: active.id)
+      end
+      gate[:paused].pop # the PATCH loaded the active entry and is about to lock it
+      TimeClockService.clock_out(user: staff)
+      gate[:resume] << true
+      status, body = edit.value
+
+      expect(status).to eq(200), body
+      active.reload
+      expect(active.status).to eq("completed")
+      expect(active.approval_status).to eq("pending")
+      expect(active.work_lines.sole).to have_attributes(client_id: clients[0].id, description: "Bank recs")
+    end
   end
 end

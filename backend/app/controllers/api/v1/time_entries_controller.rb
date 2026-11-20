@@ -164,18 +164,20 @@ module Api
         return if performed?
         update_params[:break_minutes] = break_update[:total_minutes] if break_update
 
-        if !current_user.admin? && @time_entry.status == "completed"
-          update_params[:approval_status] = "pending"
-          update_params[:approved_by_id] = nil
-          update_params[:approved_at] = nil
-          update_params[:approval_note] = append_review_note(@time_entry.approval_note)
-        end
-
         saved = false
         break_replace_error = nil
         @time_entry.transaction do
           # Serialize edits of one entry (see TimeEntry#lock_for_work_lines!).
           @time_entry.lock_for_work_lines!
+          # Decided on the locked, re-read row: a clock-out that completed the
+          # entry after this request loaded it must not let a staff edit skip
+          # review.
+          if !current_user.admin? && @time_entry.status == "completed"
+            update_params[:approval_status] = "pending"
+            update_params[:approved_by_id] = nil
+            update_params[:approved_at] = nil
+            update_params[:approval_note] = append_review_note(@time_entry.approval_note)
+          end
           saved = @time_entry.update(update_params)
           if saved && break_update
             break_replace_error = replace_break_records(@time_entry, break_update[:breaks])
