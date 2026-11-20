@@ -56,9 +56,14 @@ class Client < ApplicationRecord
 
   # Creates the internal client if missing (seeds, tests, fresh databases).
   def self.ensure_internal!
-    internal || create!(first_name: "Internal", last_name: "Cornerstone", business_name: INTERNAL_NAME,
-                        client_type: "business", has_tax_returns: false, is_new_client: false,
-                        notification_preference: "none", system_kind: "internal")
+    return internal if internal
+
+    existing = where(business_name: INTERNAL_NAME).order(:id).first
+    return existing.tap { |client| client.update_columns(system_kind: "internal", archived_at: nil) } if existing
+
+    create!(first_name: "Internal", last_name: "Cornerstone", business_name: INTERNAL_NAME,
+            client_type: "business", has_tax_returns: false, is_new_client: false,
+            notification_preference: "none", system_kind: "internal")
   rescue ActiveRecord::RecordNotUnique
     internal
   end

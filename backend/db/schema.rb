@@ -404,11 +404,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_21_020000) do
     t.boolean "is_active", default: true, null: false
     t.string "name", null: false
     t.integer "position", default: 0, null: false
+    t.string "system_key"
     t.datetime "updated_at", null: false
     t.index ["internal"], name: "index_service_types_on_internal"
     t.index ["is_active"], name: "index_service_types_on_is_active"
     t.index ["name"], name: "index_service_types_on_name_unique", unique: true
     t.index ["position"], name: "index_service_types_on_position"
+    t.index ["system_key"], name: "index_service_types_on_system_key", unique: true, where: "(system_key IS NOT NULL)"
   end
 
   create_table "settings", force: :cascade do |t|
