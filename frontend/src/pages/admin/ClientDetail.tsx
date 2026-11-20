@@ -9,6 +9,7 @@ import type {
   OperationTemplateTask,
   ClientOperationAssignment,
   CurrentUser,
+  ClientIntakeReview,
 } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
 import { getFilingStatusLabel } from '../../lib/constants'
@@ -16,6 +17,7 @@ import NotFound from '../../components/common/NotFound'
 import PrintableIntakeForm from '../../components/admin/PrintableIntakeForm'
 import { FadeUp } from '../../components/ui/MotionComponents'
 import NewTaxReturnModal from '../../components/admin/NewTaxReturnModal'
+import IntakeReviewPanel from '../../components/admin/IntakeReviewPanel'
 
 interface Dependent {
   id: number
@@ -94,6 +96,7 @@ interface ClientDetail {
   archived_at: string | null
   has_portal_access: boolean
   portal_invite_pending: boolean
+  intake_reviews?: ClientIntakeReview[]
   service_types: ClientServiceType[]
   contacts: ClientContact[]
   created_at: string
@@ -749,6 +752,8 @@ export default function ClientDetailPage() {
           </button>
         </div>
       )}
+
+      <IntakeReviewPanel reviews={client.intake_reviews ?? []} onResolved={loadClient} />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

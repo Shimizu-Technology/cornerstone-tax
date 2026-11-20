@@ -14,6 +14,14 @@ Rails.application.routes.draw do
       post "intake_documents/presign", to: "intake_documents#presign"
       post "intake_documents", to: "intake_documents#create"
 
+      # Staff review of public intakes that matched an existing client
+      resources :intake_submissions, only: [:index, :show] do
+        member do
+          post :merge
+          post :keep_separate
+        end
+      end
+
       # Contact form submission (public, no auth required)
       post "contact", to: "contact#create"
 

@@ -10,6 +10,7 @@ class User < ApplicationRecord
   has_many :reviewed_tax_returns, class_name: "TaxReturn", foreign_key: "reviewed_by_id", dependent: :nullify
   has_many :workflow_events, dependent: :nullify
   has_many :audit_logs, dependent: :nullify
+  has_many :reviewed_intake_submissions, class_name: "IntakeSubmission", foreign_key: :reviewed_by_id, dependent: :nullify
   has_many :time_entries, dependent: :nullify
   has_many :approved_time_entries, class_name: "TimeEntry", foreign_key: "approved_by_id", dependent: :nullify
   has_many :overtime_approved_time_entries, class_name: "TimeEntry", foreign_key: "overtime_approved_by_id", dependent: :nullify

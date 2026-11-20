@@ -68,7 +68,7 @@ RSpec.describe CreateIntakeService do
     ])
   end
 
-  it "links public intake to an existing staff-created 1040 return for the same client and year" do
+  it "keeps a matching public intake off an existing client's staff-created return" do
     client = Client.create!(
       first_name: "Existing",
       last_name: "Client",
@@ -83,28 +83,25 @@ RSpec.describe CreateIntakeService do
       documents_enabled: false
     )
 
-    expect do
-      result = described_class.call(
-        first_name: "Existing",
-        last_name: "Client",
-        email: "existing-client@example.com",
-        tax_year: 2026,
-        income_sources: [
-          {
-            source_type: "w2",
-            payer_name: "Employer"
-          }
-        ]
-      )
+    result = described_class.call(
+      first_name: "Existing",
+      last_name: "Client",
+      email: "existing-client@example.com",
+      tax_year: 2026,
+      income_sources: [
+        {
+          source_type: "w2",
+          payer_name: "Employer"
+        }
+      ]
+    )
 
-      expect(result).to be_success
-      expect(result.tax_return).to eq(staff_return)
-      expect(result.tax_return.form_type).to eq("1040")
-      expect(result.tax_return.source).to eq("admin_created")
-      expect(result.tax_return.portal_visible).to be(false)
-      expect(result.tax_return.documents_enabled).to be(false)
-      expect(result.tax_return.intake_submissions.count).to eq(1)
-    end.not_to change(TaxReturn, :count)
+    expect(result).to be_success
+    expect(result.client).not_to eq(client)
+    expect(result.tax_return).not_to eq(staff_return)
+    expect(staff_return.reload.income_sources).to be_empty
+    expect(staff_return.intake_submissions).to be_empty
+    expect(result.tax_return.intake_submissions.sole).to have_attributes(status: "needs_review", matched_client: client)
   end
 
   it "creates new intake returns as 1040 work items" do
