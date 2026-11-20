@@ -322,7 +322,10 @@ RSpec.describe "Api::V1::TimeEntries", type: :request do
 
   describe "GET /api/v1/time_entries/whos_working" do
     it "includes countable manual entries in today's completed hours and day entries" do
-      manual_entry = create(:time_entry, user: employee, work_date: Date.current, approval_status: "approved")
+      # "Today" is the Guam business date, which runs ahead of UTC from
+      # 00:00 to 10:00 Guam time; Date.current made this spec fail then.
+      guam_today = Time.current.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).to_date
+      manual_entry = create(:time_entry, user: employee, work_date: guam_today, approval_status: "approved")
 
       get "/api/v1/time_entries/whos_working", headers: auth_headers_for[admin]
 
