@@ -281,7 +281,8 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       expect(json[:ready]).to eq(true)
       expect(json.dig(:summary, :denied_count)).to eq(1)
       expect(json.dig(:summary, :entries_count)).to eq(2)
-      expect(json.dig(:employees, 0, :days).flatten.to_s).not_to include(denied.id.to_s)
+      included_ids = json.dig(:employees, 0, :days).flat_map { |day| day[:entries].map { |entry| entry[:id] } }
+      expect(included_ids).not_to include(denied.id)
       expect(json.dig(:employees, 0, :excluded_entries).map { |entry| entry[:id] }).to include(denied.id)
     end
 
