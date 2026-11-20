@@ -124,4 +124,37 @@ RSpec.describe "Time entry work lines API", type: :request do
     expect(json[:error]).to include("Work lines add up to 30m")
     expect(entry.reload.status).to eq("clocked_in")
   end
+  it "returns 422, not 500, for work lines on an entry with a start time but no end time" do
+    post "/api/v1/time_entries", params: {
+      time_entry: { work_date: work_date.iso8601, start_time: "08:00", work_lines: [ { client_id: client_a.id, minutes: 60 } ] }
+    }.to_json, headers: headers_for(employee)
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json[:error]).to include("start and end times")
+  end
+
+  it "accepts JSON Float hours at the clock-out tolerance boundary" do
+    post "/api/v1/time_entries/clock_in", headers: headers_for(employee)
+    entry = TimeEntry.clocked_in.find_by!(user: employee)
+    started = 1.hour.ago
+    entry.update_columns(clock_in_at: started, start_time: started.in_time_zone(TimeClockService::BUSINESS_TIMEZONE))
+
+    post "/api/v1/time_entries/clock_out", params: { time_entry_id: entry.id, work_lines: [ { client_id: client_a.id, hours: 1.1 } ] }.to_json,
+                                           headers: headers_for(employee)
+
+    expect(response).to have_http_status(:ok)
+    expect(json.dig(:time_entry, :work_lines, 0, :hours)).to eq(json.dig(:time_entry, :hours))
+  end
+
+  it "locks the entry while replacing its work lines" do
+    entry = create(:time_entry, user: employee, work_date: work_date, approval_status: "approved")
+    expect_any_instance_of(TimeEntry).to receive(:lock!).and_call_original
+
+    patch "/api/v1/time_entries/#{entry.id}", params: {
+      time_entry: { work_lines: [ { client_id: client_a.id, minutes: 240 }, { client_id: client_b.id, minutes: 240 } ] }
+    }.to_json, headers: headers_for(admin)
+
+    expect(response).to have_http_status(:ok)
+    expect(entry.work_lines.reload.size).to eq(2)
+  end
 end

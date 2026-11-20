@@ -29,7 +29,12 @@ module WorkLineHours
   # A bare number uses default_unit (:minutes unless told otherwise).
   def parse_minutes(value, default_unit: :minutes)
     return nil if value.nil?
-    return value.to_r * (default_unit == :hours ? 60 : 1) if value.is_a?(Numeric)
+    if value.is_a?(Numeric)
+      # Floats go through their decimal text so 1.1 means 1.1, not the
+      # nearest binary fraction (which is a hair over 66 minutes).
+      number = value.is_a?(Float) ? value.to_s.to_r : value.to_r
+      return number * (default_unit == :hours ? 60 : 1)
+    end
 
     text = value.to_s.strip
     return nil if text.empty?
@@ -74,6 +79,10 @@ module WorkLineHours
   # Splits total_hours across the given minute weights. Raises when the
   # weights are further from total_hours than the tolerance allows.
   def distribute(total_hours, minutes_list, tolerance_minutes: DEFAULT_TOLERANCE_MINUTES)
+    if total_hours.blank?
+      raise Error, "Set this entry's start and end times (or leave both blank for a day log) before adding work lines"
+    end
+
     total = BigDecimal(total_hours.to_s).round(2)
     weights = minutes_list.map(&:to_r)
     weight_sum = weights.sum

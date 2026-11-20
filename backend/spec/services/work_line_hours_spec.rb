@@ -39,4 +39,21 @@ RSpec.describe WorkLineHours do
         .to raise_error(WorkLineHours::Error, /over this entry's 1h by 20m/)
     end
   end
+  describe "numeric input" do
+    it "reads Float hours by their decimal value" do
+      expect(described_class.parse_minutes(1.1, default_unit: :hours)).to eq(66)
+      expect(described_class.parse_minutes(0.1, default_unit: :hours)).to eq(6)
+    end
+
+    it "accepts a Float at the tolerance boundary like the same value as text" do
+      float_minutes = described_class.line_minutes(hours: 1.1)
+      text_minutes = described_class.line_minutes(hours: "1.1")
+      expect(float_minutes).to eq(text_minutes)
+      expect(described_class.distribute(BigDecimal("1.00"), [ float_minutes ], tolerance_minutes: 6).sum).to eq(BigDecimal("1.00"))
+    end
+  end
+
+  it "raises a validation error, not an ArgumentError, when the entry has no total" do
+    expect { described_class.distribute(nil, [ 60 ]) }.to raise_error(WorkLineHours::Error, /start and end times/)
+  end
 end

@@ -124,4 +124,16 @@ RSpec.describe "Work lines report parity" do
     expect(day[:entries].first[:work_lines].map { |line| line[:client_label] }).to eq([ "Alpha Co" ])
     expect(day[:entries].first[:entry_total_hours]).to eq(10.0)
   end
+  it "counts an entry's break once, in the group of its first line, whatever order the groups come in" do
+    TimeEntry.delete_all
+    # Entries sort by start time; the Beta-only entry must come first for the
+    # Beta group to be built before the Alpha group.
+    entry(user: alice, date: monday, from: "10:00", to: "11:00", client: client_b, break_minutes: 30)
+    split = entry(user: alice, date: monday, from: "11:30", to: "15:30", break_minutes: 60)
+    split.work_lines_input = [ { client_id: client_a.id, minutes: 60 }, { client_id: client_b.id, minutes: 120 } ]
+    split.save!
+
+    clients = hours_report(user_id: alice.id)[:employees].first[:clients].to_h { |row| [ row[:name], row[:break_hours] ] }
+    expect(clients).to eq("Alpha Co" => 1.0, "Beta Co" => 0.5)
+  end
 end

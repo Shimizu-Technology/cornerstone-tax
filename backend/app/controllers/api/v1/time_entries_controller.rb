@@ -174,6 +174,11 @@ module Api
         saved = false
         break_replace_error = nil
         @time_entry.transaction do
+          # Serialize edits of one entry: its work lines are read, marked for
+          # replacement and rebuilt, so two concurrent saves must not both
+          # see the old lines. lock! re-reads the row (and its lines) under
+          # FOR UPDATE; the submitted work lines are kept.
+          @time_entry.lock!
           saved = @time_entry.update(update_params)
           if saved && break_update
             break_replace_error = replace_break_records(@time_entry, break_update[:breaks])

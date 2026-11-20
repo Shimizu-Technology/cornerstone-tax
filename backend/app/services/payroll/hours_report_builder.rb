@@ -384,9 +384,12 @@ module Payroll
     end
 
     # Break time belongs to the entry; it is counted once, in the group of
-    # the entry's first reported line.
+    # the entry's first reported line (lowest position), whatever order the
+    # groups come in.
     def grouped_summary(grouped_items)
-      first_item_ids = grouped_items.values.flatten.group_by { |item| item.entry.id }.transform_values { |entry_items| entry_items.first.object_id }
+      first_item_ids = grouped_items.values.flatten.group_by { |item| item.entry.id }.transform_values do |entry_items|
+        entry_items.min_by { |item| item.line.position.to_i }.object_id
+      end
 
       grouped_items.map do |group, group_items|
         break_minutes = group_items.select { |item| first_item_ids[item.entry.id] == item.object_id }.sum { |item| item.entry.break_minutes.to_i }

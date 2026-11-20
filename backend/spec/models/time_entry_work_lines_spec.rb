@@ -100,4 +100,35 @@ RSpec.describe "TimeEntry work lines" do
                               entry_method: "clock", status: "clocked_in", hours: 0)
     expect(entry.work_lines).to be_empty
   end
+  describe "split-entry protection" do
+    let(:split) do
+      entry = manual_entry(end_time: tz.parse("2026-11-16 11:00"))
+      entry.work_lines_input = [ { client_id: client_a.id, description: "A", minutes: 60 }, { client_id: client_b.id, description: "B", minutes: 60 } ]
+      entry.save!
+      entry.reload
+    end
+
+    it "rejects a change that leaves a split entry with no hours instead of dropping its lines" do
+      expect(split.update(break_minutes: 120)).to be(false)
+      expect(split.errors.full_messages.to_sentence).to include("leaves no time for this entry's 2 work lines")
+      expect(split.reload.work_lines.map(&:client_id)).to eq([ client_a.id, client_b.id ])
+    end
+
+    it "still drops the line of an unsplit entry that ends up with zero hours" do
+      single = manual_entry(entry_method: "clock", start_time: tz.parse("2026-11-16 09:00"), end_time: tz.parse("2026-11-16 10:00"))
+      single.save!
+      single.update!(break_minutes: 60)
+      expect(single.reload.work_lines).to be_empty
+    end
+
+    it "rejects an entry-level description edit on a split entry but allows approval-only updates" do
+      expect(split.description).to eq("A; B")
+      expect(split.update(description: "Other")).to be(false)
+      expect(split.errors.full_messages.to_sentence).to include("split across several work lines")
+
+      split.reload
+      split.update!(approval_note: "Checked", approval_status: "approved")
+      expect(split.reload.description).to eq("A; B")
+    end
+  end
 end

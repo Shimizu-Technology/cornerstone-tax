@@ -300,16 +300,25 @@ class TimeEntry < ApplicationRecord
 
   def sync_single_work_line
     lines = current_work_lines
-    if hours.to_d <= 0
-      lines.each(&:mark_for_destruction)
-      return
-    end
 
+    # A split entry is defined by its lines: its own work fields (including
+    # the joined description) can only change by submitting new lines, and
+    # an hours change must come with re-balanced lines. Checked before the
+    # zero-hours branch so a split is never silently dropped.
     if lines.size > 1
-      changed_fields = WORK_LINE_SYNC_FIELDS.select { |field| will_save_change_to_attribute?(field) }
+      changed_fields = (WORK_LINE_SYNC_FIELDS + [ :description ]).select { |field| will_save_change_to_attribute?(field) }
       if changed_fields.any?
         raise WorkLineHours::Error, "This entry is split across several work lines. Change the work lines instead."
       end
+      if hours.to_d <= 0
+        raise WorkLineHours::Error, "This change leaves no time for this entry's #{lines.size} work lines. Update the work lines first."
+      end
+      return
+    end
+
+    # Zero hours (e.g. a clock in and out within a minute): nothing to attribute.
+    if hours.to_d <= 0
+      lines.each(&:mark_for_destruction)
       return
     end
 
