@@ -84,4 +84,29 @@ RSpec.describe "Work summary", type: :request do
     get "/api/v1/work_summary", params: { start_date: "2026-01-01", end_date: "2026-06-01" }, headers: headers_for(staff)
     expect(response).to have_http_status(:unprocessable_entity)
   end
+
+  it "keeps minutes in step with stored hours for a split scaled into a short session" do
+    tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
+    date = monday + 4
+    scaled = TimeEntry.new(user: staff, work_date: date, entry_method: "clock", approval_status: nil,
+                           start_time: tz.parse("#{date} 09:00"), end_time: tz.parse("#{date} 09:07"))
+    scaled.work_lines_input = Array.new(6) { |index| { client_id: index.even? ? alpha.id : beta.id, description: "Step #{index + 1}", minutes: 1 } }
+    scaled.work_lines_tolerance_minutes = WorkLineHours::CLOCK_OUT_TOLERANCE_MINUTES
+    scaled.save!
+    expect(scaled.work_lines.map { |line| line.hours.to_f }).to all(eq(0.02))
+
+    params = { start_date: date.iso8601, end_date: date.iso8601 }
+    get "/api/v1/work_summary", params: params, headers: headers_for(staff)
+
+    day = json[:days].sole
+    expect(day[:lines].map { |line| line[:minutes] }).to eq([ 1, 1, 2, 1, 1, 1 ])
+    expect(day.values_at(:total_hours, :total_minutes, :total_label)).to eq([ 0.12, 7, "7m" ])
+    expect(json.values_at(:total_hours, :total_minutes, :total_label)).to eq([ 0.12, 7, "7m" ])
+    expect(json[:clients].map { |row| row.values_at(:client_name, :hours, :minutes) }).to eq([ [ "Alpha Co", 0.06, 4 ], [ "Beta Co", 0.06, 4 ] ])
+
+    get "/api/v1/work_summary/csv", params: params, headers: headers_for(staff)
+    rows = CSV.parse(response.body)
+    expect(rows.last).to eq([ "Total", nil, nil, nil, nil, nil, nil, "7", "0.12", "7m" ])
+    expect(rows.select { |row| row[0] == date.iso8601 }.sum { |row| row[7].to_i }).to eq(7)
+  end
 end

@@ -30,18 +30,22 @@ module Reports
       included = entries.select { |entry| entry.status == "completed" && entry.approval_status != "denied" }
       rows = included.flat_map { |entry| line_rows(entry) }
 
+      # Totals are minutes of the summed decimal hours, so "h:m" always
+      # agrees with the hours column (six 0.02h lines: 0.12h = 7m, not 6m).
       days = rows.group_by { |row| row[:work_date] }.sort.map do |date, day_rows|
-        minutes = day_rows.sum { |row| row[:minutes] }
-        { work_date: date, lines: day_rows, total_minutes: minutes, total_hours: hours(day_rows), total_label: label(minutes) }
+        day_hours = hours(day_rows)
+        minutes = minutes_for(day_hours)
+        { work_date: date, lines: day_rows, total_minutes: minutes, total_hours: day_hours, total_label: label(minutes) }
       end
 
       clients = rows.group_by { |row| [ row[:client_id], row[:client_name] ] }.map do |(client_id, name), client_rows|
-        minutes = client_rows.sum { |row| row[:minutes] }
+        client_hours = hours(client_rows)
+        minutes = minutes_for(client_hours)
         { client_id: client_id, client_name: name, system_kind: client_rows.first[:system_kind],
-          minutes: minutes, hours: hours(client_rows), label: label(minutes), lines_count: client_rows.size }
+          minutes: minutes, hours: client_hours, label: label(minutes), lines_count: client_rows.size }
       end.sort_by { |row| [ -row[:minutes], row[:client_id] ? 0 : 1, row[:client_name].downcase ] }
 
-      total_minutes = rows.sum { |row| row[:minutes] }
+      total_minutes = minutes_for(hours(rows))
       {
         user: { id: user.id, full_name: user.full_name, email: user.email },
         start_date: start_date.iso8601,
@@ -58,7 +62,7 @@ module Reports
           pending_entries: included.count { |entry| entry.approval_status == "pending" },
           denied_entries: entries.count { |entry| entry.approval_status == "denied" },
           open_clock_entries: entries.count(&:active?),
-          unassigned_minutes: rows.select { |row| row[:client_id].nil? }.sum { |row| row[:minutes] }
+          unassigned_minutes: minutes_for(hours(rows.select { |row| row[:client_id].nil? }))
         }
       }
     end
@@ -76,7 +80,8 @@ module Reports
     def line_rows(entry)
       lines = entry.work_lines.to_a
       lines = [ Payroll::HoursReportBuilder::VirtualLine.new(entry: entry) ] if lines.empty?
-      lines.map do |line|
+      line_minutes = cumulative_minutes(lines.map(&:hours))
+      lines.each_with_index.map do |line, index|
         {
           entry_id: entry.id,
           work_date: entry.work_date.iso8601,
@@ -88,7 +93,7 @@ module Reports
           category: line.category_label,
           task: line.service_task&.name,
           period: line.period_label,
-          minutes: line.minutes,
+          minutes: line_minutes[index],
           hours: line.hours.to_f,
           approval_state: approval_state(entry)
         }
@@ -110,6 +115,24 @@ module Reports
 
     def hours(rows)
       rows.sum { |row| BigDecimal(row[:hours].to_s) }.round(2).to_f
+    end
+
+    # Each line's minutes rounded cumulatively within its entry, so an
+    # entry's line minutes add up to its hours in minutes.
+    def cumulative_minutes(hours_list)
+      cumulative = BigDecimal("0")
+      previous = 0
+      hours_list.map do |value|
+        cumulative += BigDecimal(value.to_s)
+        rounded = minutes_for(cumulative)
+        minutes = rounded - previous
+        previous = rounded
+        minutes
+      end
+    end
+
+    def minutes_for(decimal_hours)
+      (BigDecimal(decimal_hours.to_s) * 60).round.to_i
     end
 
     def label(minutes)
