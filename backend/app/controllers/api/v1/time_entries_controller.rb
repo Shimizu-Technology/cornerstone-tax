@@ -173,15 +173,6 @@ module Api
         @time_entry.transaction do
           # Serialize edits of one entry (see TimeEntry#lock_for_work_lines!).
           @time_entry.lock_for_work_lines!
-          # Decided on the locked, re-read row: a clock-out that completed the
-          # entry after this request loaded it must not let a staff edit skip
-          # review.
-          if !current_user.admin? && @time_entry.status == "completed"
-            update_params[:approval_status] = "pending"
-            update_params[:approved_by_id] = nil
-            update_params[:approved_at] = nil
-            update_params[:approval_note] = append_review_note(@time_entry.approval_note)
-          end
           saved = @time_entry.update(update_params)
           if saved && break_update
             break_replace_error = replace_break_records(@time_entry, break_update[:breaks])
@@ -189,8 +180,10 @@ module Api
           end
           raise ActiveRecord::Rollback unless saved
 
-          # Staff edits that change attendance (date, times, hours, breaks)
-          # go back to an admin. Edits to work lines only (client, what was
+          # Decided after the lock, on the saved row. Staff edits that change
+          # attendance (date, times, hours, breaks) go back to an admin; old_values
+          # were read before the lock, so an entry a clock-out completed meanwhile
+          # also counts as changed and goes to review. Edits to work lines only (client, what was
           # done, category, task, period) keep the approval as it is, as long
           # as the hours stay the same.
           if !current_user.admin? && @time_entry.status == "completed" &&
