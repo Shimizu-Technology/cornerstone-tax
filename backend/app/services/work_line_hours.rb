@@ -71,6 +71,75 @@ module WorkLineHours
     minutes
   end
 
+  # One submitted line's time, as either
+  #   { exact: BigDecimal } - exact_hours: an unchanged line's stored hours,
+  #                           kept exactly as sent, never rescaled; or
+  #   { minutes: Rational } - minutes / hours / duration: a line the person
+  #                           changed (or a new one); these absorb rounding
+  #                           and whatever time the exact lines leave.
+  # Contract: docs/TIME_ENTRY_WORK_LINES_API.md.
+  def line_time(attrs)
+    attrs = attrs.to_h.symbolize_keys
+    return { minutes: line_minutes(attrs) } if attrs[:exact_hours].blank?
+
+    exact = begin
+      BigDecimal(attrs[:exact_hours].to_s)
+    rescue ArgumentError
+      raise Error, "exact_hours must be a number of hours (e.g. 0.25)"
+    end
+    raise Error, "exact_hours must be more than 0" unless exact.positive?
+    raise Error, "exact_hours can have at most two decimals (it is a line's stored hours)" unless exact == exact.round(2)
+
+    { exact: exact }
+  end
+
+  # Line hours for a mix of exact and changed lines. Exact lines keep their
+  # hours. The changed lines share what is left (total minus exact) by
+  # their minutes, with cumulative rounding; they must come within the
+  # tolerance of that remainder (plus one minute per exact line, the most
+  # their rounded display minutes can be off), and each must still get
+  # more than zero. Otherwise this raises instead of touching exact lines.
+  def allocate(total_hours, times, tolerance_minutes: DEFAULT_TOLERANCE_MINUTES)
+    raise Error, "Add at least one work line" if times.empty?
+    if total_hours.blank?
+      raise Error, "Set this entry's start and end times (or leave both blank for a day log) before adding work lines"
+    end
+
+    total = BigDecimal(total_hours.to_s).round(2)
+    exact_sum = times.sum { |time| time[:exact] || 0 }
+    flexible = times.each_index.reject { |index| times[index][:exact] }
+
+    if flexible.empty?
+      return times.map { |time| time[:exact] } if exact_sum == total
+
+      raise Error, "The unchanged lines add up to #{format('%.2f', exact_sum)}h but this entry is #{format('%.2f', total)}h. " \
+                   "Change at least one line's time so they add up."
+    end
+
+    remainder = total - exact_sum
+    unless remainder.positive?
+      raise Error, "The lines you didn't change already use #{format('%.2f', exact_sum)}h of this entry's #{format('%.2f', total)}h, " \
+                   "so the changed lines have no time left. Change the other lines too."
+    end
+
+    exact_count = times.size - flexible.size
+    flexible_minutes = flexible.map { |index| times[index][:minutes] }
+    parts = begin
+      distribute(remainder, flexible_minutes, tolerance_minutes: tolerance_minutes + exact_count)
+    rescue Error
+      raise if exact_count.zero?
+
+      raise Error, "The changed lines add up to #{format_minutes(flexible_minutes.sum.round)}, but " \
+                   "#{format_minutes((remainder * 60).round)} is left after the lines you didn't change. Adjust the changed lines."
+    end
+    if parts.any? { |part| part <= 0 }
+      raise Error, "A changed line would get no time once the unchanged lines keep theirs. Change the other lines too."
+    end
+
+    flexible_parts = flexible.zip(parts).to_h
+    times.each_index.map { |index| times[index][:exact] || flexible_parts.fetch(index) }
+  end
+
   # Total hours for lines with no clock times (a manual day log).
   def hours_for_minutes(total_minutes)
     (BigDecimal(total_minutes.to_r.numerator) / total_minutes.to_r.denominator / 60).round(2)

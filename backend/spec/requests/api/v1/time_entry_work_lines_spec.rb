@@ -204,4 +204,32 @@ RSpec.describe "Time entry work lines API", type: :request do
       expect { entry.lock_for_work_lines! }.to raise_error(ActiveRecord::TransactionIsolationError)
     end
   end
+
+  it "locks entries for bulk approval in id order" do
+    entries = Array.new(3) { create(:time_entry, user: employee, work_date: work_date, approval_status: "pending") }
+    queries = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+      queries << payload[:sql] if payload[:sql].include?("FOR UPDATE") && payload[:sql].include?('"time_entries"')
+    end
+    post "/api/v1/time_entries/bulk_approve", params: { entry_ids: entries.map(&:id).reverse }.to_json, headers: headers_for(admin)
+    ActiveSupport::Notifications.unsubscribe(subscriber)
+
+    expect(response).to have_http_status(:ok)
+    bulk_lock = queries.find { |sql| sql.include?("IN (") }
+    expect(bulk_lock).to match(/ORDER BY "time_entries"\."id" ASC.*FOR UPDATE/m)
+  end
+  it "accepts exact_hours for unchanged lines through the API" do
+    entry = create(:time_entry, user: employee, work_date: work_date, approval_status: "approved")
+    entry.work_lines_input = [ { client_id: client_a.id, minutes: 160 }, { client_id: client_b.id, minutes: 160 }, { client_id: client_a.id, minutes: 160 } ]
+    entry.save!
+    stored = entry.work_lines.map { |line| line.hours.to_f }
+
+    patch "/api/v1/time_entries/#{entry.id}", params: {
+      time_entry: { work_lines: [ { client_id: client_a.id, minutes: 100 }, { client_id: client_b.id, minutes: 220 },
+                                  { client_id: client_a.id, exact_hours: stored[2] } ] }
+    }.to_json, headers: headers_for(admin)
+
+    expect(response).to have_http_status(:ok)
+    expect(json.dig(:time_entry, :work_lines).map { |line| line[:hours] }.last).to eq(stored[2])
+  end
 end

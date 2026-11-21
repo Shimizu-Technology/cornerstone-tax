@@ -68,8 +68,7 @@ class TimeClockService
         raise ClockError, "This clock-in has already ended. Refresh to see your current status." unless entry.active?
 
         if entry.status == "on_break"
-          active_break = entry.active_break
-          active_break&.close!
+          locked_active_break(entry)&.close!
         end
 
         now = Time.current
@@ -122,12 +121,18 @@ class TimeClockService
     end
 
     # ── Start Break ──
+    # Lock order for every break operation: the time entry first, then its
+    # break, with the status re-checked after the locks (clock-out and the
+    # stale auto-close use the same order, so they cannot deadlock).
     def start_break(user:, admin_override_by: nil)
       entry = active_entry_for(user)
       raise ClockError, "You are not currently clocked in" unless entry
-      raise ClockError, "You are already on a break" if entry.status == "on_break"
 
       ActiveRecord::Base.transaction do
+        entry.lock_for_work_lines!
+        raise ClockError, "You are not currently clocked in" unless entry.active?
+        raise ClockError, "You are already on a break" if entry.status == "on_break"
+
         now = Time.current
         entry.time_entry_breaks.create!(start_time: now)
         entry.admin_override = true if admin_override_by.present?
@@ -143,12 +148,15 @@ class TimeClockService
     def end_break(user:, admin_override_by: nil)
       entry = active_entry_for(user)
       raise ClockError, "You are not currently clocked in" unless entry
-      raise ClockError, "You are not currently on a break" unless entry.status == "on_break"
-
-      active_break = entry.active_break
-      raise ClockError, "No active break found" unless active_break
 
       ActiveRecord::Base.transaction do
+        entry.lock_for_work_lines!
+        raise ClockError, "You are not currently clocked in" unless entry.active?
+        raise ClockError, "You are not currently on a break" unless entry.status == "on_break"
+
+        active_break = locked_active_break(entry)
+        raise ClockError, "No active break found" unless active_break
+
         active_break.close!
         entry.admin_override = true if admin_override_by.present?
         entry.update!(status: "clocked_in")
@@ -284,6 +292,11 @@ class TimeClockService
 
     # ── Helpers ──
 
+    # The open break, row-locked. Call only after the entry is locked.
+    def locked_active_break(entry)
+      entry.time_entry_breaks.active.order(:id).lock.first
+    end
+
     def ensure_expected_entry!(entry, expected_entry_id)
       return if expected_entry_id.blank?
       return if entry.id == expected_entry_id.to_i
@@ -322,7 +335,7 @@ class TimeClockService
             next unless entry.active?
 
             if entry.status == "on_break"
-              entry.active_break&.close!
+              locked_active_break(entry)&.close!
             end
 
             guam_now = Time.current.in_time_zone(business_timezone)

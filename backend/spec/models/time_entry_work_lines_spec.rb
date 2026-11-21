@@ -131,4 +131,60 @@ RSpec.describe "TimeEntry work lines" do
       expect(split.reload.description).to eq("A; B")
     end
   end
+  describe "mixed edits: exact and changed lines" do
+    let(:stored) { %w[0.08 0.08 0.14 0.05 0.17 0.19] }
+    let(:entry) do
+      record = TimeEntry.new(user: user, work_date: Date.new(2026, 11, 16), entry_method: "clock", status: "completed", approval_status: nil,
+                             start_time: tz.parse("2026-11-16 09:00:00"), end_time: tz.parse("2026-11-16 09:42:36"))
+      record.work_lines_input = stored.each_with_index.map { |hours, index| { client_id: index.even? ? client_a.id : client_b.id, exact_hours: hours } }
+      record.save!
+      record
+    end
+
+    it "keeps untouched lines' exact hours; only the changed lines absorb the rest" do
+      expect(entry.hours).to eq(BigDecimal("0.71"))
+      expect(entry.work_lines.map { |line| line.hours.to_s("F") }).to eq(stored.map { |h| BigDecimal(h).to_s("F") })
+
+      lines = entry.work_lines.map { |line| { client_id: line.client_id, exact_hours: line.hours.to_s("F") } }
+      lines[0] = { client_id: client_a.id, minutes: 4 }
+      lines[1] = { client_id: client_b.id, minutes: 6 }
+      entry.work_lines_input = lines
+      entry.save!
+
+      expect(entry.work_lines.reload.map { |line| line.hours.to_f }).to eq([ 0.06, 0.10, 0.14, 0.05, 0.17, 0.19 ])
+    end
+
+    it "refuses instead of altering untouched lines when the changed lines can't absorb the rest" do
+      lines = entry.work_lines.map { |line| { client_id: line.client_id, exact_hours: line.hours.to_s("F") } }
+      lines[0] = { client_id: client_a.id, minutes: 30 }
+      entry.work_lines_input = lines
+
+      expect(entry.save).to be(false)
+      expect(entry.errors.full_messages.to_sentence).to include("is left after the lines you didn't change")
+      expect(entry.work_lines.reload.map { |line| line.hours.to_s("F") }).to eq(stored.map { |h| BigDecimal(h).to_s("F") })
+    end
+
+    it "refuses when exact lines alone no longer add up to the entry" do
+      entry.update_columns(end_time: tz.parse("2026-11-16 09:50:00"), hours: 0.83)
+      entry.reload.work_lines_input = entry.work_lines.map { |line| { client_id: line.client_id, exact_hours: line.hours.to_s("F") } }
+
+      expect(entry.save).to be(false)
+      expect(entry.errors.full_messages.to_sentence).to include("Change at least one line's time")
+    end
+
+    it "refuses when the exact lines already use all of the time" do
+      lines = entry.work_lines.map { |line| { client_id: line.client_id, exact_hours: line.hours.to_s("F") } }
+      lines << { client_id: client_a.id, minutes: 5 }
+      entry.work_lines_input = lines
+
+      expect(entry.save).to be(false)
+      expect(entry.errors.full_messages.to_sentence).to include("the changed lines have no time left")
+    end
+
+    it "rejects malformed exact_hours" do
+      entry.work_lines_input = [ { client_id: client_a.id, exact_hours: "0.123" } ]
+      expect(entry.save).to be(false)
+      expect(entry.errors.full_messages.to_sentence).to include("at most two decimals")
+    end
+  end
 end

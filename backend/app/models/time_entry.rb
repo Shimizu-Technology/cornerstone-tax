@@ -292,9 +292,12 @@ class TimeEntry < ApplicationRecord
   def build_submitted_work_lines
     raise WorkLineHours::Error, "Add at least one work line" if @work_lines_input.empty?
 
-    minutes = @work_lines_input.map { |line| WorkLineHours.line_minutes(line) }
-    self.hours = WorkLineHours.hours_for_minutes(minutes.sum) if duration_only?
-    parts = WorkLineHours.distribute(hours, minutes, tolerance_minutes: work_lines_tolerance_minutes)
+    times = @work_lines_input.map { |line| WorkLineHours.line_time(line) }
+    if duration_only?
+      flexible_minutes = times.sum { |time| time[:minutes] || 0 }
+      self.hours = times.sum { |time| time[:exact] || 0 } + (flexible_minutes.positive? ? WorkLineHours.hours_for_minutes(flexible_minutes) : 0)
+    end
+    parts = WorkLineHours.allocate(hours, times, tolerance_minutes: work_lines_tolerance_minutes)
 
     work_lines.each { |line| line.mark_for_destruction if line.persisted? }
     built = @work_lines_input.each_with_index.map do |line, index|

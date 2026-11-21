@@ -6,7 +6,7 @@ module Api
       PENDING_APPROVAL_SORTS = %w[work_date created_at employee hours approval_type category client service].freeze
       PENDING_APPROVAL_DIRECTIONS = %w[asc desc].freeze
       PENDING_APPROVAL_TYPES = %w[time_entry overtime both].freeze
-      WORK_LINE_PARAMS = %i[client_id description service_type_id service_task_id period_type period_start hours minutes duration].freeze
+      WORK_LINE_PARAMS = %i[client_id description service_type_id service_task_id period_type period_start hours minutes duration exact_hours].freeze
       WORK_LINE_INCLUDES = [ :client, :service_type, :service_task, { time_entry: :time_category } ].freeze
 
       before_action :authenticate_user!
@@ -447,7 +447,9 @@ module Api
         updated_entry_ids = []
         error_message = nil
         ActiveRecord::Base.transaction do
-          entries_by_id = TimeEntry.where(id: entry_ids).lock.index_by(&:id)
+          # Multi-row locks are always taken in id order, so two bulk
+          # approvals over overlapping entries cannot deadlock.
+          entries_by_id = TimeEntry.where(id: entry_ids).order(:id).lock.index_by(&:id)
           missing_ids = entry_ids - entries_by_id.keys
           if missing_ids.any?
             error_message = "One or more selected entries could not be found"
