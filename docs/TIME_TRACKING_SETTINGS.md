@@ -79,7 +79,9 @@ the entry goes to pending if it was unscheduled and the person isn't on
 flexible hours. So switching the flag during a shift takes effect at
 clock-out, either way. The clock card's message follows the current flag.
 The migration backfills `unscheduled_clock_in` from the existing "Clocked in
-without a schedule" notes.
+without a schedule" notes. A clock-in the previous release writes during the
+deploy carries that note without the flag; clock-out treats the note as
+unscheduled too, so it still goes to approval.
 
 Admins switch it in **Users → Team** (each change is recorded in Activity).
 Staff can't change it, including for themselves.
@@ -111,8 +113,9 @@ the server:
 
 1. takes the same advisory lock that locking a time period takes, so a period
    locked while the approval runs either waits for it or is seen by it;
-2. locks the entries in id order and skips any whose version moved since the
-   preview (`changed_count`);
+2. locks the entries' owners (users, `FOR NO KEY UPDATE`), then the entries,
+   both in id order, and skips any entry whose version moved since the preview
+   (`changed_count`);
 3. re-checks the rule, including period locks, and skips any that no longer
    qualify (`ineligible_count`);
 4. approves the rest, writing an audit row for each ("Approved in bulk:
@@ -125,3 +128,16 @@ Endpoints (admin only):
 - `GET /api/v1/time_entries/unscheduled_only_approvals`
 - `POST /api/v1/time_entries/approve_unscheduled_only` with
   `entries: [{ id, version }]` from the preview (at most 500).
+
+## Locking notes
+
+- Every user row lock used as a mutex is `FOR NO KEY UPDATE` (`User::ROW_MUTEX`):
+  day-log creates, approval owner locks, flexible-hours and employment
+  changes. It serializes those paths but doesn't block the `KEY SHARE` lock
+  that inserting a row referencing the user takes (for example an audit row),
+  so an approval and a staff edit of the same entry can't deadlock.
+- Order: period/settings advisory locks, then users, then entries, each in id
+  order.
+- If PostgreSQL still reports a deadlock, the API answers 409 ("Please try
+  again"); nothing was saved.
+

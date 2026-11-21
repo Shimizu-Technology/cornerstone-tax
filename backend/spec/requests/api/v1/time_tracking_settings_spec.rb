@@ -88,6 +88,16 @@ RSpec.describe "Time tracking settings", type: :request do
       expect(TimeEntry.where(user: employee).last).to have_attributes(approval_status: "pending", approval_note: "Clocked in without a schedule")
     end
 
+    it "still sends a clock-in the previous release wrote during the deploy to approval" do
+      travel_to(guam.parse("2026-11-18 09:00")) { post "/api/v1/time_entries/clock_in", headers: headers_for(employee) }
+      # The old code wrote the note at clock-in and knows nothing of the flag.
+      TimeEntry.clocked_in.find_by!(user: employee).update_columns(unscheduled_clock_in: false, approval_note: "Clocked in without a schedule")
+
+      travel_to(guam.parse("2026-11-18 10:00")) { post "/api/v1/time_entries/clock_out", headers: headers_for(employee) }
+
+      expect(TimeEntry.where(user: employee).last).to have_attributes(approval_status: "pending", approval_note: "Clocked in without a schedule")
+    end
+
     it "drops the note an older clock-in wrote when the person is now on flexible hours" do
       employee.update!(flexible_hours: true)
       travel_to(guam.parse("2026-11-18 09:00")) { post "/api/v1/time_entries/clock_in", headers: headers_for(employee) }
@@ -125,7 +135,8 @@ RSpec.describe "Time tracking settings", type: :request do
       expect(employee.reload.flexible_hours).to be(true)
       log = AuditLog.where(auditable: employee).sole
       expect(log).to have_attributes(action: "updated", user_id: admin.id, metadata: "Flexible hours turned on")
-      expect(log.changes_made).to eq("flexible_hours" => [ false, true ])
+      # The { from, to } shape the Activity page shows as a transition.
+      expect(log.changes_made).to eq("flexible_hours" => { "from" => false, "to" => true })
     end
 
     it "can't be switched by staff, even for themselves" do
@@ -246,6 +257,26 @@ RSpec.describe "Time tracking settings", type: :request do
       expect(json[:error]).to eq("Approve at most 1 entries at a time")
     end
 
+    it "refuses rows that aren't { id, version } objects" do
+      [ [ [ only_unscheduled.id ] ], [ only_unscheduled.id ], [ "#{only_unscheduled.id}" ], [ nil ], [ { id: only_unscheduled.id, version: "x" } ] ].each do |rows|
+        post "/api/v1/time_entries/approve_unscheduled_only", params: { entries: rows }.to_json, headers: headers_for(admin)
+
+        expect(response).to have_http_status(:unprocessable_entity), "#{rows.inspect} gave #{response.status}"
+        # Rails turns [nil] into an empty list ("Nothing to approve").
+        expect(json[:error]).to eq("Each entry needs its id and version from the preview. Refresh the preview.") unless rows == [ nil ]
+      end
+      expect(only_unscheduled.reload.approval_status).to eq("pending")
+    end
+
+    it "answers a deadlock with 409 and a retry message instead of 500" do
+      allow(TimeClockService).to receive(:approve_entry).and_raise(ActiveRecord::Deadlocked, "PG::TRDeadlockDetected: deadlock detected")
+
+      post "/api/v1/time_entries/#{only_unscheduled.id}/approve", headers: headers_for(admin)
+
+      expect(response).to have_http_status(:conflict)
+      expect(json).to include(code: "retry", error: "Someone else was saving this at the same time. Please try again.")
+    end
+
     it "requires the version from the preview" do
       post "/api/v1/time_entries/approve_unscheduled_only", params: { entries: [ { id: only_unscheduled.id } ] }.to_json, headers: headers_for(admin)
       expect(response).to have_http_status(:unprocessable_entity)
@@ -274,7 +305,7 @@ RSpec.describe "Time tracking settings", type: :request do
       logs = AuditLog.where(auditable_type: "TimeEntry", auditable_id: [ only_unscheduled.id, second.id ])
       expect(logs.count).to eq(2)
       expect(logs.map { |log| [ log.user_id, log.action, log.metadata, log.changes_made ] }.uniq).to eq(
-        [ [ admin.id, "updated", "Approved in bulk: unscheduled-only", { "approval_status" => [ "pending", "approved" ] } ] ]
+        [ [ admin.id, "updated", "Approved in bulk: unscheduled-only", { "approval_status" => { "from" => "pending", "to" => "approved" } } ] ]
       )
     end
 

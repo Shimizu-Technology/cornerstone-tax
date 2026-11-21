@@ -1,11 +1,13 @@
 # frozen_string_literal: true
 
 require "rails_helper"
+require Rails.root.join("spec/support/concurrency_helpers").to_s
 
 # Races found in review of the time tracking settings (#69). Each example
 # runs real requests on their own threads and database connections.
 RSpec.describe "Settings and approval races", type: :request do
   self.use_transactional_tests = false
+  include ConcurrencyHelpers
 
   let(:tz) { ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE] }
   let!(:admin) { User.create!(email: "race-admin-#{SecureRandom.hex(4)}@example.test", clerk_id: "race_#{SecureRandom.hex(4)}", first_name: "R", last_name: "Admin", role: "admin") }
@@ -30,27 +32,6 @@ RSpec.describe "Settings and approval races", type: :request do
     [ status, text.present? ? JSON.parse(text) : {} ]
   end
 
-  # Runs block in a transaction on its own connection and keeps it open until
-  # the example's block finishes (released even when an expectation fails).
-  def while_held(setup)
-    held = Queue.new
-    release = Queue.new
-    holder = Thread.new do
-      ActiveRecord::Base.connection_pool.with_connection do
-        ActiveRecord::Base.transaction do
-          setup.call
-          held << true
-          release.pop
-        end
-      end
-    end
-    held.pop
-    yield
-  ensure
-    release << true
-    holder.join(10)
-  end
-
   before do
     # Routes load lazily in the test environment; load them before racing.
     call("GET", "/api/v1/admin/settings")
@@ -62,9 +43,9 @@ RSpec.describe "Settings and approval races", type: :request do
     saving = nil
 
     # Another admin is clearing the anchor; this save relies on it.
-    while_held(-> { Setting.serialize_updates!; Setting.set("time_pay_period_anchor", "") }) do
+    while_holding(-> { Setting.serialize_updates!; Setting.set("time_pay_period_anchor", "") }) do
       saving = Thread.new { call("PUT", "/api/v1/admin/settings", { time_pay_schedule: "weekly" }) }
-      sleep 0.5
+      expect(wait_for_lock_waiters).to be(true)
     end
     status, body = saving.join(10)&.value
 
@@ -77,9 +58,9 @@ RSpec.describe "Settings and approval races", type: :request do
     switching = nil
 
     # Another admin has just switched it on and hasn't committed yet.
-    while_held(-> { User.lock.find(staff.id).update!(flexible_hours: true) }) do
+    while_holding(-> { User.lock(User::ROW_MUTEX).find(staff.id).update!(flexible_hours: true) }) do
       switching = Thread.new { call("PATCH", "/api/v1/admin/users/#{staff.id}", { flexible_hours: true }) }
-      sleep 0.5
+      expect(wait_for_lock_waiters).to be(true)
     end
     status, = switching.join(10)&.value
 

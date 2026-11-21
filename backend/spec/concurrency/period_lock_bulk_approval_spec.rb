@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "rails_helper"
+require Rails.root.join("spec/support/concurrency_helpers").to_s
 
 # Locking a time period and "Approve unscheduled-only entries" take the same
 # advisory lock (TimePeriodLock.serialize_with_approvals!). Each example holds
@@ -8,6 +9,7 @@ require "rails_helper"
 # entry in a period that is being locked is never approved.
 RSpec.describe "Period locks and bulk approval", type: :request do
   self.use_transactional_tests = false
+  include ConcurrencyHelpers
 
   let(:tz) { ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE] }
   let!(:admin) { User.create!(email: "plk-admin-#{SecureRandom.hex(4)}@example.test", clerk_id: "plk_#{SecureRandom.hex(4)}", first_name: "P", last_name: "Admin", role: "admin") }
@@ -38,20 +40,6 @@ RSpec.describe "Period locks and bulk approval", type: :request do
     [ status, text.present? ? JSON.parse(text) : {} ]
   end
 
-  # Runs block inside a transaction on its own connection, holding it open
-  # until release is pushed.
-  def hold_open(held, release, &block)
-    Thread.new do
-      ActiveRecord::Base.connection_pool.with_connection do
-        ActiveRecord::Base.transaction do
-          block.call
-          held << true
-          release.pop
-        end
-      end
-    end
-  end
-
   def lock_count_now
     ActiveRecord::Base.connection_pool.with_connection { TimePeriodLock.where(locked_by_id: admin.id).count }
   end
@@ -61,25 +49,12 @@ RSpec.describe "Period locks and bulk approval", type: :request do
     call("GET", "/api/v1/time_entries/unscheduled_only_approvals")
   end
 
-  # Releases the held transaction even when an expectation fails, so a
-  # failing example can't leave the advisory lock held for the next one.
-  def with_held(held, release, holder)
-    held.pop
-    yield
-  ensure
-    release << true
-    holder.join(10)
-  end
-
   it "makes locking a period wait for a bulk approval in progress" do
-    held = Queue.new
-    release = Queue.new
-    approval = hold_open(held, release) { TimePeriodLock.serialize_with_approvals! }
     locking = nil
 
-    with_held(held, release, approval) do
+    while_holding(-> { TimePeriodLock.serialize_with_approvals! }) do
       locking = Thread.new { call("POST", "/api/v1/admin/time_period_locks", { start_date: "2026-11-01", end_date: "2026-11-07" }) }
-      sleep 0.5
+      expect(wait_for_lock_waiters).to be(true)
       expect(lock_count_now).to eq(0)
     end
     status, = locking.join(10)&.value
@@ -91,18 +66,16 @@ RSpec.describe "Period locks and bulk approval", type: :request do
     _, preview = call("GET", "/api/v1/time_entries/unscheduled_only_approvals")
     expect(preview["entry_ids"]).to eq([ entry.id ])
 
-    held = Queue.new
-    release = Queue.new
-    locking = hold_open(held, release) do
+    approving = nil
+    lock_period = lambda do
       TimePeriodLock.serialize_with_approvals!
       TimePeriodLock.create!(start_date: Date.new(2026, 11, 1), end_date: Date.new(2026, 11, 7), locked_at: Time.current, locked_by: admin)
     end
-    approving = nil
 
-    with_held(held, release, locking) do
+    while_holding(lock_period) do
       approving = Thread.new { call("POST", "/api/v1/time_entries/approve_unscheduled_only", { entries: preview["entries"] }) }
-      sleep 0.5
-      expect(approving).to be_alive
+      # The confirm is seen waiting on the guard, not merely not finished yet.
+      expect(wait_for_lock_waiters).to be(true)
     end
     status, body = approving.join(10)&.value
     expect(status).to eq(200)

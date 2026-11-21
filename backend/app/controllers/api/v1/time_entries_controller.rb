@@ -120,7 +120,7 @@ module Api
           # One day log per person per day unless another is asked for
           # deliberately. The owner's row lock serializes concurrent creates.
           if @time_entry.duration_only? && !additional_day_log?
-            entry_owner.lock!
+            entry_owner.lock!(User::ROW_MUTEX)
             existing_day_log = entry_owner.time_entries.where(work_date: @time_entry.work_date, entry_method: "manual",
                                                               start_time: nil, end_time: nil)
                                           .where("approval_status IS NULL OR approval_status <> 'denied'").order(:id).first
@@ -605,7 +605,7 @@ module Api
             raise ActiveRecord::Rollback if error_message
 
             AuditLog.log(auditable: entry, action: "updated", user: current_user,
-                         changes_made: { "approval_status" => [ "pending", "approved" ] },
+                         changes_made: { "approval_status" => { from: "pending", to: "approved" } },
                          metadata: "Approved in bulk: unscheduled-only")
             invalidate_exports_for_entry!(entry, "Unscheduled-only entry approved in bulk")
             approved_ids << entry.id
@@ -868,7 +868,7 @@ module Api
       # takes users before entries, so they can't deadlock.
       def lock_entry_owners!(entry_ids)
         user_ids = TimeEntry.where(id: entry_ids).distinct.pluck(:user_id).compact.sort
-        User.where(id: user_ids).order(:id).lock.pluck(:id)
+        User.where(id: user_ids).order(:id).lock(User::ROW_MUTEX).pluck(:id)
       end
 
       # { id => version } from the preview; renders 422 when it's missing or
@@ -877,11 +877,16 @@ module Api
         rows = params[:entries]
         rows = rows.to_unsafe_h.values if rows.respond_to?(:to_unsafe_h)
         rows = Array(rows)
+        malformed = { json: { error: "Each entry needs its id and version from the preview. Refresh the preview." }, status: :unprocessable_entity }
         previewed = rows.each_with_object({}) do |row, memo|
-          row = row.respond_to?(:to_unsafe_h) ? row.to_unsafe_h : row.to_h
+          row = row.to_unsafe_h if row.respond_to?(:to_unsafe_h)
+          # Only { id:, version: } objects; an array or scalar row is refused
+          # here rather than failing in a conversion.
+          return render(**malformed) unless row.is_a?(Hash)
+
           id = Integer(row["id"] || row[:id], exception: false)
           version = Integer(row["version"] || row[:version], exception: false)
-          return render(json: { error: "Each entry needs its id and version from the preview. Refresh the preview." }, status: :unprocessable_entity) unless id&.positive? && version && version >= 0
+          return render(**malformed) unless id&.positive? && version && version >= 0
 
           memo[id] = version
         end

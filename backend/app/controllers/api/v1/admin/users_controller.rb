@@ -165,13 +165,14 @@ module Api
 
           # Locked and re-read first, so the audit row records the change that
           # actually happened even when two admins switch it at once.
-          saved = @user.with_lock do
+          saved = @user.with_lock(User::ROW_MUTEX) do
             changes = permitted.to_h { |key, value| [ key.to_s, [ @user.public_send(key), value ] ] }.reject { |_, (from, to)| from == to }
             next false unless @user.update(permitted)
 
             if changes.key?("flexible_hours")
               AuditLog.log(auditable: @user, action: "updated", user: current_user,
-                           changes_made: { "flexible_hours" => changes["flexible_hours"] },
+                           # { from:, to: }, the shape the Activity page reads.
+                           changes_made: { "flexible_hours" => { from: changes["flexible_hours"][0], to: changes["flexible_hours"][1] } },
                            metadata: "Flexible hours turned #{@user.flexible_hours? ? 'on' : 'off'}")
             end
             true
@@ -206,7 +207,7 @@ module Api
           end
 
           User.transaction do
-            @user.lock!
+            @user.lock!(User::ROW_MUTEX)
             before = lifecycle_snapshot(@user)
             @user.reactivate!
             AuditLog.log(
@@ -309,7 +310,7 @@ module Api
           end
 
           User.transaction do
-            @user.lock!
+            @user.lock!(User::ROW_MUTEX)
             before = lifecycle_snapshot(@user)
             @user.terminate!(by: current_user, effective_on: effective_on, reason: reason)
             AuditLog.log(

@@ -83,8 +83,9 @@ class TimeClockService
         # Unscheduled time goes to approval unless the person is on flexible
         # hours now (switching the flag mid-shift counts, either way).
         # Corrected times and overtime go to approval regardless.
+        unscheduled_review = unscheduled_needs_approval?(entry, user)
         entry.approval_note = without_unscheduled_note(entry.approval_note)
-        if unscheduled_needs_approval?(entry, user)
+        if unscheduled_review
           entry.approval_note = build_approval_note(UNSCHEDULED_NOTE, entry.approval_note)
           entry.approval_status = "pending"
         end
@@ -233,7 +234,7 @@ class TimeClockService
       entry.transaction do
         # Owner before entry, like the bulk approvals: the overtime check below
         # reads the person's approved hours (see lock_entry_owners!).
-        User.where(id: entry.user_id).lock.pluck(:id)
+        User.where(id: entry.user_id).lock(User::ROW_MUTEX).pluck(:id)
         entry.lock_for_work_lines!
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
@@ -441,8 +442,16 @@ class TimeClockService
       BUSINESS_TIMEZONE
     end
 
+    # Unscheduled is the recorded flag, or the legacy note: a clock-in written
+    # by the previous release during the deploy has the note but not the flag
+    # (the migration only backfills rows that existed when it ran).
     def unscheduled_needs_approval?(entry, user)
-      entry.unscheduled_clock_in? && !user&.flexible_hours?
+      unscheduled = entry.unscheduled_clock_in? || legacy_unscheduled_note?(entry.approval_note)
+      unscheduled && !user&.flexible_hours?
+    end
+
+    def legacy_unscheduled_note?(note)
+      note.to_s.split(" | ").map(&:strip).include?(UNSCHEDULED_NOTE)
     end
 
     # Clock-ins before unscheduled_clock_in existed wrote the note at clock-in;

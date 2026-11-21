@@ -69,7 +69,7 @@ namespace :employment do
     end
 
     ActiveRecord::Base.transaction do
-      employee = User.lock.find(employee.id) if employee
+      employee = User.lock(User::ROW_MUTEX).find(employee.id) if employee
       entries = TimeEntry.lock.where(id: entry_ids).order(:id).to_a
       schedules = Schedule.lock.where(id: schedule_ids).order(:id).to_a
       actual_hours = validate_records.call(entries, schedules, employee)
