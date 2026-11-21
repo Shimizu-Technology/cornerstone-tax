@@ -56,11 +56,10 @@ class ServiceType < ApplicationRecord
   end
 
   def destroy_service_tasks
-    service_tasks.each do |task|
-      next if task.destroy
-
+    refused = service_tasks.reject(&:destroy)
+    refused.each do |task|
       task.errors.full_messages.each { |message| errors.add(:base, "Task #{task.name}: #{message}") }
     end
-    throw(:abort) if errors.any?
+    throw(:abort) if refused.any?
   end
 end

@@ -37,6 +37,14 @@ RSpec.describe ServiceType, type: :model do
       expect(ServiceTask.exists?(free_task.id)).to be(true)
     end
 
+    it "deletes an unused category even when it carries an earlier validation error" do
+      service_type.name = ""
+      service_type.valid?
+
+      expect(service_type.destroy).to be_truthy
+      expect(ServiceTask.exists?(task.id)).to be(false)
+    end
+
     it "deletes a category and its tasks when no time uses them" do
       expect(service_type.destroy).to be_truthy
       expect(ServiceTask.exists?(task.id)).to be(false)
