@@ -127,7 +127,7 @@ const ChevronRightIcon = () => (
 
 // Tabs drop their icons on phones so the staff tabs fit without scrolling.
 const tabClassName = (active: boolean) =>
-  `pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap [&>svg]:hidden sm:[&>svg]:block ${
+  `min-h-11 pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap [&>svg]:hidden sm:[&>svg]:block ${
     active ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-primary-dark'
   }`
 
