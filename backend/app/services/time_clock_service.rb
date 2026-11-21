@@ -2,6 +2,9 @@
 
 class TimeClockService
   BUSINESS_TIMEZONE = "Guam"
+  # The approval note on a clock-in without a schedule. Entries whose only
+  # note is this one can be approved in bulk ("Approve unscheduled-only").
+  UNSCHEDULED_NOTE = "Clocked in without a schedule"
 
   # Optional work details staff can add when clocking out (same fields as a
   # manual entry: client, category, task, period). A key that is present
@@ -26,6 +29,8 @@ class TimeClockService
         validate_clock_in_time(now, schedule)
       end
 
+      # Recorded whatever the person's Flexible hours flag says; clock-out
+      # decides approval from it and the flag at that moment.
       unscheduled = schedule.nil? && admin_override_by.nil?
 
       entry = TimeEntry.new(
@@ -39,7 +44,8 @@ class TimeClockService
         schedule: schedule,
         admin_override: admin_override_by.present?,
         approval_status: nil,
-        approval_note: unscheduled ? "Clocked in without a schedule" : nil,
+        unscheduled_clock_in: unscheduled,
+        approval_note: nil,
         attendance_status: schedule ? calculate_attendance_status(now, schedule) : nil
       )
 
@@ -74,6 +80,16 @@ class TimeClockService
         now = Time.current
         guam_now = now.in_time_zone(business_timezone)
 
+        # Unscheduled time goes to approval unless the person is on flexible
+        # hours now (switching the flag mid-shift counts, either way).
+        # Corrected times and overtime go to approval regardless.
+        unscheduled_review = unscheduled_needs_approval?(entry, user)
+        entry.approval_note = without_unscheduled_note(entry.approval_note)
+        if unscheduled_review
+          entry.approval_note = build_approval_note(UNSCHEDULED_NOTE, entry.approval_note)
+          entry.approval_status = "pending"
+        end
+
         if corrected_end_time.present?
           begin
             parsed = ActiveSupport::TimeZone[business_timezone].parse(corrected_end_time)
@@ -93,9 +109,6 @@ class TimeClockService
         else
           entry.end_time = guam_now
           entry.clock_out_at = now
-          if entry.approval_note&.start_with?("Clocked in without a schedule")
-            entry.approval_status = "pending"
-          end
         end
 
         entry.description = description if description.present?
@@ -205,6 +218,9 @@ class TimeClockService
         } : nil,
         # From this date, every work line needs a client and a description.
         work_details_required_from: TimeEntryWorkRequirement.cutover_date&.iso8601,
+        work_task_required: TimeEntryWorkRequirement.task_required?,
+        # Unscheduled clock-ins by people on flexible hours skip approval.
+        flexible_hours: user.flexible_hours?,
         can_clock_in: clock_in_info[:allowed],
         clock_in_blocked_reason: clock_in_info[:reason],
         minutes_until: clock_in_info[:minutes_until]
@@ -216,6 +232,9 @@ class TimeClockService
       raise AuthorizationError, "Only admins can approve entries" unless approved_by.admin?
 
       entry.transaction do
+        # Owner before entry, like the bulk approvals: the overtime check below
+        # reads the person's approved hours (see lock_entry_owners!).
+        User.where(id: entry.user_id).lock(User::ROW_MUTEX).pluck(:id)
         entry.lock_for_work_lines!
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
@@ -358,7 +377,10 @@ class TimeClockService
               break_minutes: entry.total_break_minutes,
               admin_override: true,
               approval_status: "pending",
-              approval_note: build_approval_note(entry.approval_note, "Auto-closed: clocked in for over #{threshold_hours} hours without clocking out")
+              approval_note: build_approval_note(
+                unscheduled_needs_approval?(entry, entry.user) ? build_approval_note(UNSCHEDULED_NOTE, without_unscheduled_note(entry.approval_note)) : without_unscheduled_note(entry.approval_note),
+                "Auto-closed: clocked in for over #{threshold_hours} hours without clocking out"
+              )
             )
 
             AuditLog.create!(
@@ -418,6 +440,26 @@ class TimeClockService
 
     def business_timezone
       BUSINESS_TIMEZONE
+    end
+
+    # Unscheduled is the recorded flag, or the legacy note: a clock-in written
+    # by the previous release during the deploy has the note but not the flag
+    # (the migration only backfills rows that existed when it ran).
+    def unscheduled_needs_approval?(entry, user)
+      unscheduled = entry.unscheduled_clock_in? || legacy_unscheduled_note?(entry.approval_note)
+      unscheduled && !user&.flexible_hours?
+    end
+
+    def legacy_unscheduled_note?(note)
+      note.to_s.split(" | ").map(&:strip).include?(UNSCHEDULED_NOTE)
+    end
+
+    # Clock-ins before unscheduled_clock_in existed wrote the note at clock-in;
+    # clock-out now decides it, so drop any such note before deciding.
+    def without_unscheduled_note(note)
+      return nil if note.blank?
+
+      note.split(" | ").map(&:strip).reject { |part| part == UNSCHEDULED_NOTE }.join(" | ").presence
     end
 
     def build_approval_note(existing_note, new_note)

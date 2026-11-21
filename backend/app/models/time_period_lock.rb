@@ -6,6 +6,13 @@ class TimePeriodLock < ApplicationRecord
   validates :start_date, :end_date, :locked_at, presence: true
   validate :end_date_on_or_after_start_date
 
+  # Locking a period and bulk-approving entries (time_entries#approve_unscheduled_only)
+  # both take this transaction-scoped advisory lock first. So a period
+  # locked while a bulk approval runs either waits for it to commit, or
+  # commits first and is seen by it; an entry in a locked period is never
+  # approved by it.
+  APPROVAL_ADVISORY_KEY = 0x54504c4b # "TPLK"
+
   scope :covering_date, ->(date) { where("start_date <= ? AND end_date >= ?", date, date) }
   scope :recent, -> { order(start_date: :desc) }
 
@@ -18,6 +25,12 @@ class TimePeriodLock < ApplicationRecord
 
   def self.locked_for_date?(date)
     covering_date(date.to_date).exists?
+  end
+
+  def self.serialize_with_approvals!
+    raise ActiveRecord::TransactionIsolationError, "serialize_with_approvals! must run inside a transaction" unless connection.transaction_open?
+
+    connection.execute("SELECT pg_advisory_xact_lock(#{APPROVAL_ADVISORY_KEY})")
   end
 
   private

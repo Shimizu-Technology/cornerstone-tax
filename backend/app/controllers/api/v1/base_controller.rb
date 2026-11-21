@@ -9,6 +9,10 @@ module Api
       rescue_from ActionController::ParameterMissing, with: :bad_request
       rescue_from ActiveRecord::RecordInvalid, with: :unprocessable_entity
       rescue_from ActiveRecord::RecordNotFound, with: :not_found
+      # Backstop: lock order (users, then entries; see User::ROW_MUTEX) should
+      # prevent deadlocks, but if PostgreSQL still picks this request as the
+      # victim, nothing was saved and a retry is safe.
+      rescue_from ActiveRecord::Deadlocked, with: :retry_later
 
       private
 
@@ -22,6 +26,11 @@ module Api
 
       def bad_request(exception)
         render json: { error: exception.message }, status: :bad_request
+      end
+
+      def retry_later(exception)
+        Rails.logger.warn("Deadlock, asked the client to retry: #{exception.message.lines.first&.strip}")
+        render json: { error: "Someone else was saving this at the same time. Please try again.", code: "retry" }, status: :conflict
       end
 
       def internal_server_error(exception)

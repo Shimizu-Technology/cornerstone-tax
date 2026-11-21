@@ -163,6 +163,51 @@ export default function Users() {
     await fetchUsers()
   }
 
+  // One change per person at a time: role and flexible hours wait for each other.
+  const userBusy = (userId: number) => pendingIds.has(userId) || updatingRoleIds.has(userId)
+
+  const handleFlexibleHoursChange = async (user: AdminUser, flexibleHours: boolean) => {
+    setPageError('')
+    await withPending(user.id, async () => {
+      const response = await api.setUserFlexibleHours(user.id, flexibleHours)
+      if (response.error) return setPageError(response.error)
+      // Only the field this request changed: the rest of the row may be newer
+      // (a role change and reload can land first).
+      const flexible = response.data?.user.flexible_hours
+      if (flexible !== undefined) setAllUsers(previous => previous.map(row => (row.id === user.id ? { ...row, flexible_hours: flexible } : row)))
+    })
+  }
+
+  // Team members only: on flexible hours, a clock-in without a schedule
+  // doesn't go to the approval queue (corrections and overtime still do).
+  const flexibleHoursSwitch = (user: AdminUser) => {
+    const name = user.full_name || user.email
+    const on = Boolean(user.flexible_hours)
+    return (
+      <label className="flex min-h-11 cursor-pointer items-center gap-3">
+        <span className="relative inline-flex shrink-0">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={on}
+            aria-checked={on}
+            aria-label={`Flexible hours for ${name}`}
+            aria-describedby={`flexible-hint-${user.id}`}
+            disabled={currentUserState !== 'ready' || userBusy(user.id)}
+            onChange={event => void handleFlexibleHoursChange(user, event.target.checked)}
+            className="peer sr-only"
+          />
+          <span aria-hidden="true" className="h-6 w-11 rounded-full bg-gray-300 transition-colors peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40 peer-disabled:opacity-50" />
+          <span aria-hidden="true" className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-gray-900">Flexible hours</span>
+          <span id={`flexible-hint-${user.id}`} className="block text-xs text-gray-500">{on ? 'Clock-ins without a shift skip approval' : 'Clock-ins without a shift need approval'}</span>
+        </span>
+      </label>
+    )
+  }
+
   const handleTerminate = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!terminationTarget) return
@@ -243,7 +288,7 @@ export default function Users() {
           <div className="hidden overflow-x-auto sm:block">
             <table className="w-full">
               <thead className="border-b border-secondary-dark bg-secondary/50 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
-                <tr><th className="px-6 py-4">Person</th><th className="px-6 py-4">Role</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">History</th><th className="px-6 py-4 text-right">Actions</th></tr>
+                <tr><th className="px-6 py-4">Person</th><th className="px-6 py-4">Role</th>{isTeam && <th className="px-6 py-4">Hours</th>}<th className="px-6 py-4">Status</th><th className="px-6 py-4">History</th><th className="px-6 py-4 text-right">Actions</th></tr>
               </thead>
               <tbody className="divide-y divide-secondary-dark">
                 {users.map(user => (
@@ -251,9 +296,10 @@ export default function Users() {
                     <td className="px-6 py-4"><p className="font-semibold text-gray-900">{user.full_name || user.email}</p><p className="text-sm text-gray-500">{user.email}</p></td>
                     <td className="px-6 py-4">
                       {isTeam && user.employment_status === 'active' ? (
-                        <select value={user.role} onChange={event => void handleRoleChange(user, event.target.value as 'admin' | 'employee')} disabled={currentUserState !== 'ready' || updatingRoleIds.has(user.id) || user.id === currentUserId} className="min-h-11 rounded-lg border border-secondary-dark bg-secondary px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50" aria-label={`Role for ${user.full_name || user.email}`}><option value="admin">Admin</option><option value="employee">Employee</option></select>
+                        <select value={user.role} onChange={event => void handleRoleChange(user, event.target.value as 'admin' | 'employee')} disabled={currentUserState !== 'ready' || userBusy(user.id) || user.id === currentUserId} className="min-h-11 rounded-lg border border-secondary-dark bg-secondary px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50" aria-label={`Role for ${user.full_name || user.email}`}><option value="admin">Admin</option><option value="employee">Employee</option></select>
                       ) : <span className="text-sm capitalize text-gray-700">{user.role}</span>}
                     </td>
+                    {isTeam && <td className="px-6 py-4">{user.employment_status === 'active' ? flexibleHoursSwitch(user) : <span className="text-sm text-gray-500">—</span>}</td>}
                     <td className="px-6 py-4"><UserStatusBadge user={user} />{user.termination_effective_on && <p className="mt-1 text-xs text-gray-500">Effective {formatDate(user.termination_effective_on)}</p>}</td>
                     <td className="px-6 py-4"><HistorySummary user={user} /></td>
                     <td className="px-6 py-4 text-right">{rowActions(user)}</td>
@@ -267,6 +313,7 @@ export default function Users() {
               <article key={user.id} className="space-y-4 p-4">
                 <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-gray-900">{user.full_name || user.email}</p><p className="break-all text-sm text-gray-500">{user.email}</p></div><UserStatusBadge user={user} /></div>
                 <HistorySummary user={user} />
+                {isTeam && user.employment_status === 'active' && flexibleHoursSwitch(user)}
                 <div className="flex items-center justify-between gap-3"><span className="text-sm capitalize text-gray-700">{user.role}</span>{rowActions(user)}</div>
               </article>
             ))}

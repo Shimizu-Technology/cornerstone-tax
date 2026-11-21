@@ -16,8 +16,27 @@ class Setting < ApplicationRecord
     "early_clock_in_buffer_minutes" => "5",
     # ISO date. From this work date on, every work line needs a client and a
     # description (and a category for internal work). Blank means off.
-    "time_work_details_required_from" => ""
+    "time_work_details_required_from" => "",
+    # "true" or "false". With the cutover on, every line also needs a category
+    # and, when that category has tasks, a task. See TimeEntryWorkRequirement.
+    "time_work_task_required" => "false",
+    # Pay periods for presets in the work summary: semi_monthly (1st-15th and
+    # 16th-end of month), biweekly or weekly. Biweekly and weekly count from
+    # time_pay_period_anchor, the first day of any one period. See PaySchedule.
+    "time_pay_schedule" => "semi_monthly",
+    "time_pay_period_anchor" => ""
   }.freeze
+
+  # Settings saves that check one setting against another (the pay schedule
+  # and its anchor) take this transaction-scoped advisory lock, so a check
+  # can't be made stale by a save that commits in between.
+  UPDATE_ADVISORY_KEY = 0x53455454 # "SETT"
+
+  def self.serialize_updates!
+    raise ActiveRecord::TransactionIsolationError, "serialize_updates! must run inside a transaction" unless connection.transaction_open?
+
+    connection.execute("SELECT pg_advisory_xact_lock(#{UPDATE_ADVISORY_KEY})")
+  end
 
   # Get a setting value (with default fallback)
   def self.get(key)

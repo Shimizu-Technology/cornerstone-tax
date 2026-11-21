@@ -32,13 +32,21 @@ module Api
             reason: lock_params[:reason]
           )
 
-          if lock.save
+          saved = TimePeriodLock.transaction do
+            # Waits for a bulk approval in progress (see TimePeriodLock).
+            TimePeriodLock.serialize_with_approvals!
+            next false unless lock.save
+
             AuditLog.log(
               auditable: lock,
               action: "created",
               user: current_user,
               metadata: "Locked time period #{start_date} to #{end_date}"
             )
+            true
+          end
+
+          if saved
 
             render json: {
               lock: serialize_lock(lock),

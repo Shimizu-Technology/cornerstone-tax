@@ -57,4 +57,6 @@ Every time entry has a `version` (an integer, serialized exactly). It goes up on
 
 ## Cutover rule
 
-From Settings → "Require client and description from": every line needs a client and a description; internal lines (Internal – Cornerstone) also need a category; the task is always optional.
+From Settings → Time tracking → "Required from" (`time_work_details_required_from`): every line needs a client and a description; internal lines (Internal – Cornerstone) also need a category; the task is optional.
+
+With "Require a task on every work line" on (`time_work_task_required`), from the same date every line, client or internal, also needs a category, plus a task when that category has active tasks. A category with no tasks can't take one, so it needs none. The editors read this as `work_task_required` from `GET /api/v1/time_entries/work_line_suggestions` and `current_status`. See `docs/TIME_TRACKING_SETTINGS.md`.

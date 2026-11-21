@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiMock = vi.hoisted(() => ({ getWorkSummary: vi.fn(), downloadWorkSummary: vi.fn() }))
+const apiMock = vi.hoisted(() => ({ getWorkSummary: vi.fn(), downloadWorkSummary: vi.fn(), getPayPeriods: vi.fn() }))
 vi.mock('../../lib/api', () => ({ api: apiMock }))
 
 import WorkSummary from './WorkSummary'
@@ -21,11 +21,19 @@ const summary = {
   counts: { entries: 1, lines: 2, pending_entries: 1, denied_entries: 0, open_clock_entries: 0, unassigned_minutes: 20 },
 }
 
+const payPeriods = {
+  schedule: 'semi_monthly',
+  label: 'Semi-monthly (1st–15th and 16th–end of month)',
+  current: { start_date: '2026-11-16', end_date: '2026-11-30' },
+  previous: { start_date: '2026-11-01', end_date: '2026-11-15' },
+}
+
 describe('WorkSummary', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     apiMock.getWorkSummary.mockResolvedValue({ data: summary })
     apiMock.downloadWorkSummary.mockResolvedValue({ blob: new Blob(['x']), filename: 'Work_Summary.csv' })
+    apiMock.getPayPeriods.mockResolvedValue({ data: payPeriods })
     globalThis.URL.createObjectURL = vi.fn(() => 'blob:x')
     globalThis.URL.revokeObjectURL = vi.fn()
   })
@@ -50,5 +58,77 @@ describe('WorkSummary', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
 
     await waitFor(() => expect(apiMock.downloadWorkSummary).toHaveBeenCalledWith('csv', expect.objectContaining({ user_id: 2 })))
+  })
+
+  it('opens on this pay period and offers the last one, from the pay schedule', async () => {
+    render(<WorkSummary currentUserId={2} isAdmin={false} users={[]} />)
+
+    await waitFor(() => expect(apiMock.getWorkSummary).toHaveBeenCalledWith({ start_date: '2026-11-16', end_date: '2026-11-30', user_id: undefined }))
+    expect(apiMock.getWorkSummary).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Pay schedule: Semi-monthly (1st–15th and 16th–end of month).')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'last_pay_period' } })
+    await waitFor(() => expect(apiMock.getWorkSummary).toHaveBeenLastCalledWith({ start_date: '2026-11-01', end_date: '2026-11-15', user_id: undefined }))
+    expect((screen.getByLabelText('From') as HTMLInputElement).value).toBe('2026-11-01')
+  })
+
+  it('falls back to the last two weeks when the pay periods fail to load', async () => {
+    apiMock.getPayPeriods.mockResolvedValue({ error: 'Network error' })
+    render(<WorkSummary currentUserId={2} isAdmin={false} users={[]} />)
+
+    await waitFor(() => expect(apiMock.getWorkSummary).toHaveBeenCalled())
+    expect((screen.getByLabelText('Period') as HTMLSelectElement).value).toBe('two_weeks')
+    expect(screen.queryByRole('option', { name: /pay period/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps a period picked before the pay periods arrive, when they fail to load', async () => {
+    let resolve: (value: unknown) => void = () => {}
+    apiMock.getPayPeriods.mockReturnValue(new Promise((r) => { resolve = r }))
+    render(<WorkSummary currentUserId={2} isAdmin={false} users={[]} />)
+
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'last_week' } })
+    const from = (screen.getByLabelText('From') as HTMLInputElement).value
+    const to = (screen.getByLabelText('To') as HTMLInputElement).value
+    resolve({ error: 'Network error' })
+
+    await waitFor(() => expect(apiMock.getWorkSummary).toHaveBeenCalled())
+    expect((screen.getByLabelText('Period') as HTMLSelectElement).value).toBe('last_week')
+    expect((screen.getByLabelText('From') as HTMLInputElement).value).toBe(from)
+    expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe(to)
+  })
+
+  it('keeps a date typed before the pay periods arrive, and never mixes it with the default', async () => {
+    let resolve: (value: unknown) => void = () => {}
+    apiMock.getPayPeriods.mockReturnValue(new Promise((r) => { resolve = r }))
+    render(<WorkSummary currentUserId={2} isAdmin={false} users={[]} />)
+
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-12-05' } })
+    resolve({ data: payPeriods })
+
+    await waitFor(() => expect(screen.getByText(/^Pay schedule:/)).toBeInTheDocument())
+    expect((screen.getByLabelText('From') as HTMLInputElement).value).toBe('2026-12-05')
+    expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('')
+    expect((screen.getByLabelText('Period') as HTMLSelectElement).value).toBe('custom')
+    expect(apiMock.getWorkSummary).not.toHaveBeenCalled()
+  })
+
+  it('asks for the pay periods again once the loaded ones have ended', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-11-30T02:00:00Z')) // Nov 30 in Guam
+      render(<WorkSummary currentUserId={2} isAdmin={false} users={[]} />)
+      await waitFor(() => expect(apiMock.getWorkSummary).toHaveBeenCalledWith({ start_date: '2026-11-16', end_date: '2026-11-30', user_id: undefined }))
+
+      vi.setSystemTime(new Date('2026-12-01T02:00:00Z')) // Dec 1 in Guam
+      apiMock.getPayPeriods.mockResolvedValue({ data: { ...payPeriods,
+        current: { start_date: '2026-12-01', end_date: '2026-12-15' }, previous: { start_date: '2026-11-16', end_date: '2026-11-30' } } })
+      fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'last_pay_period' } })
+
+      await waitFor(() => expect(apiMock.getPayPeriods).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect((screen.getByLabelText('From') as HTMLInputElement).value).toBe('2026-11-16'))
+      expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('2026-11-30')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

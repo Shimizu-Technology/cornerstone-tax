@@ -162,3 +162,61 @@ describe('ClockInOutCard clock-out', () => {
     expect(field.value).toBe('Bank rec')
   })
 })
+
+describe('ClockInOutCard task rule freshness', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    apiMock.getServiceTypes.mockResolvedValue({ data: { service_types: serviceTypes } })
+    apiMock.getClientOptions.mockResolvedValue({ data: { clients: [{ id: 5, name: "MoSa's" }] } })
+  })
+
+  it('follows the task rule loaded when the sheet opens, not the older clock status', async () => {
+    apiMock.getClockStatus.mockResolvedValue({ data: { ...clockedIn, work_details_required_from: '2026-11-01', work_task_required: false } })
+    apiMock.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: '2026-11-01', work_task_required: true } })
+
+    const sheet = await openClockOut()
+
+    expect(await sheet.findByText(/plus a task when the category has tasks/)).toBeInTheDocument()
+  })
+
+  it('drops the task rule when the newer settings turned it off', async () => {
+    apiMock.getClockStatus.mockResolvedValue({ data: { ...clockedIn, work_details_required_from: '2026-11-01', work_task_required: true } })
+    apiMock.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: '2026-11-01', work_task_required: false } })
+
+    const sheet = await openClockOut()
+
+    expect(await sheet.findByText(/the task is optional/)).toBeInTheDocument()
+    expect(sheet.queryByText(/plus a task when the category has tasks/)).not.toBeInTheDocument()
+  })
+})
+
+describe('ClockInOutCard without a shift', () => {
+  const notClockedIn = {
+    ...clockedIn, clocked_in: false, status: null, entry_id: null, work_date: null, work_details: null,
+    clock_in_at: null, elapsed_minutes: null, can_clock_in: true, clock_in_blocked_reason: 'no_schedule',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    apiMock.getServiceTypes.mockResolvedValue({ data: { service_types: serviceTypes } })
+    apiMock.getClientOptions.mockResolvedValue({ data: { clients: [] } })
+    apiMock.getWorkLineSuggestions.mockResolvedValue({ data: null })
+  })
+
+  it('says unscheduled time needs approval', async () => {
+    apiMock.getClockStatus.mockResolvedValue({ data: notClockedIn })
+    render(<ClockInOutCard />)
+
+    expect(await screen.findByText(/your time will be sent for manager approval/)).toBeInTheDocument()
+    expect(screen.getByText('No shift scheduled — time will need approval')).toBeInTheDocument()
+  })
+
+  it('says it won’t for someone on flexible hours', async () => {
+    apiMock.getClockStatus.mockResolvedValue({ data: { ...notClockedIn, flexible_hours: true } })
+    render(<ClockInOutCard />)
+
+    expect(await screen.findByText('You’re on flexible hours, so this time won’t need approval.')).toBeInTheDocument()
+    expect(screen.getByText('No shift scheduled — flexible hours, no approval needed')).toBeInTheDocument()
+    expect(screen.queryByText(/manager approval/)).not.toBeInTheDocument()
+  })
+})

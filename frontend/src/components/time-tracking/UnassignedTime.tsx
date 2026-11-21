@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { TimeEntry, UnassignedTimeEntry, UnassignedTimeResponse } from '../../lib/api'
 import { formatMinutes } from '../../lib/workDuration'
+import { requirementHint } from './workLinesModel'
 
 interface UserOption { id: number; full_name?: string; display_name?: string; email?: string }
 
@@ -11,6 +12,7 @@ const MISSING_LABEL: Record<string, string> = {
   client: 'no client',
   description: 'no description',
   category: 'no category',
+  task: 'no task',
 }
 
 function formatDate(iso: string) {
@@ -77,7 +79,7 @@ export default function UnassignedTime({
         <p className="mt-1 text-sm text-text-muted">
           Hours that aren't attributed to a client. Open an entry to add the client and what was done; changing only the work
           lines keeps an approved entry approved.
-          {summary?.cutover_date && <> From {formatDate(summary.cutover_date)}, every line needs a client and a description; internal lines also need a category; the task is always optional.</>}
+          {summary?.cutover_date && <> From {formatDate(summary.cutover_date)}: {requirementHint(Boolean(summary.task_required))}</>}
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>

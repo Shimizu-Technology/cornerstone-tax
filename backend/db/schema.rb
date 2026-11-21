@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_21_030000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_21_050000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -511,6 +511,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_21_030000) do
     t.string "status", default: "completed", null: false
     t.bigint "tax_return_id"
     t.bigint "time_category_id"
+    t.boolean "unscheduled_clock_in", default: false, null: false
     t.datetime "updated_at", null: false
     t.bigint "user_id"
     t.date "work_date", null: false
@@ -605,6 +606,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_21_030000) do
     t.string "email", null: false
     t.string "employment_status", default: "active", null: false
     t.string "first_name"
+    t.boolean "flexible_hours", default: false, null: false
     t.string "last_name"
     t.string "phone"
     t.string "role", default: "client"

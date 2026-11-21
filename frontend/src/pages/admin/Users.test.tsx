@@ -6,6 +6,7 @@ const apiMocks = vi.hoisted(() => ({
   getAdminUsers: vi.fn(),
   inviteUser: vi.fn(),
   updateUserRole: vi.fn(),
+  setUserFlexibleHours: vi.fn(),
   terminateUser: vi.fn(),
   reactivateUser: vi.fn(),
   resendInvite: vi.fn(),
@@ -128,5 +129,39 @@ describe('Users', () => {
     expect(screen.getAllByText('Checking access…')).toHaveLength(4)
     expect(screen.getByRole('combobox', { name: 'Role for Kami Employee' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Terminate' })).not.toBeInTheDocument()
+  })
+
+  it('lets an admin switch flexible hours for a team member', async () => {
+    apiMocks.setUserFlexibleHours.mockResolvedValue({ data: { user: { ...activeEmployee, flexible_hours: true } } })
+    render(<Users />)
+
+    const [toggle] = await screen.findAllByRole('switch', { name: 'Flexible hours for Kami Employee' })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    expect(toggle).not.toBeChecked()
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(apiMocks.setUserFlexibleHours).toHaveBeenCalledWith(3, true))
+    await waitFor(() => expect(screen.getAllByRole('switch', { name: 'Flexible hours for Kami Employee' })[0]).toBeChecked())
+    expect(screen.getAllByText('Clock-ins without a shift skip approval').length).toBeGreaterThan(0)
+    // Terminated people have no switch.
+    expect(screen.queryByRole('switch', { name: 'Flexible hours for Daena Mansapit' })).not.toBeInTheDocument()
+  })
+
+  it('holds the role control while a flexible-hours change is saving, and keeps the newer row data', async () => {
+    let resolve: (value: unknown) => void = () => {}
+    apiMocks.setUserFlexibleHours.mockReturnValue(new Promise((r) => { resolve = r }))
+    render(<Users />)
+
+    const [toggle] = await screen.findAllByRole('switch', { name: 'Flexible hours for Kami Employee' })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Role for Kami Employee' })).toBeDisabled())
+    // The response carries an older snapshot of the row (role admin).
+    resolve({ data: { user: { ...activeEmployee, role: 'admin', flexible_hours: true } } })
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Role for Kami Employee' })).toBeEnabled())
+    expect((screen.getByRole('combobox', { name: 'Role for Kami Employee' }) as HTMLSelectElement).value).toBe('employee')
+    expect(screen.getAllByRole('switch', { name: 'Flexible hours for Kami Employee' })[0]).toBeChecked()
   })
 })

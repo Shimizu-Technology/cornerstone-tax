@@ -113,6 +113,8 @@ Rails.application.routes.draw do
           post :start_break
           post :end_break
           post :bulk_approve
+          get :unscheduled_only_approvals
+          post :approve_unscheduled_only
           get :current_status
           get :pending_approvals
           get :whos_working
@@ -130,6 +132,7 @@ Rails.application.routes.draw do
       get "work_summary", to: "work_summaries#show"
       get "work_summary/csv", to: "work_summaries#csv"
       get "work_summary/pdf", to: "work_summaries#pdf"
+      get "work_summary/pay_periods", to: "work_summaries#pay_periods"
       resources :time_categories, only: [:index]
       resources :time_period_locks, only: [:index]
 

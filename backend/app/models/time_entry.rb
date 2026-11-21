@@ -72,6 +72,16 @@ class TimeEntry < ApplicationRecord
   scope :recent, -> { order(work_date: :desc, created_at: :desc) }
   scope :clocked_in, -> { where(status: %w[clocked_in on_break]) }
   scope :pending_approval, -> { where(approval_status: "pending") }
+  # Pending only because the person clocked in without a schedule: a finished
+  # clock entry whose whole approval note is that reason (a corrected time or
+  # a staff edit adds to the note), with no overtime to review, not locked
+  # itself and not in a locked time period.
+  scope :unscheduled_only_pending, lambda {
+    where(approval_status: "pending", status: "completed", entry_method: "clock", locked_at: nil,
+          approval_note: TimeClockService::UNSCHEDULED_NOTE, overtime_status: [ nil, "none" ])
+      .where("NOT EXISTS (SELECT 1 FROM time_period_locks WHERE time_period_locks.start_date <= time_entries.work_date " \
+             "AND time_period_locks.end_date >= time_entries.work_date)")
+  }
   scope :approved, -> { where(approval_status: [ "approved", nil ]) }
   scope :denied, -> { where(approval_status: "denied") }
   # Filter by work period. Either part may be omitted: a type alone matches

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { api } from '../../lib/api'
-import type { ApprovalReason, PendingApprovalsParams, PendingApprovalsSummary, ServiceType, TimeCategory, TimeEntry } from '../../lib/api'
+import type { ApprovalReason, PendingApprovalsParams, PendingApprovalsSummary, ServiceType, TimeCategory, TimeEntry, UnscheduledOnlyPreview } from '../../lib/api'
 import { formatDateISO, formatWorkDate } from '../../lib/dateUtils'
 import { parseCategoryFilter, workSummary, type ClientOption } from '../../lib/timeEntryWork'
 import EditTimeEntryModal from './EditTimeEntryModal'
+import WorkLinesSheet from './WorkLinesSheet'
 import { formatMinutes } from '../../lib/workDuration'
 import { CategoryFilterSelect, ClientPicker } from './TimeEntryWorkFields'
 
@@ -172,6 +173,13 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
   const [noteInput, setNoteInput] = useState<{ id: number; note: string } | null>(null)
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<number>>(new Set())
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
+  // "Approve unscheduled-only entries": preview, then confirm.
+  const [unscheduledPreview, setUnscheduledPreview] = useState<UnscheduledOnlyPreview | null>(null)
+  const [unscheduledLoading, setUnscheduledLoading] = useState(false)
+  const [unscheduledApproving, setUnscheduledApproving] = useState(false)
+  const [unscheduledResult, setUnscheduledResult] = useState<string | null>(null)
+  // Shown inside the confirmation sheet (the page's error banner is behind it).
+  const [unscheduledError, setUnscheduledError] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('cornerstone_pending_approvals_collapsed') === 'true')
   const fetchGenerationRef = useRef(0)
 
@@ -389,6 +397,48 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
     }
   }
 
+  const openUnscheduledPreview = async () => {
+    setUnscheduledLoading(true)
+    setActionError(null)
+    setUnscheduledResult(null)
+    setUnscheduledError(null)
+    try {
+      const result = await api.getUnscheduledOnlyApprovals()
+      if (result.error || !result.data) {
+        setActionError(result.error || 'Could not load the entries to approve.')
+        return
+      }
+      setUnscheduledPreview(result.data)
+    } finally {
+      setUnscheduledLoading(false)
+    }
+  }
+
+  const confirmUnscheduledApproval = async () => {
+    if (!unscheduledPreview || unscheduledPreview.count === 0) return
+    setUnscheduledApproving(true)
+    setUnscheduledError(null)
+    try {
+      const result = await api.approveUnscheduledOnly(unscheduledPreview.entries)
+      if (result.error || !result.data) {
+        setUnscheduledError(result.error || 'Could not approve the entries. Please try again.')
+        return
+      }
+      const { approved_count: approved, changed_count: changed, ineligible_count: ineligible } = result.data
+      setUnscheduledResult(
+        `Approved ${approved} entr${approved === 1 ? 'y' : 'ies'}.` +
+        (changed ? ` ${changed} changed since the preview and stayed in the queue.` : '') +
+        (ineligible ? ` ${ineligible} no longer qualified (for example, its period was locked) and stayed in the queue.` : ''),
+      )
+      setUnscheduledPreview(null)
+      setSelectedIds(new Set())
+      await fetchPending()
+      onUpdate?.()
+    } finally {
+      setUnscheduledApproving(false)
+    }
+  }
+
   const handleEditSaved = async () => {
     setEditingEntry(null)
     await fetchPending()
@@ -501,6 +551,7 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
             {!collapsed && (
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={toggleSelectAllVisible} disabled={entries.length === 0} className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-primary-dark transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50">{allVisibleSelected ? 'Clear selection' : `Select filtered (${entries.length})`}</button>
+                <button type="button" onClick={() => void openUnscheduledPreview()} disabled={unscheduledLoading || unscheduledApproving} className="min-h-[44px] rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50">{unscheduledLoading ? 'Checking…' : 'Approve unscheduled-only entries'}</button>
                 <button type="button" onClick={() => void handleBulkApproveSelected()} disabled={bulkActionLoading || selectedEntries.length === 0 || selectedEntries.length > 100} className="min-h-[44px] rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50">{bulkActionLoading ? 'Approving…' : `Approve Selected (${selectedEntries.length})`}</button>
               </div>
             )}
@@ -579,6 +630,7 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
               </div>
 
               {actionError && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{actionError}</div>}
+              {unscheduledResult && <div role="status" className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{unscheduledResult}</div>}
 
               {entries.length === 0 ? (
                 <div className="rounded-xl border border-neutral-warm bg-secondary/30 p-6 text-center">
@@ -622,6 +674,57 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
         onError={setActionError}
         onConflict={() => void fetchPending()}
       />
+
+      <WorkLinesSheet
+        open={unscheduledPreview !== null}
+        title="Approve unscheduled-only entries"
+        subtitle="Pending only because the person clocked in without a schedule."
+        onClose={() => { if (!unscheduledApproving) { setUnscheduledPreview(null); setUnscheduledError(null) } }}
+        wide={false}
+        footer={(
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={() => { setUnscheduledPreview(null); setUnscheduledError(null) }} disabled={unscheduledApproving} className="min-h-11 rounded-xl border border-neutral-warm bg-white px-4 text-sm font-semibold text-primary-dark hover:bg-secondary disabled:opacity-50">Cancel</button>
+            <button type="button" onClick={() => void confirmUnscheduledApproval()} disabled={unscheduledApproving || !unscheduledPreview?.count} className="min-h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+              {unscheduledApproving ? 'Approving…' : `Approve ${unscheduledPreview?.count ?? 0} entr${unscheduledPreview?.count === 1 ? 'y' : 'ies'}`}
+            </button>
+          </div>
+        )}
+      >
+        {unscheduledPreview && (
+          <div className="space-y-3 text-sm text-primary-dark" data-testid="unscheduled-preview">
+            {unscheduledError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-red-700">{unscheduledError}</div>}
+            {unscheduledPreview.total_count > unscheduledPreview.count && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                This approves the oldest {unscheduledPreview.count} of {unscheduledPreview.total_count}. Run it again afterwards for the rest.
+              </p>
+            )}
+            {unscheduledPreview.count === 0 ? (
+              <p>No pending entries are waiting only for a missing schedule.</p>
+            ) : (
+              <>
+                <p className="font-semibold">
+                  {unscheduledPreview.count} entr{unscheduledPreview.count === 1 ? 'y' : 'ies'} · {unscheduledPreview.hours.toFixed(2)}h
+                  {unscheduledPreview.oldest_work_date && unscheduledPreview.newest_work_date && (
+                    <span className="font-normal text-text-muted"> · {formatWorkDate(unscheduledPreview.oldest_work_date)} – {formatWorkDate(unscheduledPreview.newest_work_date)}</span>
+                  )}
+                </p>
+                <ul className="divide-y divide-neutral-warm rounded-xl border border-neutral-warm" aria-label="Entries by person">
+                  {unscheduledPreview.by_user.map((row) => (
+                    <li key={row.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <span className="min-w-0 truncate">{row.name}</span>
+                      <span className="shrink-0 tabular-nums text-text-muted">{row.entry_count} · {row.hours.toFixed(2)}h</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <p className="text-xs text-text-muted">
+              Entries with a corrected time, a staff edit, overtime to review or a locked period are left in the queue.
+              {unscheduledPreview.needs_work_details_count > 0 && ` ${unscheduledPreview.needs_work_details_count} more still need work details and stay in the queue too.`}
+            </p>
+          </div>
+        )}
+      </WorkLinesSheet>
     </>
   )
 }

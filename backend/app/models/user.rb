@@ -1,6 +1,15 @@
 # frozen_string_literal: true
 
 class User < ApplicationRecord
+  # Lock mode for every user row lock used as a mutex (day-log creates,
+  # approvals' owner locks, flexible-hours and employment changes). FOR NO KEY
+  # UPDATE still serializes those paths with each other, but unlike FOR UPDATE
+  # it doesn't block the KEY SHARE lock that inserting a row referencing the
+  # user takes (an audit row, a time entry). FOR UPDATE let an approval
+  # holding the owner wait on an entry whose editor was waiting to insert its
+  # audit row: a deadlock. Nothing relies on blocking those inserts.
+  ROW_MUTEX = "FOR NO KEY UPDATE"
+
   EMPLOYMENT_STATUSES = %w[active terminated].freeze
 
   belongs_to :client, optional: true
@@ -95,7 +104,7 @@ class User < ApplicationRecord
   end
 
   def terminate!(by:, effective_on: nil, reason: nil)
-    with_lock do
+    with_lock(ROW_MUTEX) do
       unless employment_active?
         errors.add(:employment_status, "is already terminated")
         raise ActiveRecord::RecordInvalid, self
@@ -112,7 +121,7 @@ class User < ApplicationRecord
   end
 
   def reactivate!
-    with_lock do
+    with_lock(ROW_MUTEX) do
       unless terminated?
         errors.add(:employment_status, "is already active")
         raise ActiveRecord::RecordInvalid, self
