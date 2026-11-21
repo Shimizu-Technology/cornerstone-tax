@@ -17,7 +17,14 @@ import { checkLines, draftMinutes, duplicateDraft, newDraft, type WorkLineDraft,
 // 16px text on phones so iOS never zooms; 44px minimum tap targets.
 const inputClass = 'min-h-11 w-full rounded-lg border border-neutral-warm bg-white px-3 py-2 text-base md:text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-neutral-warm/30'
 const labelClass = 'mb-1 block text-sm font-medium text-primary-dark'
-const chipClass = 'min-h-11 max-w-full truncate rounded-full border border-neutral-warm bg-white px-3 text-sm text-primary-dark hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary'
+// Chips wrap instead of truncating, so a long client name stays readable in a narrow column.
+const chipClass = 'min-h-11 max-w-full whitespace-normal break-words rounded-[1.375rem] border border-neutral-warm bg-white px-3 py-1.5 text-left text-sm leading-snug text-primary-dark hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary'
+// The table layout is driven by the editor's own width (a container query),
+// not the viewport: the same editor sits in a full-width card, a modal and a
+// sheet, and a viewport breakpoint squeezed it into an overflowing grid in the
+// narrower ones. Below this width each line stacks with visible labels.
+// Minimums (51rem plus gaps and the line's padding) fit inside the 56rem threshold.
+const gridColumns = '@4xl:grid-cols-[minmax(11.5rem,1.2fr)_minmax(13rem,2fr)_minmax(10rem,1.2fr)_10.5rem_6rem]'
 
 export interface WorkLinesEditorProps {
   lines: WorkLineDraft[]
@@ -104,7 +111,7 @@ export default function WorkLinesEditor({
   }
 
   return (
-    <div className="space-y-3" data-testid="work-lines-editor">
+    <div className="@container space-y-3" data-testid="work-lines-editor">
       {mode === 'session' && targetMinutes !== null && (
         <p className="text-sm text-text-muted">
           Session length: <span className="font-semibold tabular-nums text-primary-dark">{formatMinutes(targetMinutes)}</span>
@@ -114,12 +121,13 @@ export default function WorkLinesEditor({
 
       {/* Column titles for the desktop table; phones show per-field labels. */}
       {!singleSession && (
-        <div aria-hidden="true" className="hidden md:grid md:grid-cols-[minmax(11rem,1.1fr)_minmax(14rem,2.5fr)_minmax(9rem,1fr)_9rem_6.5rem] md:gap-2 md:px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+        // Same border and padding as a line, so each title sits over its column.
+        <div aria-hidden="true" className={`hidden @4xl:grid ${gridColumns} @4xl:gap-x-2 border border-transparent px-2 text-xs font-semibold uppercase tracking-wide text-text-muted`}>
           <span>Client</span><span>What I did</span><span>Category</span><span>Time</span><span className="sr-only">Actions</span>
         </div>
       )}
 
-      <ol className="space-y-3 md:space-y-2" aria-label="Work lines">
+      <ol className="space-y-3 @4xl:space-y-2" aria-label="Work lines">
         {lines.map((line, index) => (
           <WorkLineRow
             key={line.key}
@@ -282,11 +290,11 @@ function WorkLineRow({
   return (
     <li
       className={`rounded-xl border bg-white p-3 ${problems.length ? 'border-amber-300' : 'border-neutral-warm'} ${
-        wholeSession ? 'space-y-3' : 'space-y-3 md:grid md:grid-cols-[minmax(11rem,1.1fr)_minmax(14rem,2.5fr)_minmax(9rem,1fr)_9rem_6.5rem] md:items-start md:gap-2 md:space-y-0 md:p-2'
+        wholeSession ? 'space-y-3' : `space-y-3 @4xl:grid ${gridColumns} @4xl:items-start @4xl:gap-2 @4xl:space-y-0 @4xl:p-2`
       }`}
       aria-label={lineName}
     >
-      {count > 1 && <p className="text-xs font-semibold uppercase tracking-wide text-text-muted md:hidden">{lineName}</p>}
+      {count > 1 && <p className="text-xs font-semibold uppercase tracking-wide text-text-muted @4xl:hidden">{lineName}</p>}
 
       <WorkLineClientField
         id={`${id}-client`}
@@ -302,7 +310,7 @@ function WorkLineRow({
       />
 
       <div>
-        <label htmlFor={`${id}-description`} className={wholeSession ? labelClass : `${labelClass} md:sr-only`}>What I did</label>
+        <label htmlFor={`${id}-description`} className={wholeSession ? labelClass : `${labelClass} @4xl:sr-only`}>What I did</label>
         {/* One line of text that wraps and grows, so a long description stays
             readable while it's edited instead of being cut off. */}
         <GrowingTextField
@@ -328,7 +336,7 @@ function WorkLineRow({
       </div>
 
       <div className="space-y-2">
-        <label htmlFor={`${id}-category`} className={wholeSession ? labelClass : `${labelClass} md:sr-only`}>
+        <label htmlFor={`${id}-category`} className={wholeSession ? labelClass : `${labelClass} @4xl:sr-only`}>
           Category{!categoryNeeded && <span className="font-normal text-text-muted"> (optional)</span>}
         </label>
         <select
@@ -356,20 +364,28 @@ function WorkLineRow({
         >
           {taskRequired ? (showMore ? 'Hide period' : 'Period') : (showMore ? 'Hide task and period' : 'Task and period')}
         </button>
-        {showMore && (
-          <div id={`${id}-more`} className="space-y-2 rounded-lg bg-secondary/30 p-2">
-            {!taskRequired && taskField}
-            <PeriodPicker
-              idPrefix={`${id}-period`}
-              value={{ period_type: line.period_type, period_start: line.period_start }}
-              onChange={(period) => onChange({ period_type: period.period_type, period_start: period.period_start })}
-              referenceDate={referenceDate}
-              className={inputClass}
-              stacked
-            />
-          </div>
-        )}
       </div>
+
+      {/* Task and period open across the whole line (their own row in the
+          table) instead of squeezing into the category column. */}
+      {showMore && (
+        <div
+          id={`${id}-more`}
+          className={`space-y-2 rounded-lg bg-secondary/30 p-2 @4xl:col-span-full @4xl:row-start-2 ${
+            taskRequired ? '' : '@xl:grid @xl:grid-cols-2 @xl:items-start @xl:gap-3 @xl:space-y-0'
+          }`}
+        >
+          {!taskRequired && taskField}
+          <PeriodPicker
+            idPrefix={`${id}-period`}
+            value={{ period_type: line.period_type, period_start: line.period_start }}
+            onChange={(period) => onChange({ period_type: period.period_type, period_start: period.period_start })}
+            referenceDate={referenceDate}
+            className={inputClass}
+            stacked
+          />
+        </div>
+      )}
 
       {wholeSession ? (
         <p className="rounded-lg bg-secondary/40 px-3 py-2 text-sm text-primary-dark">
@@ -390,7 +406,7 @@ function WorkLineRow({
       )}
 
       {!wholeSession && (
-        <div className="flex flex-wrap gap-1 md:flex-col md:items-stretch">
+        <div className="flex flex-wrap gap-1 @4xl:flex-col @4xl:items-stretch">
           {remainingMinutes !== null && remainingMinutes !== 0 && (minutes ?? 0) + remainingMinutes > 0 && (
             <button type="button" onClick={onAbsorbRemaining} disabled={disabled} className="min-h-11 rounded-lg px-2 text-xs font-semibold text-primary hover:bg-primary/5"
               aria-label={`${remainingMinutes > 0 ? 'Add' : 'Take'} ${formatMinutes(Math.abs(remainingMinutes))} ${remainingMinutes > 0 ? 'to' : 'from'} ${lineName.toLowerCase()}`}>
@@ -407,7 +423,7 @@ function WorkLineRow({
       )}
 
       {problems.length > 0 && (
-        <p id={problemId} className="text-sm text-amber-800 md:col-span-5">{problems.join(' · ')}</p>
+        <p id={problemId} className="text-sm text-amber-800 @4xl:col-span-full">{problems.join(' · ')}</p>
       )}
     </li>
   )
@@ -449,18 +465,7 @@ function WorkLineClientField({
 
   return (
     <div>
-      <label htmlFor={id} className={visibleLabel ? labelClass : `${labelClass} md:sr-only`}>{visibleLabel || 'Client'}</label>
-      {sorted.length > 6 && (
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search clients"
-          aria-label={`Search clients for ${label.toLowerCase()}`}
-          className={`${inputClass} mb-2`}
-          disabled={disabled}
-        />
-      )}
+      <label htmlFor={id} className={visibleLabel ? labelClass : `${labelClass} @4xl:sr-only`}>{visibleLabel || 'Client'}</label>
       <select
         id={id}
         value={value}
@@ -483,6 +488,20 @@ function WorkLineClientField({
           </optgroup>
         ))}
       </select>
+      {/* The search narrows the list above. It sits under the select so the
+          select lines up with the other fields in the row. */}
+      {sorted.length > 6 && (
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search clients"
+          aria-label={`Search clients for ${label.toLowerCase()}`}
+          aria-controls={id}
+          className={`${inputClass} mt-2`}
+          disabled={disabled}
+        />
+      )}
       {query && <p className="mt-1 text-xs text-text-muted" aria-live="polite">{matches.length === 0 ? 'No clients match' : `${matches.length} match${matches.length === 1 ? '' : 'es'}`}</p>}
       {!value && recent.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2" aria-label={`Recent clients for ${label.toLowerCase()}`}>
@@ -519,8 +538,8 @@ function DurationField({
   const hintId = `${id}-hint`
   return (
     <div>
-      <label htmlFor={id} className={`${labelClass} md:sr-only`}>Time</label>
-      <div className="flex gap-1">
+      <label htmlFor={id} className={`${labelClass} @4xl:sr-only`}>Time</label>
+      <div className="flex items-start gap-1">
         <input
           id={id}
           type="text"
@@ -541,7 +560,9 @@ function DurationField({
           enterKeyHint={onEnter ? 'enter' : 'done'}
           autoComplete="off"
         />
-        <div role="group" aria-label={`${label} unit`} className="flex shrink-0 overflow-hidden rounded-lg border border-neutral-warm">
+        {/* The frame is an inset outline, not a border, so the group stays
+            44px tall like the input beside it (a border made it 46px). */}
+        <div role="group" aria-label={`${label} unit`} className="flex shrink-0 overflow-hidden rounded-lg outline outline-1 -outline-offset-1 outline-neutral-warm">
           {(['minutes', 'hours'] as const).map((unit) => (
             <button
               key={unit}

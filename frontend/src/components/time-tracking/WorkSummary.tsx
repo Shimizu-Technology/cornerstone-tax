@@ -146,7 +146,8 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
       <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
         <h2 id="work-summary-heading" className="text-lg font-bold text-primary-dark">Work summary</h2>
         <p className="mt-1 text-sm text-text-muted">Each day's work by client, then totals per client. Download it instead of sending a spreadsheet.</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* The period names its dates, so it gets the widest column; staff (no Person field) get three columns, not an empty fourth. */}
+        <div className={`mt-4 grid gap-3 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]' : 'lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]'}`}>
           {isAdmin && (
             <div>
               <label htmlFor="work-summary-person" className="mb-1 block text-sm font-medium text-primary-dark">Person</label>

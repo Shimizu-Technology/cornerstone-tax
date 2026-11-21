@@ -801,10 +801,10 @@ export default function DailyTaskBoard() {
           <h1 className="text-2xl font-bold text-gray-900">Daily Tasks</h1>
           <p className="text-sm text-gray-500 mt-0.5">Track and manage your team's daily workflow</p>
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <button onClick={exportToCSV}
             disabled={tasks.length === 0}
-            className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+            className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5 whitespace-nowrap">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
@@ -812,7 +812,7 @@ export default function DailyTaskBoard() {
           </button>
           <button onClick={handlePrint}
             disabled={tasks.length === 0}
-            className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+            className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5 whitespace-nowrap">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
@@ -821,7 +821,7 @@ export default function DailyTaskBoard() {
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} className="hidden" />
           <button onClick={() => fileInputRef.current?.click()}
             disabled={importLoading}
-            className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+            className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5 whitespace-nowrap">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
@@ -830,7 +830,7 @@ export default function DailyTaskBoard() {
           <div className="relative">
             <button onClick={() => { setCopyTargetDate(shiftDate(currentDate, 1)); setShowCopyPicker(!showCopyPicker) }}
               disabled={copyingTasks || allTasks.filter(t => !DONE_STATUSES.includes(t.status)).length === 0}
-              className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+              className="text-sm px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center gap-1.5 whitespace-nowrap">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
               </svg>
@@ -896,7 +896,7 @@ export default function DailyTaskBoard() {
             placeholder="Search tasks..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 bg-white text-gray-600 placeholder:text-gray-400 w-44 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            className="min-h-11 text-sm border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 bg-white text-gray-600 placeholder:text-gray-400 w-44 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           />
           {searchQuery && (
             <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -905,12 +905,12 @@ export default function DailyTaskBoard() {
           )}
         </div>
         <select value={filterStaff} onChange={e => setFilterStaff(e.target.value ? Number(e.target.value) : '')}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-600">
+          className="min-h-11 text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-600">
           <option value="">All Staff</option>
           {staff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
         </select>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as TaskStatus | '')}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-600">
+          className="min-h-11 text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-600">
           <option value="">All Statuses</option>
           {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>

@@ -1003,7 +1003,7 @@ export default function TimeTracking() {
         <nav className="flex gap-4 overflow-x-auto" aria-label="Time tracking sections">
           <button
             onClick={() => setActiveTab('entries')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
               activeTab === 'entries'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -1014,7 +1014,7 @@ export default function TimeTracking() {
           </button>
           <button
             onClick={() => setActiveTab('day')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
               activeTab === 'day'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -1025,7 +1025,7 @@ export default function TimeTracking() {
           </button>
           <button
             onClick={() => setActiveTab('summary')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
               activeTab === 'summary'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -1038,7 +1038,7 @@ export default function TimeTracking() {
             <button
               onClick={() => setActiveTab('approvals')}
               aria-label={pendingApprovalCount > 0 ? `Approvals, ${pendingApprovalCount} pending` : 'Approvals'}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
                 activeTab === 'approvals'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -1059,7 +1059,7 @@ export default function TimeTracking() {
           {isAdmin && (
             <button
               onClick={() => setActiveTab('unassigned')}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
                 activeTab === 'unassigned'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-text-muted hover:text-primary-dark'
@@ -1072,7 +1072,7 @@ export default function TimeTracking() {
           {isAdmin && (
             <button
               onClick={() => setActiveTab('reports')}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
                 activeTab === 'reports'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-text-muted hover:text-primary-dark'

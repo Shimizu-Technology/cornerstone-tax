@@ -476,11 +476,11 @@ export default function Dashboard() {
 
       {/* My Schedule */}
       <div className="bg-white rounded-2xl shadow-sm border border-secondary-dark overflow-hidden transition-shadow hover:shadow-md">
-        <div className="px-6 py-5 border-b border-secondary-dark flex items-center justify-between">
+        <div className="px-6 py-5 border-b border-secondary-dark flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900 tracking-tight">My Upcoming Shifts</h2>
           <Link
             to="/admin/schedule"
-            className="text-primary hover:text-primary-dark text-sm font-medium inline-flex items-center gap-1 transition-colors"
+            className="shrink-0 whitespace-nowrap text-primary hover:text-primary-dark text-sm font-medium inline-flex items-center gap-1 transition-colors"
           >
             View Full Schedule
             <svg className="w-4 h-4" fill="none" stroke="currentColor" aria-hidden="true" viewBox="0 0 24 24">
