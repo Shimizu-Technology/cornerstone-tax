@@ -27,6 +27,16 @@ module Payroll
 
     module_function
 
+    # Names that appear more than once in the query (compared after
+    # percent-decoding). Rails keeps only the last value of a repeated key,
+    # while the canonical query sorts all of them, so one signature would
+    # cover "start=A&start=B" and "start=B&start=A" with different meanings.
+    # Such requests are refused before any signature check.
+    def repeated_keys(query_string)
+      names = query_string.to_s.split("&").reject(&:empty?).map { |pair| URI.decode_www_form_component(pair.split("=", 2).first.to_s) }
+      names.tally.select { |_name, count| count > 1 }.keys
+    end
+
     def canonical_query(query_string)
       query_string.to_s.split("&").reject(&:empty?).map do |pair|
         name, value = pair.split("=", 2)

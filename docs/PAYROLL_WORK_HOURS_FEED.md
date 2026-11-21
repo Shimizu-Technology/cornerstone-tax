@@ -43,6 +43,8 @@ The server rejects:
 - a timestamp more than **5 minutes** from its own clock, in either direction;
 - a signature that doesn't match. The comparison is constant-time (`ActiveSupport::SecurityUtils.secure_compare`).
 
+**Each query parameter may appear only once.** A request with any repeated name, compared after percent-decoding (so `start=…&st%61rt=…` counts), is refused with **400** before the signature is checked. Rails keeps only the last value of a repeated key, while the canonical query sorts all of them, so one signature would otherwise cover `start=A&start=B` and `start=B&start=A`, which mean different start dates.
+
 Changing any part of the query after signing (dates, extra parameters) invalidates the signature. Pair order and percent-encoding don't matter, because both sides canonicalize.
 
 The 5-minute window limits how long a captured request can be replayed. The feed is read-only and returns the same data to a replay, so no nonce store is kept. Keep both servers' clocks synced (NTP).
@@ -87,6 +89,7 @@ end
 | Status | Meaning |
 |---|---|
 | 200 | Payload below |
+| 400 | A query parameter appears more than once (`{ "error": "Each query parameter may appear only once (repeated: …)" }`) |
 | 401 | Missing headers, a timestamp outside the window, or a signature that doesn't match (`{ "error": "Unauthorized: ..." }`) |
 | 422 | Missing or invalid dates, `end` before `start`, or a range over 62 days (`{ "error": "..." }`) |
 | 503 | `PAYROLL_WORK_HOURS_SECRET` is not configured on Tax |

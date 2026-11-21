@@ -108,6 +108,16 @@ RSpec.describe "Api::V1::Payroll::WorkHours", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
 
+    it "rejects a repeated query key with 400 before any signature check, in either order" do
+      [ "start=2026-11-16&start=2026-11-17&end=2026-11-22", "start=2026-11-17&start=2026-11-16&end=2026-11-22",
+        "start=2026-11-16&st%61rt=2026-11-17&end=2026-11-22" ].each do |query|
+        expect(Payroll::WorkHoursSignature).not_to receive(:verify)
+        get "/api/v1/payroll/work_hours?#{query}", headers: signature_headers(query)
+        expect(response).to have_http_status(:bad_request)
+        expect(json[:error]).to include("repeated: start")
+      end
+    end
+
     it "rejects missing headers and the old raw-secret header" do
       get "/api/v1/payroll/work_hours?#{range.to_query}"
       expect(response).to have_http_status(:unauthorized)

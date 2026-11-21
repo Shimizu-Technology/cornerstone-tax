@@ -12,6 +12,7 @@ module Api
       class WorkHoursController < ApplicationController
         SECRET_ENV = "PAYROLL_WORK_HOURS_SECRET"
 
+        before_action :reject_repeated_query_keys!
         before_action :authenticate_work_hours_secret!
 
         def show
@@ -24,6 +25,13 @@ module Api
         end
 
         private
+
+        def reject_repeated_query_keys!
+          repeated = ::Payroll::WorkHoursSignature.repeated_keys(request.query_string)
+          return if repeated.empty?
+
+          render json: { error: "Each query parameter may appear only once (repeated: #{repeated.join(', ')})" }, status: :bad_request
+        end
 
         def authenticate_work_hours_secret!
           secret = ENV[SECRET_ENV].to_s
