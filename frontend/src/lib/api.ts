@@ -2460,6 +2460,17 @@ export const api = {
       body: JSON.stringify({ note }),
     }),
 
+  /** Entries left clocked in with an end time (admin). */
+  getStuckClockEntries: () =>
+    fetchApi<{ time_entries: TimeEntry[] }>('/api/v1/time_entries/stuck_clock_entries'),
+
+  /** Completes a stuck entry with its own end time and sends it to approval. */
+  markTimeEntryCompleted: (id: number, expectedVersion?: number) =>
+    fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}/mark_completed`, {
+      method: 'POST',
+      body: JSON.stringify(expectedVersion === undefined ? {} : { expected_version: expectedVersion }),
+    }),
+
   approveOvertime: (id: number, note?: string) =>
     fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}/approve_overtime`, {
       method: 'POST',

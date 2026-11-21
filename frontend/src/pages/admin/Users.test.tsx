@@ -164,4 +164,36 @@ describe('Users', () => {
     expect((screen.getByRole('combobox', { name: 'Role for Kami Employee' }) as HTMLSelectElement).value).toBe('employee')
     expect(screen.getAllByRole('switch', { name: 'Flexible hours for Kami Employee' })[0]).toBeChecked()
   })
+
+  it('holds the flexible-hours switch while a role change is saving', async () => {
+    let resolve: (value: unknown) => void = () => {}
+    apiMocks.updateUserRole.mockReturnValue(new Promise((r) => { resolve = r }))
+    render(<Users />)
+
+    const role = await screen.findByRole('combobox', { name: 'Role for Kami Employee' })
+    await waitFor(() => expect(role).toBeEnabled())
+    fireEvent.change(role, { target: { value: 'admin' } })
+
+    // Disabled in both layouts (table and phone card); a browser sends no
+    // events from a disabled control.
+    await waitFor(() => screen.getAllByRole('switch', { name: 'Flexible hours for Kami Employee' }).forEach((toggle) => expect(toggle).toBeDisabled()))
+
+    resolve({ data: { user: { ...activeEmployee, role: 'admin' } } })
+    await waitFor(() => screen.getAllByRole('switch', { name: 'Flexible hours for Kami Employee' }).forEach((toggle) => expect(toggle).toBeEnabled()))
+  })
+
+  it('holds the role control while a flexible-hours change is saving, and frees it after', async () => {
+    let resolve: (value: unknown) => void = () => {}
+    apiMocks.setUserFlexibleHours.mockReturnValue(new Promise((r) => { resolve = r }))
+    render(<Users />)
+
+    const [toggle] = await screen.findAllByRole('switch', { name: 'Flexible hours for Kami Employee' })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Role for Kami Employee' })).toBeDisabled())
+
+    resolve({ data: { user: { ...activeEmployee, flexible_hours: true } } })
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Role for Kami Employee' })).toBeEnabled())
+  })
 })

@@ -35,6 +35,7 @@ vi.mock('../../components/ui/FadeIn', () => ({
 vi.mock('../../components/time-tracking/ClockInOutCard', () => ({ default: () => null }))
 vi.mock('../../components/time-tracking/ApprovalQueue', () => ({ default: () => null }))
 vi.mock('../../components/time-tracking/WhosWorking', () => ({ default: () => null }))
+vi.mock('../../components/time-tracking/StuckClockEntries', () => ({ default: () => null }))
 vi.mock('../../components/time-tracking/ReportExportActions', () => ({ default: () => null }))
 
 const successfulReport = {
