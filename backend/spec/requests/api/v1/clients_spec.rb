@@ -28,8 +28,9 @@ RSpec.describe "Api::V1::Clients", type: :request do
 
       expect(response).to have_http_status(:ok)
       body = JSON.parse(response.body, symbolize_names: true)
-      expect(body[:clients].map { |client| client[:name] }).to eq([ "Jose Cruz", "MoSa's Joint" ])
-      expect(body[:clients].last).to include(client_type: "business", business_name: "MoSa's Joint", first_name: "Aaron")
+      # Businesses come before individuals in pickers.
+      expect(body[:clients].map { |client| client[:name] }).to eq([ "MoSa's Joint", "Jose Cruz" ])
+      expect(body[:clients].first).to include(client_type: "business", business_name: "MoSa's Joint", first_name: "Aaron")
     end
 
     it "requires authentication" do

@@ -96,7 +96,7 @@ describe('TimeEntryWorkFields', () => {
     render(<Harness />)
 
     fireEvent.change(screen.getByLabelText('Search client list'), { target: { value: 'santos' } })
-    expect(optionNames(screen.getByLabelText(/^Client/, { selector: 'select' }))).toEqual(['Internal – no client', "MoSa's"])
+    expect(optionNames(screen.getByLabelText(/^Client/, { selector: 'select' }))).toEqual(['No client (unassigned)', "MoSa's"])
     expect(screen.getByText('1 match')).toBeInTheDocument()
   })
 

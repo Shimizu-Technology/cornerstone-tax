@@ -744,6 +744,10 @@ export interface TimeEntry {
   period_type?: 'month' | 'quarter' | 'year' | null;
   period_start?: string | null;
   period_label?: string | null;
+  /** Manual day log: no start/end times; hours are the sum of the work lines. */
+  duration_only?: boolean;
+  /** How the entry's hours were spent, by client. Sums to `hours`. */
+  work_lines?: WorkLine[];
   linked_operation_task: {
     id: number;
     title: string;
@@ -752,6 +756,49 @@ export interface TimeEntry {
   created_at: string;
   updated_at: string;
   review_flags?: HoursReportReviewFlag[];
+}
+
+export interface WorkLine {
+  id: number | null;
+  position: number;
+  client: { id: number; name: string; client_type?: string | null; system_kind?: string | null } | null;
+  client_label: string;
+  description: string | null;
+  service_type: { id: number; name: string; color: string | null } | null;
+  service_task: { id: number; name: string } | null;
+  category_label: string | null;
+  period_type: 'month' | 'quarter' | 'year' | null;
+  period_start: string | null;
+  period_label: string | null;
+  hours: number;
+  minutes: number;
+}
+
+/** A work line as sent to the API. Time is minutes (preferred) or hours. */
+export interface WorkLineInput {
+  client_id: number | null;
+  description: string;
+  service_type_id?: number | null;
+  service_task_id?: number | null;
+  period_type?: 'month' | 'quarter' | 'year' | null;
+  period_start?: string | null;
+  minutes?: number;
+  hours?: number;
+}
+
+export interface UnassignedTimeEntry extends TimeEntry {
+  line_issues: Array<{ id: number; missing: Array<'client' | 'description' | 'category'> }>;
+}
+
+export interface UnassignedTimeResponse {
+  time_entries: UnassignedTimeEntry[];
+  summary: {
+    entry_count: number;
+    hours: number;
+    by_user: Array<{ id: number; name: string; entry_count: number; hours: number }>;
+    cutover_date: string | null;
+  };
+  pagination: { current_page: number; per_page: number; total_count: number; total_pages: number };
 }
 
 export interface ClockOutWorkDetails {
@@ -766,6 +813,7 @@ export interface ClientPickerOption {
   id: number;
   name: string;
   client_type: 'individual' | 'business' | null;
+  system_kind?: 'internal' | null;
   business_name: string | null;
   first_name: string;
   last_name: string;
@@ -803,6 +851,8 @@ export interface ClockStatus {
     hours: number;
   } | null;
   can_clock_in: boolean;
+  /** ISO date from which every work line needs a client and description; null when off. */
+  work_details_required_from?: string | null;
   clock_in_blocked_reason: 'already_clocked_in' | 'no_schedule' | 'too_early' | 'shift_ended' | null;
   minutes_until?: number;
   is_admin?: boolean;
@@ -1297,6 +1347,8 @@ export interface ServiceType {
   name: string;
   description: string | null;
   color: string | null;
+  /** Category for internal work (shown for the Internal – Cornerstone client). */
+  internal?: boolean;
   is_active?: boolean;
   position?: number;
   tasks?: ServiceTask[];
@@ -2306,6 +2358,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ note }),
     }),
+
+  getUnassignedTime: (params: { start_date?: string; end_date?: string; user_id?: number; issue?: 'client' | 'any'; page?: number }) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') searchParams.set(key, String(value));
+    });
+    const query = searchParams.toString();
+    return fetchApi<UnassignedTimeResponse>(`/api/v1/time_entries/unassigned${query ? `?${query}` : ''}`);
+  },
 
   getWhosWorking: () =>
     fetchApi<{ workers: WorkerStatus[] }>('/api/v1/time_entries/whos_working'),

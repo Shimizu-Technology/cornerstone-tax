@@ -3,6 +3,7 @@ import { FadeUp } from '../../components/ui/MotionComponents'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
+import UnassignedTime from '../../components/time-tracking/UnassignedTime'
 import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary, TimeEntry as TimeEntryItem } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeIn } from '../../components/ui/FadeIn'
@@ -187,7 +188,10 @@ export default function TimeTracking() {
   
   // Tab: entries, approvals, or reports
   const requestedTab = searchParams.get('tab')
-  const [activeTab, setActiveTab] = useState<'entries' | 'approvals' | 'reports'>(requestedTab === 'reports' || requestedTab === 'approvals' ? requestedTab : 'entries')
+  const [activeTab, setActiveTab] = useState<'entries' | 'approvals' | 'unassigned' | 'reports'>(
+    requestedTab === 'reports' || requestedTab === 'approvals' || requestedTab === 'unassigned' ? requestedTab : 'entries'
+  )
+  const [unassignedRefresh, setUnassignedRefresh] = useState(0)
   
   // View mode: 'day' or 'week'
   const [viewMode, setViewMode] = useState<'day' | 'week'>('week')
@@ -757,6 +761,7 @@ export default function TimeTracking() {
       await loadEntries()
       await loadPendingApprovalSummary()
       if (activeTab === 'reports') await loadReport()
+      if (activeTab === 'unassigned') setUnassignedRefresh((value) => value + 1)
     } catch {
       setError('Failed to save time entry')
     } finally {
@@ -908,7 +913,7 @@ export default function TimeTracking() {
 
       {/* Tab Navigation */}
       <div className="border-b border-neutral-warm">
-        <nav className="flex gap-4">
+        <nav className="flex gap-4 overflow-x-auto" aria-label="Time tracking sections">
           <button
             onClick={() => setActiveTab('entries')}
             className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
@@ -940,6 +945,19 @@ export default function TimeTracking() {
                   </span>
                 </span>
               )}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('unassigned')}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === 'unassigned'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-muted hover:text-primary-dark'
+              }`}
+            >
+              <ClockIcon />
+              Unassigned
             </button>
           )}
           {isAdmin && (
@@ -1494,7 +1512,65 @@ export default function TimeTracking() {
         </FadeIn>
       )}
 
-      {/* Entry Modal */}
+      </>
+      )}
+
+      {/* Approvals Tab */}
+      {activeTab === 'approvals' && isAdmin && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-bold text-primary-dark">Approval Review</h2>
+            <p className="mt-1 text-sm text-text-muted">Filter pending time, edit exceptions inline, and approve entries in batches.</p>
+          </div>
+          <ApprovalQueue
+            onUpdate={() => {
+              void loadEntries()
+              void loadPendingApprovalSummary()
+            }}
+            canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry) : false}
+            clients={clients}
+            serviceTypes={serviceTypes}
+            catalogError={workOptions.error}
+            onRetryCatalog={workOptions.retry}
+          />
+        </div>
+      )}
+
+      {/* Unassigned time (admin clean-up) */}
+      {activeTab === 'unassigned' && isAdmin && (
+        <UnassignedTime users={users} onEditEntry={openEditEntry} refreshKey={unassignedRefresh} />
+      )}
+
+      {/* Reports Tab */}
+      {activeTab === 'reports' && isAdmin && (
+        <>
+          <HoursReportWorkspace
+            filters={reportFilters}
+            onFiltersChange={setReportFilters}
+            report={hoursReport}
+            entries={reportData}
+            loading={reportLoading}
+            error={reportError}
+            users={users}
+            categories={categories}
+            serviceTypes={serviceTypes}
+            clients={clients}
+            exporting={reportExporting}
+            onExport={(type) => void downloadReport(type)}
+            onOpenEmployee={setSelectedReportEmployee}
+            onEditEntry={openEditEntry}
+            view={reportView}
+            onViewChange={setReportView}
+          />
+          <EmployeeReportDrawer
+            employee={selectedReportEmployee}
+            overtimePolicy={hoursReport?.overtime_policy ?? null}
+            onClose={handleCloseEmployeeReportDrawer}
+          />
+        </>
+      )}
+
+      {/* Entry Modal: mounted for every tab so Unassigned and Reports can open it */}
       <AnimatePresence>
       {showModal && (
         <motion.div 
@@ -1745,58 +1821,6 @@ export default function TimeTracking() {
         </motion.div>
       )}
       </AnimatePresence>
-      </>
-      )}
-
-      {/* Approvals Tab */}
-      {activeTab === 'approvals' && isAdmin && (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
-            <h2 className="text-lg font-bold text-primary-dark">Approval Review</h2>
-            <p className="mt-1 text-sm text-text-muted">Filter pending time, edit exceptions inline, and approve entries in batches.</p>
-          </div>
-          <ApprovalQueue
-            onUpdate={() => {
-              void loadEntries()
-              void loadPendingApprovalSummary()
-            }}
-            canDeleteEntry={(entry) => entry.user ? canDeleteEntry(entry) : false}
-            clients={clients}
-            serviceTypes={serviceTypes}
-            catalogError={workOptions.error}
-            onRetryCatalog={workOptions.retry}
-          />
-        </div>
-      )}
-
-      {/* Reports Tab */}
-      {activeTab === 'reports' && isAdmin && (
-        <>
-          <HoursReportWorkspace
-            filters={reportFilters}
-            onFiltersChange={setReportFilters}
-            report={hoursReport}
-            entries={reportData}
-            loading={reportLoading}
-            error={reportError}
-            users={users}
-            categories={categories}
-            serviceTypes={serviceTypes}
-            clients={clients}
-            exporting={reportExporting}
-            onExport={(type) => void downloadReport(type)}
-            onOpenEmployee={setSelectedReportEmployee}
-            onEditEntry={openEditEntry}
-            view={reportView}
-            onViewChange={setReportView}
-          />
-          <EmployeeReportDrawer
-            employee={selectedReportEmployee}
-            overtimePolicy={hoursReport?.overtime_policy ?? null}
-            onClose={handleCloseEmployeeReportDrawer}
-          />
-        </>
-      )}
 
     </div>
   )

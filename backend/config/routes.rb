@@ -116,6 +116,7 @@ Rails.application.routes.draw do
           get :current_status
           get :pending_approvals
           get :whos_working
+          get :unassigned
         end
         member do
           post :approve

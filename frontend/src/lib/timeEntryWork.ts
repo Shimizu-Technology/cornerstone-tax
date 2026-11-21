@@ -132,16 +132,51 @@ export interface ClientOption {
   first_name?: string
   last_name?: string
   client_type?: string | null
+  /** "internal" for the Internal – Cornerstone client; null for real clients. */
+  system_kind?: string | null
 }
 
-export const INTERNAL_CLIENT_LABEL = 'Internal – no client'
+/** The empty choice in client pickers: time not attributed to any client. */
+export const INTERNAL_CLIENT_LABEL = 'No client (unassigned)'
+
+export function isInternalClient(client: ClientOption | null | undefined): boolean {
+  return client?.system_kind === 'internal'
+}
+
+function clientGroupRank(client: ClientOption): number {
+  if (isInternalClient(client)) return 0
+  return client.client_type === 'business' ? 1 : 2
+}
+
+/** Picker group label: internal, businesses, then individuals. */
+export function clientGroupLabel(client: ClientOption): string {
+  const rank = clientGroupRank(client)
+  return rank === 0 ? 'Cornerstone' : rank === 1 ? 'Businesses' : 'Individuals'
+}
+
+interface CategoryOption { id: number; internal?: boolean | null }
+
+/**
+ * Internal work uses the internal categories (office & errands, meetings,
+ * training, admin); client work uses the others. With no client chosen,
+ * every category is offered.
+ */
+export function categoriesForClient<T extends CategoryOption>(categories: T[], client: ClientOption | null | undefined): T[] {
+  if (!client) return categories
+  const internal = isInternalClient(client)
+  return categories.filter((category) => Boolean(category.internal) === internal)
+}
 
 export function clientOptionLabel(client: ClientOption): string {
   return client.name?.trim() || [client.first_name, client.last_name].filter(Boolean).join(' ') || `Client #${client.id}`
 }
 
+/** Internal client first, then businesses, then individuals, each by name. */
 export function sortClientOptions<T extends ClientOption>(clients: T[]): T[] {
-  return [...clients].sort((a, b) => clientOptionLabel(a).localeCompare(clientOptionLabel(b), undefined, { sensitivity: 'base' }) || a.id - b.id)
+  return [...clients].sort((a, b) =>
+    clientGroupRank(a) - clientGroupRank(b) ||
+    clientOptionLabel(a).localeCompare(clientOptionLabel(b), undefined, { sensitivity: 'base' }) ||
+    a.id - b.id)
 }
 
 /** Match on the label, business name, first name or last name. */

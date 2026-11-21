@@ -23,6 +23,7 @@ module Api
           name: service_type.name,
           description: service_type.description,
           color: service_type.color,
+          internal: service_type.internal,
           tasks: service_type.service_tasks.active.ordered.map do |task|
             {
               id: task.id,

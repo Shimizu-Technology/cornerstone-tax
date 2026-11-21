@@ -333,6 +333,8 @@ puts "✅ Seeding complete!"
 puts "   - #{WorkflowStage.count} workflow stages"
 puts "   - #{TimeCategory.count} time categories"
 puts "   - #{ScheduleTimePreset.count} schedule time presets"
+Client.ensure_internal!
+ServiceType.ensure_internal_defaults!
 puts "   - #{ServiceType.count} service types"
 puts "   - #{ServiceTask.count} service tasks"
 puts "   - #{OperationTemplate.count} operation templates"
