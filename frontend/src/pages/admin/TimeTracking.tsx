@@ -294,7 +294,7 @@ export default function TimeTracking() {
     ? null
     : modalTimesUntouched && editingEntry ? Math.round(editingEntry.hours * 60) : Math.round(calculatedHours * 60)
   const modalLinesRequired = detailsRequired(lineSuggestions.requiredFrom, formData.work_date)
-  const modalLineCheck = checkLines(lines, { targetMinutes: modalTargetMinutes, required: modalLinesRequired, clients })
+  const modalLineCheck = checkLines(lines, { targetMinutes: modalTargetMinutes, required: modalLinesRequired, clients, serviceTypes, taskRequired: modalLinesRequired && lineSuggestions.taskRequired })
   const modalLinesChanged = JSON.stringify(linesPayload(lines, modalTargetMinutes)) !== JSON.stringify(linesPayload(initialLines, modalTargetMinutes))
   const modalHoursChanged = Boolean(editingEntry && !editingDayLog && Math.round(editingEntry.hours * 60) !== modalTargetMinutes)
   const modalSendsLines = !editingActiveClock && (!editingEntry || modalLinesChanged || (modalHoursChanged && lines.length > 1))

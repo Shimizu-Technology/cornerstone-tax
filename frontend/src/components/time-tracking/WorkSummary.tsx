@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
-import type { WorkSummaryResponse } from '../../lib/api'
+import type { PayPeriods, WorkSummaryResponse } from '../../lib/api'
 import { formatMinutes } from '../../lib/workDuration'
 
 interface UserOption { id: number; full_name?: string; display_name?: string; email?: string }
@@ -26,10 +26,19 @@ function dayLabel(iso: string) {
   return new Date(year, month - 1, day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-type Preset = 'two_weeks' | 'this_week' | 'last_week' | 'custom'
+type Preset = 'this_pay_period' | 'last_pay_period' | 'two_weeks' | 'this_week' | 'last_week' | 'custom'
 
-function presetRange(preset: Preset): { start: string; end: string } | null {
+function shortDate(iso: string) {
+  const [year, month, day] = iso.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function presetRange(preset: Preset, payPeriods: PayPeriods | null = null): { start: string; end: string } | null {
   const today = guamToday()
+  if (preset === 'this_pay_period' || preset === 'last_pay_period') {
+    const period = payPeriods?.[preset === 'this_pay_period' ? 'current' : 'previous']
+    return period ? { start: period.start_date, end: period.end_date } : null
+  }
   if (preset === 'two_weeks') return { start: addDays(today, -13), end: today }
   if (preset === 'this_week') return { start: weekStart(today), end: today }
   if (preset === 'last_week') {
@@ -45,10 +54,27 @@ function presetRange(preset: Preset): { start: string; end: string } | null {
  * admins can pick anyone. Replaces the emailed "summary of hours" sheets.
  */
 export default function WorkSummary({ currentUserId, isAdmin, users }: { currentUserId: number | null; isAdmin: boolean; users: UserOption[] }) {
-  const [preset, setPreset] = useState<Preset>('two_weeks')
-  const initial = presetRange('two_weeks')!
-  const [start, setStart] = useState(initial.start)
-  const [end, setEnd] = useState(initial.end)
+  // Opens on this pay period (Settings > Pay schedule). The dates fill in
+  // once the periods load; if they can't load, the last two weeks are used.
+  const [preset, setPreset] = useState<Preset>('this_pay_period')
+  const [payPeriods, setPayPeriods] = useState<PayPeriods | null>(null)
+  const [start, setStart] = useState('')
+  const [end, setEnd] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    void api.getPayPeriods().then((response) => {
+      if (cancelled) return
+      const periods = response.data ?? null
+      setPayPeriods(periods)
+      const range = periods ? presetRange('this_pay_period', periods) : presetRange('two_weeks')
+      if (!periods) setPreset('two_weeks')
+      // Only fill the dates if nobody has picked any yet.
+      setStart((current) => current || range!.start)
+      setEnd((current) => current || range!.end)
+    })
+    return () => { cancelled = true }
+  }, [])
   const [userId, setUserId] = useState<string>('')
   const [downloading, setDownloading] = useState<'csv' | 'pdf' | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
@@ -68,7 +94,7 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
 
   const choosePreset = (next: Preset) => {
     setPreset(next)
-    const range = presetRange(next)
+    const range = presetRange(next, payPeriods)
     if (range) {
       setStart(range.start)
       setEnd(range.end)
@@ -116,7 +142,14 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
           )}
           <div>
             <label htmlFor="work-summary-preset" className="mb-1 block text-sm font-medium text-primary-dark">Period</label>
-            <select id="work-summary-preset" value={preset} onChange={(e) => choosePreset(e.target.value as Preset)} className={fieldClass}>
+            <select id="work-summary-preset" value={preset} onChange={(e) => choosePreset(e.target.value as Preset)} className={fieldClass} aria-describedby={payPeriods ? 'work-summary-schedule' : undefined}>
+              {!payPeriods && preset === 'this_pay_period' && <option value="this_pay_period">This pay period</option>}
+              {payPeriods && (
+                <>
+                  <option value="this_pay_period">This pay period ({shortDate(payPeriods.current.start_date)} – {shortDate(payPeriods.current.end_date)})</option>
+                  <option value="last_pay_period">Last pay period ({shortDate(payPeriods.previous.start_date)} – {shortDate(payPeriods.previous.end_date)})</option>
+                </>
+              )}
               <option value="two_weeks">Last 2 weeks</option>
               <option value="this_week">This week</option>
               <option value="last_week">Last week</option>
@@ -132,6 +165,11 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
             <input id="work-summary-end" type="date" value={end} min={start} onChange={(e) => { setPreset('custom'); setEnd(e.target.value) }} className={fieldClass} />
           </div>
         </div>
+        {payPeriods && (
+          <p id="work-summary-schedule" className="mt-2 text-xs text-text-muted">
+            Pay schedule: {payPeriods.label}.{isAdmin && ' Change it in Settings → System → Time tracking.'}
+          </p>
+        )}
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={() => void download('pdf')} disabled={!summary || downloading !== null} className="min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-50">
             {downloading === 'pdf' ? 'Preparing PDF…' : 'Download PDF'}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attendanceChanges, cumulativeMinutes, draftsFromEntry, linesPayload } from './workLinesModel'
+import { attendanceChanges, checkLines, cumulativeMinutes, draftsFromEntry, linesPayload, newDraft, requirementHint } from './workLinesModel'
 
 describe('cumulativeMinutes', () => {
   it('rounds cumulatively so minutes add up to the stored total', () => {
@@ -57,5 +57,37 @@ describe('attendanceChanges', () => {
     expect(attendanceChanges({ workDate: ['2026-11-16', '2026-11-16'], startTime: ['08:00', '08:00'], endTime: ['08:07', '08:07'], breakMinutes: [null, null] })).toEqual({})
     expect(attendanceChanges({ workDate: ['2026-11-17', '2026-11-16'], startTime: ['08:00', '08:00'], endTime: ['09:00', '08:07'], breakMinutes: [15, null] }))
       .toEqual({ work_date: '2026-11-17', end_time: '09:00', break_minutes: 15 })
+  })
+})
+
+describe('checkLines with "Require a task" on', () => {
+  const clients = [
+    { id: 1, name: 'Internal – Cornerstone', client_type: 'business', system_kind: 'internal' },
+    { id: 2, name: 'Alpha Co', client_type: 'business' },
+  ]
+  const serviceTypes = [
+    { id: 10, name: 'Bookkeeping', description: null, color: null, tasks: [{ id: 100, name: 'Bank reconciliation', description: null }] },
+    { id: 20, name: 'Office & errands', description: null, color: null, internal: true, tasks: [] },
+  ]
+  const check = (patch: Parameters<typeof newDraft>[0], taskRequired = true) => {
+    const line = newDraft({ client_id: '2', description: 'Work', durationText: '30', ...patch })
+    return checkLines([line], { targetMinutes: null, required: true, clients, serviceTypes, taskRequired }).problems[line.key] ?? []
+  }
+
+  it('asks every line for a category, and for a task when the category has tasks', () => {
+    expect(check({})).toEqual(['Choose a category and a task'])
+    expect(check({ service_type_id: '10' })).toEqual(['Choose a task'])
+    expect(check({ service_type_id: '10', service_task_id: '100' })).toEqual([])
+    expect(check({ client_id: '1', service_type_id: '20' })).toEqual([])
+  })
+
+  it('keeps the task optional when off', () => {
+    expect(check({}, false)).toEqual([])
+    expect(check({ service_type_id: '10' }, false)).toEqual([])
+  })
+
+  it('describes the rule in one sentence', () => {
+    expect(requirementHint(true)).toContain('plus a task when the category has tasks')
+    expect(requirementHint(false)).toContain('the task is optional')
   })
 })

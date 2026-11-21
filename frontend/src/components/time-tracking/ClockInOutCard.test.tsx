@@ -162,3 +162,34 @@ describe('ClockInOutCard clock-out', () => {
     expect(field.value).toBe('Bank rec')
   })
 })
+
+describe('ClockInOutCard without a shift', () => {
+  const notClockedIn = {
+    ...clockedIn, clocked_in: false, status: null, entry_id: null, work_date: null, work_details: null,
+    clock_in_at: null, elapsed_minutes: null, can_clock_in: true, clock_in_blocked_reason: 'no_schedule',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    apiMock.getServiceTypes.mockResolvedValue({ data: { service_types: serviceTypes } })
+    apiMock.getClientOptions.mockResolvedValue({ data: { clients: [] } })
+    apiMock.getWorkLineSuggestions.mockResolvedValue({ data: null })
+  })
+
+  it('says unscheduled time needs approval', async () => {
+    apiMock.getClockStatus.mockResolvedValue({ data: notClockedIn })
+    render(<ClockInOutCard />)
+
+    expect(await screen.findByText(/your time will be sent for manager approval/)).toBeInTheDocument()
+    expect(screen.getByText('No shift scheduled — time will need approval')).toBeInTheDocument()
+  })
+
+  it('says it won’t for someone on flexible hours', async () => {
+    apiMock.getClockStatus.mockResolvedValue({ data: { ...notClockedIn, flexible_hours: true } })
+    render(<ClockInOutCard />)
+
+    expect(await screen.findByText('You’re on flexible hours, so this time won’t need approval.')).toBeInTheDocument()
+    expect(screen.getByText('No shift scheduled — flexible hours, no approval needed')).toBeInTheDocument()
+    expect(screen.queryByText(/manager approval/)).not.toBeInTheDocument()
+  })
+})

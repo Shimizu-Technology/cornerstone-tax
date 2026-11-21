@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ServiceType } from '../../lib/api'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import WorkLinesEditor from './WorkLinesEditor'
@@ -17,13 +18,14 @@ const suggestions: WorkLineSuggestions = {
   recentClients: [{ id: 2, name: 'Alpha Co', client_type: 'business' }],
   descriptionsByClient: { '2': ['Prepared bank reconciliations'] },
   requiredFrom: null,
+  taskRequired: false,
 }
 
-function Harness({ required = false, target = null as number | null }) {
+function Harness({ required = false, target = null as number | null, taskRequired = false, types = serviceTypes as ServiceType[] }) {
   const [lines, setLines] = useState<WorkLineDraft[]>([newDraft()])
   return (
-    <WorkLinesEditor lines={lines} onChange={setLines} targetMinutes={target} clients={clients} serviceTypes={serviceTypes}
-      suggestions={suggestions} required={required} mode="day" idPrefix="t" />
+    <WorkLinesEditor lines={lines} onChange={setLines} targetMinutes={target} clients={clients} serviceTypes={types}
+      suggestions={{ ...suggestions, taskRequired }} required={required} mode="day" idPrefix="t" />
   )
 }
 
@@ -72,5 +74,28 @@ describe('WorkLinesEditor (day grid)', () => {
     fireEvent.click(within(screen.getByRole('group', { name: 'Work time unit' })).getByRole('button', { name: 'h' }))
     expect(screen.getByTestId('work-lines-remaining')).toHaveTextContent('15m left to assign')
     expect(screen.getByTestId('work-lines-remaining')).toHaveTextContent('Remaining 0.25h')
+  })
+
+  it('shows the task beside the category and asks for it when "Require a task" is on', () => {
+    const withTasks = [
+      { ...serviceTypes[0], tasks: [{ id: 100, name: 'Bank reconciliation', description: null }] },
+      serviceTypes[1],
+    ]
+    render(<Harness required taskRequired types={withTasks} />)
+
+    fireEvent.change(screen.getByLabelText('Work client'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Work description'), { target: { value: 'Reconciled' } })
+    fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '30' } })
+    expect(screen.getByText('Choose a category and a task')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/^Work category/), { target: { value: '10' } })
+    // Visible without opening "Task and period".
+    const task = screen.getByLabelText(/^Task/)
+    expect(task).toHaveAttribute('aria-required', 'true')
+    expect(screen.getByText('Choose a task')).toBeInTheDocument()
+
+    fireEvent.change(task, { target: { value: '100' } })
+    expect(screen.queryByText('Choose a task')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Period' })).toBeInTheDocument()
   })
 })

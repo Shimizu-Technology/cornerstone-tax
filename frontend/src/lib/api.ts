@@ -579,6 +579,8 @@ export interface AdminUser {
   display_name: string;
   full_name: string;
   role: 'admin' | 'employee' | 'client';
+  /** Unscheduled clock-ins skip approval. */
+  flexible_hours?: boolean;
   client_id: number | null;
   client_name: string | null;
   is_active: boolean;
@@ -825,6 +827,31 @@ export interface UnassignedTimeEntry extends TimeEntry {
   line_issues: Array<{ id: number; missing: Array<'client' | 'description' | 'category'> }>;
 }
 
+/** Pending entries held only because the person clocked in without a schedule. */
+export interface UnscheduledOnlyPreview {
+  entry_ids: number[];
+  count: number;
+  hours: number;
+  oldest_work_date: string | null;
+  newest_work_date: string | null;
+  by_user: Array<{ id: number; name: string; entry_count: number; hours: number }>;
+  /** Also unscheduled-only, but missing required work details: left in the queue. */
+  needs_work_details_count: number;
+}
+
+export interface PayPeriod {
+  start_date: string;
+  end_date: string;
+}
+
+/** Settings > Pay schedule, resolved for today. */
+export interface PayPeriods {
+  schedule: 'semi_monthly' | 'biweekly' | 'weekly';
+  label: string;
+  current: PayPeriod;
+  previous: PayPeriod;
+}
+
 export interface UnassignedTimeResponse {
   time_entries: UnassignedTimeEntry[];
   summary: {
@@ -832,6 +859,8 @@ export interface UnassignedTimeResponse {
     hours: number;
     by_user: Array<{ id: number; name: string; entry_count: number; hours: number }>;
     cutover_date: string | null;
+    /** Settings > "Require a task on every work line". */
+    task_required?: boolean;
   };
   pagination: { current_page: number; per_page: number; total_count: number; total_pages: number };
 }
@@ -888,6 +917,10 @@ export interface ClockStatus {
   can_clock_in: boolean;
   /** ISO date from which every work line needs a client and description; null when off. */
   work_details_required_from?: string | null;
+  /** Settings > "Require a task on every work line". */
+  work_task_required?: boolean;
+  /** On flexible hours, an unscheduled clock-in doesn't need approval. */
+  flexible_hours?: boolean;
   clock_in_blocked_reason: 'already_clocked_in' | 'no_schedule' | 'too_early' | 'shift_ended' | null;
   minutes_until?: number;
   is_admin?: boolean;
@@ -2385,6 +2418,23 @@ export const api = {
       body: JSON.stringify({ note }),
     }),
 
+  getUnscheduledOnlyApprovals: () =>
+    fetchApi<UnscheduledOnlyPreview>('/api/v1/time_entries/unscheduled_only_approvals'),
+
+  approveUnscheduledOnly: (entryIds: number[]) =>
+    fetchApi<{ approved_count: number; skipped_count: number; approved_entry_ids: number[] }>('/api/v1/time_entries/approve_unscheduled_only', {
+      method: 'POST',
+      body: JSON.stringify({ entry_ids: entryIds }),
+    }),
+
+  getPayPeriods: () => fetchApi<PayPeriods>('/api/v1/work_summary/pay_periods'),
+
+  setUserFlexibleHours: (id: number, flexibleHours: boolean) =>
+    fetchApi<{ user: AdminUser }>(`/api/v1/admin/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ flexible_hours: flexibleHours }),
+    }),
+
   bulkApproveTimeEntries: (entryIds: number[], note?: string) =>
     fetchApi<{ time_entries: TimeEntry[]; count: number }>('/api/v1/time_entries/bulk_approve', {
       method: 'POST',
@@ -2426,6 +2476,7 @@ export const api = {
       recent_clients: ClientPickerOption[];
       descriptions_by_client: Record<string, string[]>;
       work_details_required_from: string | null;
+      work_task_required?: boolean;
     }>(`/api/v1/time_entries/work_line_suggestions${userId ? `?user_id=${userId}` : ''}`),
 
   getUnassignedTime: (params: { start_date?: string; end_date?: string; user_id?: number; issue?: 'client' | 'any'; page?: number }) => {

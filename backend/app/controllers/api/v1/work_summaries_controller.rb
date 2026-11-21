@@ -30,6 +30,12 @@ module Api
         render json: { error: e.message }, status: :unprocessable_entity
       end
 
+      # GET /api/v1/work_summary/pay_periods
+      # The current and previous pay period under Settings > Pay schedule.
+      def pay_periods
+        render json: PaySchedule.current_and_previous
+      end
+
       private
 
       def build

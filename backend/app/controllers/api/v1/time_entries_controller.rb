@@ -14,7 +14,8 @@ module Api
       before_action :require_staff!
       before_action :set_time_entry, only: [ :show, :update, :destroy, :approve, :deny, :approve_overtime, :deny_overtime ]
       before_action :require_time_entry_owner_or_admin!, only: [ :update, :destroy ]
-      before_action :require_admin!, only: [ :approve, :deny, :approve_overtime, :deny_overtime, :bulk_approve ]
+      before_action :require_admin!, only: [ :approve, :deny, :approve_overtime, :deny_overtime, :bulk_approve,
+                                             :unscheduled_only_approvals, :approve_unscheduled_only ]
 
       # GET /api/v1/time_entries
       def index
@@ -534,6 +535,63 @@ module Api
         render json: { error: e.message }, status: :unprocessable_entity
       end
 
+      # GET /api/v1/time_entries/unscheduled_only_approvals
+      # Preview for "Approve unscheduled-only entries": pending entries whose
+      # only reason is a clock-in without a schedule. Entries that still miss
+      # required work details are counted separately and left in the queue.
+      def unscheduled_only_approvals
+        ready, needs_details = partition_unscheduled_only(
+          TimeEntry.unscheduled_only_pending.includes(:user, work_lines: [ :client, :service_type ]).order(:work_date, :id).to_a
+        )
+
+        by_user = ready.group_by(&:user).map do |user, entries|
+          { id: user.id, name: user.full_name, entry_count: entries.size, hours: entries.sum { |entry| entry.hours.to_f }.round(2) }
+        end.sort_by { |row| row[:name].to_s }
+
+        render json: {
+          entry_ids: ready.map(&:id),
+          count: ready.size,
+          hours: ready.sum { |entry| entry.hours.to_f }.round(2),
+          oldest_work_date: ready.first&.work_date&.iso8601,
+          newest_work_date: ready.map(&:work_date).max&.iso8601,
+          by_user: by_user,
+          needs_work_details_count: needs_details.size
+        }
+      end
+
+      # POST /api/v1/time_entries/approve_unscheduled_only { entry_ids: [...] }
+      # Approves the previewed entries that still qualify (re-checked under
+      # row locks, taken in id order). Anything that changed since the
+      # preview is skipped and counted, never approved.
+      def approve_unscheduled_only
+        entry_ids = Array(params[:entry_ids]).filter_map { |value| value.to_i if value.to_i.positive? }.uniq
+        return render json: { error: "Nothing to approve. Refresh the preview." }, status: :unprocessable_entity if entry_ids.empty?
+        return render json: { error: "Approve at most 500 entries at a time" }, status: :unprocessable_entity if entry_ids.size > 500
+
+        approved_ids = []
+        skipped = 0
+        error_message = nil
+        ActiveRecord::Base.transaction do
+          locked = TimeEntry.where(id: entry_ids).order(:id).lock.to_a
+          qualifying_ids = TimeEntry.unscheduled_only_pending.where(id: locked.map(&:id)).pluck(:id).to_set
+          candidates = locked.select { |entry| qualifying_ids.include?(entry.id) }
+          ready, = partition_unscheduled_only(candidates)
+          skipped = entry_ids.size - ready.size
+          overtime_context = build_bulk_overtime_context(ready)
+
+          ready.each do |entry|
+            error_message = approve_bulk_time_entry(entry, nil, overtime_context)
+            raise ActiveRecord::Rollback if error_message
+
+            invalidate_exports_for_entry!(entry, "Unscheduled-only entry approved in bulk")
+            approved_ids << entry.id
+          end
+        end
+        return render json: { error: error_message }, status: :unprocessable_entity if error_message
+
+        render json: { approved_count: approved_ids.size, skipped_count: skipped, approved_entry_ids: approved_ids }
+      end
+
       # GET /api/v1/time_entries/unassigned
       # Admin clean-up list: completed, non-denied entries with at least one
       # work line that has no client (issue=client, the default) or that
@@ -574,17 +632,19 @@ module Api
                                                   .order(work_date: :desc, start_time: :desc, id: :desc)
                                                   .offset((page - 1) * per_page).limit(per_page)
 
+        task_required = TimeEntryWorkRequirement.task_required?
         render json: {
           time_entries: page_entries.map do |entry|
             serialize_time_entry(entry).merge(
-              line_issues: entry.work_lines.map { |line| { id: line.id, missing: TimeEntryWorkRequirement.missing_for_line(line) } }
+              line_issues: entry.work_lines.map { |line| { id: line.id, missing: TimeEntryWorkRequirement.missing_for_line(line, task_required: task_required) } }
             )
           end,
           summary: {
             entry_count: total_count,
             hours: matching_lines.sum(:hours).to_f.round(2),
             by_user: by_user,
-            cutover_date: TimeEntryWorkRequirement.cutover_date&.iso8601
+            cutover_date: TimeEntryWorkRequirement.cutover_date&.iso8601,
+            task_required: task_required
           },
           pagination: {
             current_page: page,
@@ -621,7 +681,8 @@ module Api
         render json: {
           recent_clients: recent_client_ids.filter_map { |id| clients_by_id[id] && WorkLineSerializer.client_payload(clients_by_id[id]) },
           descriptions_by_client: descriptions,
-          work_details_required_from: TimeEntryWorkRequirement.cutover_date&.iso8601
+          work_details_required_from: TimeEntryWorkRequirement.cutover_date&.iso8601,
+          work_task_required: TimeEntryWorkRequirement.task_required?
         }
       end
 
@@ -638,10 +699,14 @@ module Api
         lines = TimeEntryAllocation.left_outer_joins(:client)
         return lines.where(client_id: nil) if issue == "client"
 
-        lines.where(
-          "time_entry_allocations.client_id IS NULL OR COALESCE(TRIM(time_entry_allocations.description), '') = '' OR " \
-          "(clients.system_kind = 'internal' AND time_entry_allocations.service_type_id IS NULL)"
-        )
+        conditions = "time_entry_allocations.client_id IS NULL OR COALESCE(TRIM(time_entry_allocations.description), '') = '' OR " \
+                     "(clients.system_kind = 'internal' AND time_entry_allocations.service_type_id IS NULL)"
+        if TimeEntryWorkRequirement.task_required?
+          conditions += " OR time_entry_allocations.service_type_id IS NULL OR (time_entry_allocations.service_task_id IS NULL AND " \
+                        "EXISTS (SELECT 1 FROM service_tasks WHERE service_tasks.service_type_id = time_entry_allocations.service_type_id " \
+                        "AND service_tasks.is_active = TRUE))"
+        end
+        lines.where(conditions)
       end
 
       def with_export_invalidation(entry, reason)
@@ -759,6 +824,13 @@ module Api
           [ line.client_id, line.service_type_id, line.service_task_id, line.period_type, line.period_start&.iso8601,
             line.hours.to_f, line.description ].join("|")
         end
+      end
+
+      # [ready, needs_work_details]: entries that would fail the work-detail
+      # rule at approval stay in the queue for a person to fix.
+      def partition_unscheduled_only(entries)
+        cutover = TimeEntryWorkRequirement.cutover_date
+        entries.partition { |entry| TimeEntryWorkRequirement.errors_for(entry, cutover).empty? }
       end
 
       def approve_bulk_time_entry(entry, note, overtime_context)

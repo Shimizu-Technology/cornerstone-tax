@@ -188,12 +188,17 @@ export function checkLines(
     targetMinutes,
     required,
     clients,
+    serviceTypes = [],
+    taskRequired = false,
     singleCoversTarget = true,
   }: {
     targetMinutes: number | null
     required: boolean
     clients: ClientOption[]
+    /** Categories with their tasks; needed to know whether a category has tasks. */
     serviceTypes?: ServiceType[]
+    /** Settings > "Require a task on every work line" (applies with `required`). */
+    taskRequired?: boolean
     /** A lone line takes the whole target (session mode); false in the day grid. */
     singleCoversTarget?: boolean
   },
@@ -215,7 +220,12 @@ export function checkLines(
       const client = clients.find((option) => String(option.id) === line.client_id)
       if (!line.client_id) issues.push('Choose a client')
       if (!line.description.trim()) issues.push('Say what you did')
-      if (client && isInternalClient(client) && !line.service_type_id) issues.push('Choose a category for internal work')
+      if (taskRequired) {
+        if (!line.service_type_id) issues.push('Choose a category and a task')
+        else if (!line.service_task_id && categoryHasTasks(serviceTypes, line.service_type_id)) issues.push('Choose a task')
+      } else if (client && isInternalClient(client) && !line.service_type_id) {
+        issues.push('Choose a category for internal work')
+      }
     }
     if (issues.length) problems[line.key] = issues
   })
@@ -232,13 +242,25 @@ export function checkLines(
   return { problems, totalMinutes, remainingMinutes, canSubmit: balanced && clean && lines.length > 0, summary }
 }
 
+/**
+ * Whether a category has tasks to choose from. With "Require a task" on, a
+ * line needs a task only then (the server applies the same rule to active
+ * tasks; the category list only carries active ones).
+ */
+export function categoryHasTasks(serviceTypes: ServiceType[], serviceTypeId: string): boolean {
+  const category = serviceTypes.find((type) => String(type.id) === serviceTypeId)
+  return Boolean(category?.tasks?.some((task) => task.is_active !== false))
+}
+
 export interface WorkLineSuggestions {
   recentClients: ClientOption[]
   descriptionsByClient: Record<string, string[]>
   requiredFrom: string | null
+  /** Settings > "Require a task on every work line". */
+  taskRequired: boolean
 }
 
-const EMPTY_SUGGESTIONS: WorkLineSuggestions = { recentClients: [], descriptionsByClient: {}, requiredFrom: null }
+const EMPTY_SUGGESTIONS: WorkLineSuggestions = { recentClients: [], descriptionsByClient: {}, requiredFrom: null, taskRequired: false }
 
 /** Recent clients and descriptions for the editor; empty until loaded. */
 export function useWorkLineSuggestions(enabled = true, userId?: number | null): WorkLineSuggestions {
@@ -253,12 +275,23 @@ export function useWorkLineSuggestions(enabled = true, userId?: number | null): 
         recentClients: response.data.recent_clients,
         descriptionsByClient: response.data.descriptions_by_client,
         requiredFrom: response.data.work_details_required_from ?? null,
+        taskRequired: response.data.work_task_required === true,
       })
     }).catch(() => undefined)
     return () => { cancelled = true }
   }, [enabled, userId])
 
   return suggestions
+}
+
+/**
+ * One sentence on what a line needs, matching the server rule
+ * (TimeEntryWorkRequirement). Used by the editors and Unassigned time.
+ */
+export function requirementHint(taskRequired: boolean): string {
+  return taskRequired
+    ? 'Every line needs a client, a description and a category, plus a task when the category has tasks.'
+    : 'Every line needs a client and a description; internal lines also need a category; the task is optional.'
 }
 
 /** Whether the client/description cutover applies to this work date. */

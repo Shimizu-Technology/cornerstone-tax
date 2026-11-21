@@ -6,6 +6,7 @@ const apiMocks = vi.hoisted(() => ({
   getAdminUsers: vi.fn(),
   inviteUser: vi.fn(),
   updateUserRole: vi.fn(),
+  setUserFlexibleHours: vi.fn(),
   terminateUser: vi.fn(),
   reactivateUser: vi.fn(),
   resendInvite: vi.fn(),
@@ -128,5 +129,21 @@ describe('Users', () => {
     expect(screen.getAllByText('Checking access…')).toHaveLength(4)
     expect(screen.getByRole('combobox', { name: 'Role for Kami Employee' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Terminate' })).not.toBeInTheDocument()
+  })
+
+  it('lets an admin switch flexible hours for a team member', async () => {
+    apiMocks.setUserFlexibleHours.mockResolvedValue({ data: { user: { ...activeEmployee, flexible_hours: true } } })
+    render(<Users />)
+
+    const [toggle] = await screen.findAllByRole('switch', { name: 'Flexible hours for Kami Employee' })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    expect(toggle).not.toBeChecked()
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(apiMocks.setUserFlexibleHours).toHaveBeenCalledWith(3, true))
+    await waitFor(() => expect(screen.getAllByRole('switch', { name: 'Flexible hours for Kami Employee' })[0]).toBeChecked())
+    expect(screen.getAllByText('Clock-ins without a shift skip approval').length).toBeGreaterThan(0)
+    // Terminated people have no switch.
+    expect(screen.queryByRole('switch', { name: 'Flexible hours for Daena Mansapit' })).not.toBeInTheDocument()
   })
 })

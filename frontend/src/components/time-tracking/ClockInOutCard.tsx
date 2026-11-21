@@ -5,7 +5,7 @@ import type { ClockStatus } from '../../lib/api'
 import WorkLinesEditor from './WorkLinesEditor'
 import WorkLinesSheet from './WorkLinesSheet'
 import { useTimeEntryWorkOptions } from './timeEntryWorkForm'
-import { checkLines, detailsRequired, draftsFromEntry, linesPayload, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
+import { checkLines, detailsRequired, draftsFromEntry, linesPayload, requirementHint, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
 
 interface ClockInOutCardProps {
   onStatusChange?: () => void
@@ -187,7 +187,8 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
     return Math.max(0, minutes - breakMinutes)
   })()
   const linesRequired = detailsRequired(suggestions.requiredFrom ?? status?.work_details_required_from, status?.work_date)
-  const lineCheck = checkLines(clockOutLines, { targetMinutes: sessionMinutes, required: linesRequired, clients: workOptions.clients })
+  const taskRequired = linesRequired && (status?.work_task_required ?? suggestions.taskRequired)
+  const lineCheck = checkLines(clockOutLines, { targetMinutes: sessionMinutes, required: linesRequired, clients: workOptions.clients, serviceTypes: workOptions.serviceTypes, taskRequired })
 
   const handleClockOutSubmit = async () => {
     setShowClockOutModal(false)
@@ -334,7 +335,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
             <div className="text-xs text-text-muted mt-0.5">{status.schedule.hours} hours</div>
           </div>
         )}
-        {isUnscheduled && <UnscheduledMsg />}
+        {isUnscheduled && <UnscheduledMsg flexible={Boolean(status?.flexible_hours)} />}
         {!isClockedIn && blockedReason === 'too_early' && <TooEarlyMsg isAdmin={isAdmin} minutesUntil={status?.minutes_until} />}
         {!isClockedIn && blockedReason === 'shift_ended' && <ShiftEndedMsg isAdmin={isAdmin} />}
 
@@ -383,7 +384,9 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
                 </span>
               )}
               {!status?.schedule && !isClockedIn && (
-                <span className="text-xs text-amber-600">No shift scheduled — time will need approval</span>
+                status?.flexible_hours
+                  ? <span className="text-xs text-text-muted">No shift scheduled — flexible hours, no approval needed</span>
+                  : <span className="text-xs text-amber-600">No shift scheduled — time will need approval</span>
               )}
             </div>
           </div>
@@ -512,7 +515,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
             <h3 className="text-sm font-medium text-gray-700">What did you work on?</h3>
             <p className="mt-0.5 text-xs text-gray-500">
               {linesRequired
-                ? 'Every line needs a client and a description; internal lines (Internal – Cornerstone, for office work and errands) also need a category; the task is always optional.'
+                ? `${requirementHint(taskRequired)} Use Internal – Cornerstone for office work and errands.`
                 : 'Pick the client and say what you did; category and task are optional. Split the session if you worked for more than one client.'}
             </p>
           </div>
@@ -562,6 +565,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
             serviceTypes={workOptions.serviceTypes}
             suggestions={suggestions}
             required={linesRequired}
+            taskRequired={taskRequired}
             referenceDate={status?.work_date || undefined}
           />
         </div>
@@ -629,7 +633,15 @@ function ErrorMsg({ error }: { error: string | null }) {
   )
 }
 
-function UnscheduledMsg() {
+function UnscheduledMsg({ flexible }: { flexible: boolean }) {
+  if (flexible) {
+    return (
+      <div className="mb-4 rounded-xl border border-neutral-warm bg-secondary/40 p-3.5">
+        <div className="text-sm font-medium text-primary-dark">No shift scheduled today</div>
+        <div className="mt-0.5 text-xs text-text-muted">You’re on flexible hours, so this time won’t need approval.</div>
+      </div>
+    )
+  }
   return (
     <div className="mb-4 p-3.5 bg-amber-50 rounded-xl border border-amber-200">
       <div className="flex items-start gap-2">

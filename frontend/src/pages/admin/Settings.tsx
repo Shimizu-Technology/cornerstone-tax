@@ -60,6 +60,9 @@ export default function Settings() {
   const [overtimeWeeklyHours, setOvertimeWeeklyHours] = useState('40')
   const [earlyClockInBuffer, setEarlyClockInBuffer] = useState('5')
   const [workDetailsRequiredFrom, setWorkDetailsRequiredFrom] = useState('')
+  const [workTaskRequired, setWorkTaskRequired] = useState(false)
+  const [paySchedule, setPaySchedule] = useState<'semi_monthly' | 'biweekly' | 'weekly'>('semi_monthly')
+  const [payPeriodAnchor, setPayPeriodAnchor] = useState('')
   
   // Workflow Stages state
   const [stages, setStages] = useState<AdminWorkflowStageLocal[]>([])
@@ -196,6 +199,10 @@ export default function Settings() {
       setOvertimeWeeklyHours(response.data.overtime_weekly_threshold_hours || '40')
       setEarlyClockInBuffer(response.data.early_clock_in_buffer_minutes || '5')
       setWorkDetailsRequiredFrom(response.data.time_work_details_required_from || '')
+      setWorkTaskRequired(response.data.time_work_task_required === 'true')
+      const schedule = response.data.time_pay_schedule
+      setPaySchedule(schedule === 'biweekly' || schedule === 'weekly' ? schedule : 'semi_monthly')
+      setPayPeriodAnchor(response.data.time_pay_period_anchor || '')
     }
     setLoadingSystemSettings(false)
   }, [])
@@ -216,6 +223,9 @@ export default function Settings() {
       overtime_weekly_threshold_hours: overtimeWeeklyHours,
       early_clock_in_buffer_minutes: earlyClockInBuffer,
       time_work_details_required_from: workDetailsRequiredFrom,
+      time_work_task_required: workTaskRequired ? 'true' : 'false',
+      time_pay_schedule: paySchedule,
+      time_pay_period_anchor: paySchedule === 'semi_monthly' ? '' : payPeriodAnchor,
     })
     
     if (response.error) {
@@ -1990,39 +2000,108 @@ export default function Settings() {
                       <p className="text-xs text-text-muted mt-1">Minutes before shift that clock-in is allowed</p>
                     </div>
                   </div>
-                  <div className="mt-4 max-w-md">
-                    <label htmlFor="work-details-required-from" className="block text-sm font-medium text-primary-dark mb-1">
-                      Require client and description from
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        id="work-details-required-from"
-                        type="date"
-                        value={workDetailsRequiredFrom}
-                        onChange={(e) => setWorkDetailsRequiredFrom(e.target.value)}
-                        className="w-full min-h-11 px-4 py-2.5 border border-neutral-warm rounded-xl text-base sm:text-sm focus:ring-2 focus:ring-primary focus:border-primary bg-white"
-                        aria-describedby="work-details-required-from-hint"
-                      />
-                      {workDetailsRequiredFrom && (
-                        <button
-                          type="button"
-                          onClick={() => setWorkDetailsRequiredFrom('')}
-                          className="min-h-11 shrink-0 rounded-xl border border-neutral-warm px-3 text-sm font-medium text-primary-dark hover:bg-secondary"
-                        >
-                          Turn off
-                        </button>
-                      )}
-                    </div>
-                    <p id="work-details-required-from-hint" className="text-xs text-text-muted mt-1">
-                      {workDetailsRequiredFrom
-                        ? 'From this day, every line needs a client and a description; internal lines also need a category; the task is always optional. Time that misses this can’t be saved or approved.'
-                        : 'Off. Leave blank until staff are used to logging work by client.'}
-                    </p>
-                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end pt-4 border-t border-neutral-warm">
+              {/* Time tracking: the work-detail rule and pay periods. Defaults are
+                  best guesses; see docs/TIME_TRACKING_SETTINGS.md. */}
+              <section aria-labelledby="time-tracking-settings-heading" className="bg-secondary/30 rounded-xl p-6 space-y-5">
+                <div>
+                  <h3 id="time-tracking-settings-heading" className="font-semibold text-primary-dark">Time tracking</h3>
+                  <p className="text-sm text-text-muted mt-1">What staff must fill in on each work line, and how pay periods are counted.</p>
+                </div>
+
+                <div className="max-w-md">
+                  <label htmlFor="work-details-required-from" className="block text-sm font-medium text-primary-dark mb-1">
+                    Required from
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="work-details-required-from"
+                      type="date"
+                      value={workDetailsRequiredFrom}
+                      onChange={(e) => setWorkDetailsRequiredFrom(e.target.value)}
+                      className="w-full min-h-11 px-4 py-2.5 border border-neutral-warm rounded-xl text-base sm:text-sm focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                      aria-describedby="work-details-required-from-hint"
+                    />
+                    {workDetailsRequiredFrom && (
+                      <button
+                        type="button"
+                        onClick={() => setWorkDetailsRequiredFrom('')}
+                        className="min-h-11 shrink-0 rounded-xl border border-neutral-warm px-3 text-sm font-medium text-primary-dark hover:bg-white"
+                      >
+                        Turn off
+                      </button>
+                    )}
+                  </div>
+                  <p id="work-details-required-from-hint" className="text-xs text-text-muted mt-1">
+                    {workDetailsRequiredFrom
+                      ? 'From this work date, every line needs a client and a description (internal lines also a category). Time that misses this can’t be saved or approved.'
+                      : 'Off: client and description are optional. Pick a date to start requiring them.'}
+                  </p>
+                </div>
+
+                <div className="max-w-md">
+                  <label className="flex min-h-11 cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      checked={workTaskRequired}
+                      aria-checked={workTaskRequired}
+                      onChange={(e) => setWorkTaskRequired(e.target.checked)}
+                      aria-describedby="work-task-required-hint"
+                      className="mt-0.5 h-5 w-5 shrink-0 rounded border-neutral-warm text-primary focus:ring-primary"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-primary-dark">Require a task on every work line</span>
+                      <span id="work-task-required-hint" className="block text-xs text-text-muted mt-0.5">
+                        {workTaskRequired
+                          ? `Every line also needs a category, plus a task when the category has tasks${workDetailsRequiredFrom ? '.' : ' — once “Required from” is set.'}`
+                          : 'Off: category is needed only for internal work, and the task is optional.'}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                <div className="grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="pay-schedule" className="block text-sm font-medium text-primary-dark mb-1">Pay schedule</label>
+                    <select
+                      id="pay-schedule"
+                      value={paySchedule}
+                      onChange={(e) => setPaySchedule(e.target.value as typeof paySchedule)}
+                      aria-describedby="pay-schedule-hint"
+                      className="w-full min-h-11 px-4 py-2.5 border border-neutral-warm rounded-xl text-base sm:text-sm focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                    >
+                      <option value="semi_monthly">Semi-monthly (1st–15th and 16th–end)</option>
+                      <option value="biweekly">Every two weeks</option>
+                      <option value="weekly">Every week</option>
+                    </select>
+                    <p id="pay-schedule-hint" className="text-xs text-text-muted mt-1">Sets “This pay period” and “Last pay period” in the work summary.</p>
+                  </div>
+                  {paySchedule !== 'semi_monthly' && (
+                    <div>
+                      <label htmlFor="pay-period-anchor" className="block text-sm font-medium text-primary-dark mb-1">First day of a pay period</label>
+                      <input
+                        id="pay-period-anchor"
+                        type="date"
+                        value={payPeriodAnchor}
+                        onChange={(e) => setPayPeriodAnchor(e.target.value)}
+                        aria-describedby="pay-period-anchor-hint"
+                        className="w-full min-h-11 px-4 py-2.5 border border-neutral-warm rounded-xl text-base sm:text-sm focus:ring-2 focus:ring-primary focus:border-primary bg-white"
+                      />
+                      <p id="pay-period-anchor-hint" className="text-xs text-text-muted mt-1">
+                        Any period’s start date, past or future; periods repeat every {paySchedule === 'weekly' ? '7' : '14'} days from it.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <div className="flex flex-col items-stretch gap-3 pt-4 border-t border-neutral-warm sm:flex-row sm:items-center sm:justify-end">
+                {/* Repeated by the button: on a phone the banner above is out of view. */}
+                {systemSettingsError && <p role="alert" className="text-sm text-red-600 sm:mr-auto">{systemSettingsError}</p>}
+                {systemSettingsSuccess && <p role="status" className="text-sm text-green-700 sm:mr-auto">{systemSettingsSuccess}</p>}
                 <button
                   onClick={handleSaveSystemSettings}
                   disabled={savingSystemSettings}

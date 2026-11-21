@@ -2,6 +2,9 @@
 
 class TimeClockService
   BUSINESS_TIMEZONE = "Guam"
+  # The approval note on a clock-in without a schedule. Entries whose only
+  # note is this one can be approved in bulk ("Approve unscheduled-only").
+  UNSCHEDULED_NOTE = "Clocked in without a schedule"
 
   # Optional work details staff can add when clocking out (same fields as a
   # manual entry: client, category, task, period). A key that is present
@@ -26,7 +29,9 @@ class TimeClockService
         validate_clock_in_time(now, schedule)
       end
 
-      unscheduled = schedule.nil? && admin_override_by.nil?
+      # People on flexible hours keep no fixed schedule, so their unscheduled
+      # clock-ins don't go to approval. Corrected times and overtime still do.
+      unscheduled = schedule.nil? && admin_override_by.nil? && !user.flexible_hours?
 
       entry = TimeEntry.new(
         user: user,
@@ -39,7 +44,7 @@ class TimeClockService
         schedule: schedule,
         admin_override: admin_override_by.present?,
         approval_status: nil,
-        approval_note: unscheduled ? "Clocked in without a schedule" : nil,
+        approval_note: unscheduled ? UNSCHEDULED_NOTE : nil,
         attendance_status: schedule ? calculate_attendance_status(now, schedule) : nil
       )
 
@@ -93,8 +98,13 @@ class TimeClockService
         else
           entry.end_time = guam_now
           entry.clock_out_at = now
-          if entry.approval_note&.start_with?("Clocked in without a schedule")
-            entry.approval_status = "pending"
+          if entry.approval_note&.start_with?(UNSCHEDULED_NOTE)
+            if user.flexible_hours?
+              # Switched to flexible hours during this shift: nothing to review.
+              entry.approval_note = entry.approval_note.split(" | ").reject { |part| part.strip == UNSCHEDULED_NOTE }.join(" | ").presence
+            else
+              entry.approval_status = "pending"
+            end
           end
         end
 
@@ -205,6 +215,9 @@ class TimeClockService
         } : nil,
         # From this date, every work line needs a client and a description.
         work_details_required_from: TimeEntryWorkRequirement.cutover_date&.iso8601,
+        work_task_required: TimeEntryWorkRequirement.task_required?,
+        # Unscheduled clock-ins by people on flexible hours skip approval.
+        flexible_hours: user.flexible_hours?,
         can_clock_in: clock_in_info[:allowed],
         clock_in_blocked_reason: clock_in_info[:reason],
         minutes_until: clock_in_info[:minutes_until]

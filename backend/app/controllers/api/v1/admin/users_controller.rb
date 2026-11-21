@@ -153,7 +153,29 @@ module Api
             permitted[:role] = new_role
           end
 
-          if @user.update(permitted)
+          # Flexible hours: unscheduled clock-ins skip approval. Only admins
+          # reach this controller, so staff can't switch it for themselves.
+          if params.key?(:flexible_hours)
+            flexible = { "true" => true, "false" => false }[params[:flexible_hours].to_s]
+            return render json: { error: "Flexible hours must be true or false" }, status: :unprocessable_entity if flexible.nil?
+            return render json: { error: "Flexible hours applies to team members only" }, status: :unprocessable_entity if @user.role == "client"
+
+            permitted[:flexible_hours] = flexible
+          end
+
+          saved = User.transaction do
+            changes = permitted.to_h { |key, value| [ key.to_s, [ @user.public_send(key), value ] ] }.reject { |_, (from, to)| from == to }
+            next false unless @user.update(permitted)
+
+            if changes.key?("flexible_hours")
+              AuditLog.log(auditable: @user, action: "updated", user: current_user,
+                           changes_made: { "flexible_hours" => changes["flexible_hours"] },
+                           metadata: "Flexible hours turned #{@user.flexible_hours? ? 'on' : 'off'}")
+            end
+            true
+          end
+
+          if saved
             render json: { user: serialize_user(@user) }
           else
             render json: { error: @user.errors.full_messages.join(", ") }, status: :unprocessable_entity
@@ -245,6 +267,7 @@ module Api
             display_name: user.display_name,
             full_name: user.full_name,
             role: user.role,
+            flexible_hours: user.flexible_hours?,
             client_id: user.client_id,
             client_name: user.client&.full_name,
             is_active: user.employment_active? && user.clerk_id.present? && !user.clerk_id.start_with?("pending_"),

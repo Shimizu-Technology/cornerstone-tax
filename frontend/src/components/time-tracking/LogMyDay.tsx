@@ -162,7 +162,7 @@ export default function LogMyDay({
 
   const targetMinutes = session ? entryMinutes(session) : null
   const required = detailsRequired(suggestions.requiredFrom, date)
-  const check = checkLines(lines, { targetMinutes, required, clients, singleCoversTarget: false })
+  const check = checkLines(lines, { targetMinutes, required, clients, serviceTypes, taskRequired: required && suggestions.taskRequired, singleCoversTarget: false })
   const dirty = Boolean(draft)
 
   // Warn before leaving the page while anything is unsaved.

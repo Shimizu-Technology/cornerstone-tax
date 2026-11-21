@@ -32,6 +32,11 @@ export interface WorkLinesEditorProps {
   suggestions?: WorkLineSuggestions
   /** Client and description required (the cutover applies). */
   required?: boolean
+  /**
+   * Settings > "Require a task on every work line" (applies with `required`).
+   * Defaults to what the suggestions say.
+   */
+  taskRequired?: boolean
   referenceDate?: string
   idPrefix?: string
   /**
@@ -51,6 +56,7 @@ export default function WorkLinesEditor({
   serviceTypes,
   suggestions,
   required = false,
+  taskRequired: taskRequiredProp,
   referenceDate,
   idPrefix,
   mode = 'session',
@@ -60,7 +66,8 @@ export default function WorkLinesEditor({
   const prefix = idPrefix || generatedId.replace(/:/g, '')
   // Line whose client field should get focus after the next render.
   const pendingFocus = useRef<string | null>(null)
-  const check = checkLines(lines, { targetMinutes, required, clients, singleCoversTarget: mode === 'session' })
+  const taskRequired = required && (taskRequiredProp ?? suggestions?.taskRequired ?? false)
+  const check = checkLines(lines, { targetMinutes, required, clients, serviceTypes, taskRequired, singleCoversTarget: mode === 'session' })
   const singleSession = mode === 'session' && lines.length === 1 && targetMinutes !== null
 
   // Move focus to the client field of a line that was just added.
@@ -124,6 +131,7 @@ export default function WorkLinesEditor({
             serviceTypes={serviceTypes}
             suggestions={suggestions}
             required={required}
+            taskRequired={taskRequired}
             referenceDate={referenceDate}
             wholeSession={singleSession}
             wholeSessionMinutes={targetMinutes}
@@ -188,6 +196,7 @@ function WorkLineRow({
   serviceTypes,
   suggestions,
   required,
+  taskRequired,
   referenceDate,
   wholeSession,
   wholeSessionMinutes,
@@ -208,6 +217,8 @@ function WorkLineRow({
   serviceTypes: ServiceType[]
   suggestions?: WorkLineSuggestions
   required: boolean
+  /** A category, and a task when the category has tasks, are required. */
+  taskRequired: boolean
   referenceDate?: string
   wholeSession: boolean
   wholeSessionMinutes: number | null
@@ -230,10 +241,31 @@ function WorkLineRow({
   )
   const category = serviceTypes.find((type) => String(type.id) === line.service_type_id)
   const tasks = [...(category?.tasks || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name))
-  const categoryNeeded = required && isInternalClient(client)
+  const categoryNeeded = taskRequired || (required && isInternalClient(client))
+  const taskNeeded = taskRequired && (!line.service_type_id || tasks.length > 0)
   const descriptionChips = (suggestions?.descriptionsByClient[line.client_id || ''] || []).slice(0, 4)
   const minutes = wholeSession ? wholeSessionMinutes : draftMinutes(line)
   const problemId = `${id}-problems`
+  // With "Require a task" on, the task sits next to the category; otherwise
+  // it is tucked away with the period.
+  const taskField = (
+    <div>
+      <label htmlFor={`${id}-task`} className={labelClass}>
+        Task{!taskNeeded && <span className="font-normal text-text-muted"> (optional)</span>}
+      </label>
+      <select
+        id={`${id}-task`}
+        value={line.service_task_id}
+        onChange={(event) => onChange({ service_task_id: event.target.value })}
+        className={inputClass}
+        aria-required={taskNeeded}
+        disabled={disabled || !line.service_type_id || tasks.length === 0}
+      >
+        <option value="">{line.service_type_id ? (tasks.length ? (taskNeeded ? 'Choose task…' : 'No task') : 'No tasks for this category') : 'Choose a category first'}</option>
+        {tasks.map((task) => <option key={task.id} value={task.id}>{task.name}</option>)}
+      </select>
+    </div>
+  )
 
   const changeClient = (clientId: string) => {
     const nextClient = clients.find((option) => String(option.id) === clientId) ?? null
@@ -307,6 +339,7 @@ function WorkLineRow({
           {categories.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
           {category && !categories.includes(category) && <option value={category.id}>{category.name}</option>}
         </select>
+        {taskRequired && taskField}
         <button
           type="button"
           onClick={() => setShowMore(!showMore)}
@@ -314,23 +347,11 @@ function WorkLineRow({
           aria-controls={`${id}-more`}
           className="min-h-11 text-sm font-medium text-primary underline-offset-2 hover:underline"
         >
-          {showMore ? 'Hide task and period' : 'Task and period'}
+          {taskRequired ? (showMore ? 'Hide period' : 'Period') : (showMore ? 'Hide task and period' : 'Task and period')}
         </button>
         {showMore && (
           <div id={`${id}-more`} className="space-y-2 rounded-lg bg-secondary/30 p-2">
-            <div>
-              <label htmlFor={`${id}-task`} className={labelClass}>Task <span className="font-normal text-text-muted">(optional)</span></label>
-              <select
-                id={`${id}-task`}
-                value={line.service_task_id}
-                onChange={(event) => onChange({ service_task_id: event.target.value })}
-                className={inputClass}
-                disabled={disabled || !line.service_type_id || tasks.length === 0}
-              >
-                <option value="">{line.service_type_id ? (tasks.length ? 'No task' : 'No tasks for this category') : 'Choose a category first'}</option>
-                {tasks.map((task) => <option key={task.id} value={task.id}>{task.name}</option>)}
-              </select>
-            </div>
+            {!taskRequired && taskField}
             <PeriodPicker
               idPrefix={`${id}-period`}
               value={{ period_type: line.period_type, period_start: line.period_start }}
