@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useState, useCal
 import type { ReactNode } from 'react'
 import { useAuth, useUser } from '@clerk/clerk-react'
 import { setAuthTokenGetter, api } from '../lib/api'
+import { purgeTimeDrafts } from '../components/time-tracking/logMyDayDrafts'
 
 interface AuthContextType {
   isClerkEnabled: boolean
@@ -76,6 +77,9 @@ function ClerkAuthProvider({ children }: { children: ReactNode }) {
       if (lastClerkIdRef.current && !currentClerkId) {
         setCachedRole(lastClerkIdRef.current, null)
       }
+      // Signed out, or a different person signed in: unsaved time drafts
+      // (descriptions, client ids) must not outlive the session.
+      if (lastClerkIdRef.current) purgeTimeDrafts()
       lastClerkIdRef.current = currentClerkId
       fetchedRef.current = false
       clearTimeout(retryTimerRef.current)

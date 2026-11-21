@@ -57,6 +57,10 @@ class TimeEntry < ApplicationRecord
   before_validation :set_zero_hours_if_clocked_in, if: -> { status.in?(%w[clocked_in on_break]) }
   # Runs last: line hours are split from the entry's final hours.
   before_validation :apply_work_lines
+  # Change token (see the migration): bumped for any change to the entry;
+  # its work lines bump it themselves (TimeEntryAllocation callbacks).
+  before_update :bump_work_version, if: :has_changes_to_save?
+  after_save :refresh_work_version
   after_save :clear_work_lines_input
 
   attr_reader :work_lines_input
@@ -113,6 +117,42 @@ class TimeEntry < ApplicationRecord
     lock!
     work_lines.reset
     self
+  end
+
+  # Bulk writes to many entries go through here instead of update_all: the
+  # rows are locked in id order (the same order every multi-row lock uses),
+  # updated, and each entry's work_version is bumped, all in the caller's
+  # transaction. Returns the ids touched.
+  def self.versioned_update!(scope, attributes)
+    raise ActiveRecord::TransactionIsolationError, "versioned_update! must run inside a transaction" unless connection.transaction_open?
+
+    ids = scope.unscope(:order, :includes, :preload, :eager_load).order(:id).lock.pluck(:id)
+    return [] if ids.empty?
+
+    where(id: ids).update_all(attributes.merge(updated_at: Time.current)) if attributes.any?
+    where(id: ids).update_all("work_version = work_version + 1")
+    ids
+  end
+
+  # Moves time from one client to another (e.g. a merged intake duplicate):
+  # entry client columns and work lines alike, so attribution is kept and
+  # each line keeps matching its entry. Optionally moves the entries off one
+  # tax return onto another. Versioned and locked like versioned_update!.
+  def self.move_client!(from_client_id:, to_client_id:, tax_return_move: nil)
+    raise ActiveRecord::TransactionIsolationError, "move_client! must run inside a transaction" unless connection.transaction_open?
+
+    line_entry_ids = TimeEntryAllocation.where(client_id: from_client_id).select(:time_entry_id)
+    scope = where(client_id: from_client_id).or(where(id: line_entry_ids))
+    scope = scope.or(where(tax_return_id: tax_return_move.first)) if tax_return_move
+    ids = scope.order(:id).lock.pluck(:id)
+    return [] if ids.empty?
+
+    now = Time.current
+    where(id: ids, client_id: from_client_id).update_all(client_id: to_client_id, updated_at: now)
+    where(id: ids, tax_return_id: tax_return_move.first).update_all(tax_return_id: tax_return_move.last, updated_at: now) if tax_return_move
+    TimeEntryAllocation.where(time_entry_id: ids, client_id: from_client_id).update_all(client_id: to_client_id, updated_at: now)
+    where(id: ids).update_all("work_version = work_version + 1")
+    ids
   end
 
   # Runs a multi-query read (reports, exports, feeds) against one snapshot,
@@ -275,6 +315,19 @@ class TimeEntry < ApplicationRecord
   end
 
   private
+
+  def bump_work_version
+    self.work_version = work_version.to_i + 1 unless will_save_change_to_work_version?
+  end
+
+  # Line callbacks increment the column in SQL; keep this object in step.
+  def refresh_work_version
+    current = self.class.where(id: id).pick(:work_version)
+    return if current.nil? || current == work_version
+
+    self[:work_version] = current
+    clear_attribute_change(:work_version)
+  end
 
   def clear_work_lines_input
     @work_lines_input = nil

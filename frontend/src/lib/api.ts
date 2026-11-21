@@ -10,6 +10,8 @@ interface ApiResponse<T> {
   status?: number;
   code?: string;
   export_references?: string[];
+  /** On a 409 version_conflict: the entry as it is now on the server. */
+  current_entry?: TimeEntry;
 }
 
 // Store for the auth token getter function
@@ -95,6 +97,7 @@ async function fetchApi<T>(
         status: response.status,
         code: data.code,
         export_references: data.export_references,
+        ...(response.status === 409 && data.time_entry ? { current_entry: data.time_entry } : {}),
       };
     }
 
@@ -752,6 +755,8 @@ export interface TimeEntry {
     id: number;
     title: string;
   } | null;
+  /** Exact change token; send it back as expected_version when editing. */
+  version?: number;
   locked_at: string | null;
   created_at: string;
   updated_at: string;
@@ -784,6 +789,8 @@ export interface WorkLineInput {
   period_start?: string | null;
   minutes?: number;
   hours?: number;
+  /** An unchanged line's stored hours, kept exactly (never rescaled). */
+  exact_hours?: number;
 }
 
 export interface UnassignedTimeEntry extends TimeEntry {
@@ -2212,8 +2219,12 @@ export const api = {
 
   createTimeEntry: (data: {
     work_date: string;
-    start_time: string;
-    end_time: string;
+    /** Omit both times for a day log; its hours are then the sum of work_lines. */
+    start_time?: string;
+    end_time?: string;
+    work_lines?: WorkLineInput[];
+    /** Create a day log even if one exists for that day (otherwise 409). */
+    additional_day_log?: boolean;
     description?: string;
     time_category_id?: number;
     client_id?: number | null;
@@ -2227,10 +2238,10 @@ export const api = {
     operation_task_id?: number;
   }) =>
     fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries', (() => {
-      const { operation_task_id, ...timeEntryData } = data;
+      const { operation_task_id, additional_day_log, ...timeEntryData } = data;
       return {
         method: 'POST',
-        body: JSON.stringify({ time_entry: timeEntryData, operation_task_id }),
+        body: JSON.stringify({ time_entry: timeEntryData, operation_task_id, ...(additional_day_log ? { additional_day_log: true } : {}) }),
       };
     })()),
 
@@ -2249,14 +2260,24 @@ export const api = {
     period_start: string | null;
     operation_task_id: number;
     breaks: Array<{ id?: number; start_time: string; end_time: string; _destroy?: boolean }>;
-  }>, correctionReason?: string) =>
+    work_lines: WorkLineInput[];
+  }>, correctionReason?: string, options: { expectedVersion?: number } = {}) =>
     fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}`, (() => {
       const { operation_task_id, ...timeEntryData } = data;
       return {
         method: 'PATCH',
-        body: JSON.stringify({ time_entry: timeEntryData, operation_task_id, correction_reason: correctionReason }),
+        body: JSON.stringify({
+          time_entry: timeEntryData,
+          operation_task_id,
+          correction_reason: correctionReason,
+          // Server answers 409 version_conflict if the entry changed since.
+          ...(options.expectedVersion !== undefined ? { expected_version: options.expectedVersion } : {}),
+        }),
       };
     })()),
+
+  getTimeEntry: (id: number) =>
+    fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}`),
 
   deleteTimeEntry: (id: number, correctionReason?: string) =>
     fetchApi<void>(`/api/v1/time_entries/${id}`, {
@@ -2279,13 +2300,14 @@ export const api = {
    * omitted keys are kept. timeEntryId makes the server reject the request if
    * the active clock-in changed since the form opened.
    */
-  clockOut: (correctedEndTime?: string, description?: string, workDetails?: ClockOutWorkDetails, timeEntryId?: number | null) => {
+  clockOut: (correctedEndTime?: string, description?: string, workDetails?: ClockOutWorkDetails, timeEntryId?: number | null, workLines?: WorkLineInput[]) => {
     const details = Object.fromEntries(Object.entries(workDetails || {}).filter(([, value]) => value !== undefined));
     const body = {
       ...(correctedEndTime ? { corrected_end_time: correctedEndTime } : {}),
       ...(description ? { description } : {}),
       ...(timeEntryId ? { time_entry_id: timeEntryId } : {}),
       ...details,
+      ...(workLines ? { work_lines: workLines } : {}),
     };
     return fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries/clock_out', {
       method: 'POST',
@@ -2358,6 +2380,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ note }),
     }),
+
+  getWorkLineSuggestions: (userId?: number) =>
+    fetchApi<{
+      recent_clients: ClientPickerOption[];
+      descriptions_by_client: Record<string, string[]>;
+      work_details_required_from: string | null;
+    }>(`/api/v1/time_entries/work_line_suggestions${userId ? `?user_id=${userId}` : ''}`),
 
   getUnassignedTime: (params: { start_date?: string; end_date?: string; user_id?: number; issue?: 'client' | 'any'; page?: number }) => {
     const searchParams = new URLSearchParams();

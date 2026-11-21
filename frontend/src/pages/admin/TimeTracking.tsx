@@ -4,6 +4,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import UnassignedTime from '../../components/time-tracking/UnassignedTime'
+import WorkLinesEditor from '../../components/time-tracking/WorkLinesEditor'
+import VersionConflictPanel from '../../components/time-tracking/VersionConflictPanel'
+import LogMyDay from '../../components/time-tracking/LogMyDay'
+import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, linesPayload, newDraft, useWorkLineSuggestions, type WorkLineDraft } from '../../components/time-tracking/workLinesModel'
 import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary, TimeEntry as TimeEntryItem } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeIn } from '../../components/ui/FadeIn'
@@ -14,7 +18,7 @@ import ApprovalQueue from '../../components/time-tracking/ApprovalQueue'
 import WhosWorking from '../../components/time-tracking/WhosWorking'
 import HoursReportWorkspace, { type HoursReportFilters, type ReportView } from '../../components/time-tracking/HoursReportWorkspace'
 import TimeEntryWorkFields, { CategoryFilterSelect, ClientPicker, PeriodPicker } from '../../components/time-tracking/TimeEntryWorkFields'
-import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, useTimeEntryWorkOptions, workFieldsFromEntry, workFieldsPayload, type WorkFieldsValue } from '../../components/time-tracking/timeEntryWorkForm'
+import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, useTimeEntryWorkOptions, workFieldsFromEntry, type WorkFieldsValue } from '../../components/time-tracking/timeEntryWorkForm'
 import { buildHoursReportParams, normalizeReportFilters } from '../../lib/hoursReportParams'
 import {
   categoryFilterValue,
@@ -188,10 +192,12 @@ export default function TimeTracking() {
   
   // Tab: entries, approvals, or reports
   const requestedTab = searchParams.get('tab')
-  const [activeTab, setActiveTab] = useState<'entries' | 'approvals' | 'unassigned' | 'reports'>(
-    requestedTab === 'reports' || requestedTab === 'approvals' || requestedTab === 'unassigned' ? requestedTab : 'entries'
+  const [activeTab, setActiveTab] = useState<'entries' | 'day' | 'approvals' | 'unassigned' | 'reports'>(
+    requestedTab === 'reports' || requestedTab === 'approvals' || requestedTab === 'unassigned' || requestedTab === 'day' ? requestedTab : 'entries'
   )
   const [unassignedRefresh, setUnassignedRefresh] = useState(0)
+  const [modalVersionConflict, setModalVersionConflict] = useState(false)
+  const [modalConflictEntry, setModalConflictEntry] = useState<TimeEntryItem | null>(null)
   
   // View mode: 'day' or 'week'
   const [viewMode, setViewMode] = useState<'day' | 'week'>('week')
@@ -274,6 +280,23 @@ export default function TimeTracking() {
   }
 
   const calculatedHours = calculateHours(formData.start_time, formData.end_time, formData.break_minutes)
+  const [lines, setLines] = useState<WorkLineDraft[]>(() => [newDraft()])
+  const [initialLines, setInitialLines] = useState<WorkLineDraft[]>(() => [newDraft()])
+  const lineSuggestions = useWorkLineSuggestions(showModal, editingEntry?.user?.id ?? (formData.user_id ? Number(formData.user_id) : null))
+  const editingActiveClock = Boolean(editingEntry && editingEntry.status !== 'completed')
+  const editingDayLog = Boolean(editingEntry?.duration_only)
+  // While the times are untouched, the stored hours are the target (a clock
+  // entry's seconds can make them a minute off what the HH:MM fields give).
+  const modalTimesUntouched = Boolean(editingEntry) && formData.start_time === (editingEntry?.start_time || '08:00') &&
+    formData.end_time === (editingEntry?.end_time || '17:00') && formData.break_minutes === editingEntry?.break_minutes
+  const modalTargetMinutes = editingDayLog
+    ? null
+    : modalTimesUntouched && editingEntry ? Math.round(editingEntry.hours * 60) : Math.round(calculatedHours * 60)
+  const modalLinesRequired = detailsRequired(lineSuggestions.requiredFrom, formData.work_date)
+  const modalLineCheck = checkLines(lines, { targetMinutes: modalTargetMinutes, required: modalLinesRequired, clients })
+  const modalLinesChanged = JSON.stringify(linesPayload(lines, modalTargetMinutes)) !== JSON.stringify(linesPayload(initialLines, modalTargetMinutes))
+  const modalHoursChanged = Boolean(editingEntry && !editingDayLog && Math.round(editingEntry.hours * 60) !== modalTargetMinutes)
+  const modalSendsLines = !editingActiveClock && (!editingEntry || modalLinesChanged || (modalHoursChanged && lines.length > 1))
 
   // Owner display: "You" for self, real name for others
   const ownerLabel = (entry: TimeEntryItem): string => {
@@ -683,11 +706,16 @@ export default function TimeTracking() {
       break_minutes: null
     })
     setWorkFields({ ...EMPTY_WORK_FIELDS, description: prefillNotes || '' })
+    const fresh = [newDraft({ description: prefillNotes || '' })]
+    setLines(fresh)
+    setInitialLines(fresh)
     setShowModal(true)
   }
 
   const openEditEntry = (entry: TimeEntryItem) => {
     setEditingEntry(entry)
+    setModalVersionConflict(false)
+    setModalConflictEntry(null)
     setCorrectionReason('')
     setCorrectionReferences([])
     setRequiresCorrectionReason(false)
@@ -699,6 +727,9 @@ export default function TimeTracking() {
       break_minutes: entry.break_minutes
     })
     setWorkFields(workFieldsFromEntry(entry))
+    const drafts = draftsFromEntry(entry)
+    setLines(drafts)
+    setInitialLines(drafts)
     setShowModal(true)
   }
 
@@ -718,20 +749,42 @@ export default function TimeTracking() {
     setError(null)
 
     try {
-      const timeFields = {
+      // Edits send only the attendance fields that changed (resending an
+      // unchanged HH:MM would drop a clock entry's seconds and its approval).
+      const timeFields = editingEntry ? attendanceChanges({
+        workDate: [formData.work_date, editingEntry.work_date],
+        startTime: editingDayLog ? null : [formData.start_time, editingEntry.start_time || '08:00'],
+        endTime: editingDayLog || editingActiveClock ? null : [formData.end_time, editingEntry.end_time || '17:00'],
+        breakMinutes: editingDayLog || editingActiveClock ? null : [formData.break_minutes, editingEntry.break_minutes],
+      }) : {
         work_date: formData.work_date,
         start_time: formData.start_time,
         end_time: formData.end_time,
         break_minutes: formData.break_minutes
       }
+      const linesField = modalSendsLines ? { work_lines: linesPayload(lines, modalTargetMinutes) } : {}
 
-      if (editingEntry) {
-        // Send only the work details the user changed so a concurrent edit is not overwritten.
-        const response = await api.updateTimeEntry(
-          editingEntry.id,
-          { ...timeFields, ...changedWorkFieldsPayload(workFieldsFromEntry(editingEntry), workFields) },
-          correctionReason,
-        )
+      const editPayload = editingEntry ? {
+        ...timeFields,
+        ...(editingActiveClock ? changedWorkFieldsPayload(workFieldsFromEntry(editingEntry), workFields) : linesField),
+      } : {}
+
+      if (editingEntry && Object.keys(editPayload).length === 0) {
+        // Nothing changed: close without a request (an empty update is an error).
+        setShowModal(false)
+      } else if (editingEntry) {
+        // Send only what the user changed so a concurrent edit is not overwritten.
+        const response = await api.updateTimeEntry(editingEntry.id, editPayload, correctionReason, { expectedVersion: editingEntry.version })
+        if (response.status === 409) {
+          // Changed elsewhere since the modal opened: nothing was saved.
+          // Refetch at once so the panel and the list show what is saved now.
+          setModalVersionConflict(true)
+          setModalConflictEntry(response.current_entry ?? null)
+          void loadEntries()
+          const fresh = await api.getTimeEntry(editingEntry.id)
+          if (fresh.data?.time_entry) setModalConflictEntry(fresh.data.time_entry)
+          return
+        }
         if (response.error) {
           if (response.code === 'correction_reason_required') {
             setRequiresCorrectionReason(true)
@@ -741,11 +794,12 @@ export default function TimeTracking() {
           return
         }
       } else {
-        const work = workFieldsPayload(workFields)
         const response = await api.createTimeEntry({
-          ...timeFields,
-          ...work,
-          description: work.description || undefined,
+          work_date: formData.work_date,
+          start_time: formData.start_time,
+          end_time: formData.end_time,
+          break_minutes: formData.break_minutes,
+          ...linesField,
           user_id: isAdmin && formData.user_id ? parseInt(formData.user_id) : undefined,
         })
         if (response.error) {
@@ -767,6 +821,26 @@ export default function TimeTracking() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // After a version conflict: keep the edited lines as their own day log.
+  const saveModalLinesSeparately = async () => {
+    if (!editingEntry) return
+    setSaving(true)
+    const response = await api.createTimeEntry({
+      work_date: formData.work_date,
+      work_lines: linesPayload(lines, null),
+      additional_day_log: true,
+      user_id: isAdmin && editingEntry.user ? editingEntry.user.id : undefined,
+    })
+    setSaving(false)
+    if (response.error) {
+      setError(response.error)
+      return
+    }
+    setModalVersionConflict(false)
+    setShowModal(false)
+    await loadEntries()
   }
 
   const canDeleteEntry = (entry: TimeEntryItem): boolean => {
@@ -924,6 +998,17 @@ export default function TimeTracking() {
           >
             <ClockIcon />
             Time Entries
+          </button>
+          <button
+            onClick={() => setActiveTab('day')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'day'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-muted hover:text-primary-dark'
+            }`}
+          >
+            <ClockIcon />
+            Log my day
           </button>
           {isAdmin && (
             <button
@@ -1536,6 +1621,21 @@ export default function TimeTracking() {
         </div>
       )}
 
+      {/* Log my day: quick per-day grid of client lines */}
+      {activeTab === 'day' && (
+        <LogMyDay
+          userId={currentUserId}
+          clients={clients}
+          serviceTypes={serviceTypes}
+          catalogError={workOptions.error}
+          onRetryCatalog={workOptions.retry}
+          onSaved={() => {
+            void loadEntries()
+            if (isAdmin) void loadPendingApprovalSummary()
+          }}
+        />
+      )}
+
       {/* Unassigned time (admin clean-up) */}
       {activeTab === 'unassigned' && isAdmin && (
         <UnassignedTime users={users} onEditEntry={openEditEntry} refreshKey={unassignedRefresh} />
@@ -1578,7 +1678,7 @@ export default function TimeTracking() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 md:items-center md:p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowModal(false)
           }}
@@ -1588,9 +1688,12 @@ export default function TimeTracking() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.25, delay: 0.1 }}
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <h2 className="text-xl font-bold text-primary-dark mb-1">
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="time-entry-modal-title"
+            className="h-[100dvh] w-full overflow-y-auto overscroll-contain bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-2xl">
+            <div className="p-4 md:p-6">
+              <h2 id="time-entry-modal-title" className="text-xl font-bold text-primary-dark mb-1">
                 {editingEntry ? 'Edit Time Entry' : 'Log Time'}
               </h2>
               {editingEntry && (
@@ -1639,6 +1742,11 @@ export default function TimeTracking() {
                   />
                 </div>
 
+                {editingDayLog ? (
+                  <p className="rounded-lg bg-neutral-warm/30 p-3 text-sm text-primary-dark">
+                    Day log without clock times: its hours are the total of the work lines below.
+                  </p>
+                ) : (<>
                 {/* Time Range */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -1740,20 +1848,50 @@ export default function TimeTracking() {
                   <p className="text-xs text-text-muted mt-1">Break time is not counted toward work hours</p>
                 </div>
 
+                </>)}
+
                 {/* Work details: Client -> Category -> Task -> Period -> Comments */}
                 <div className="border-t border-neutral-warm pt-4">
                   <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-text-muted">Work details</h3>
-                  <TimeEntryWorkFields
-                    idPrefix="log-time"
-                    value={workFields}
-                    onChange={setWorkFields}
-                    clients={clients}
-                    serviceTypes={serviceTypes}
-                    current={editingEntry}
-                    referenceDate={formData.work_date}
-                    loadError={workOptions.error}
-                    onRetry={workOptions.retry}
-                  />
+                  {editingActiveClock ? (
+                    <TimeEntryWorkFields
+                      idPrefix="log-time"
+                      value={workFields}
+                      onChange={setWorkFields}
+                      clients={clients}
+                      serviceTypes={serviceTypes}
+                      current={editingEntry}
+                      referenceDate={formData.work_date}
+                      loadError={workOptions.error}
+                      onRetry={workOptions.retry}
+                    />
+                  ) : (
+                    <>
+                      {workOptions.error && (
+                        <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                          <span>{workOptions.error}</span>
+                          <button type="button" onClick={workOptions.retry} className="min-h-11 rounded-lg border border-red-300 bg-white px-3 text-sm font-semibold text-red-700">Try again</button>
+                        </div>
+                      )}
+                      {editingEntry?.time_category && !editingEntry.service_type && (
+                        <p className="mb-3 rounded-lg bg-secondary/40 px-3 py-2 text-sm text-primary-dark">
+                          Legacy category: <span className="font-semibold">{editingEntry.time_category.name}</span>. It stays on this entry.
+                        </p>
+                      )}
+                      <WorkLinesEditor
+                        idPrefix="log-time"
+                        lines={lines}
+                        onChange={setLines}
+                        targetMinutes={modalTargetMinutes}
+                        clients={clients}
+                        serviceTypes={serviceTypes}
+                        suggestions={lineSuggestions}
+                        required={modalLinesRequired}
+                        referenceDate={formData.work_date}
+                        mode={editingDayLog ? 'day' : 'session'}
+                      />
+                    </>
+                  )}
                 </div>
 
                 {editingEntry && requiresCorrectionReason && (
@@ -1780,8 +1918,23 @@ export default function TimeTracking() {
                 )}
 
               </fieldset>
+                {modalVersionConflict && editingEntry && (
+                  <VersionConflictPanel
+                    title="This entry was changed elsewhere after you opened it."
+                    detail="Nothing was saved, so that change isn’t overwritten."
+                    busy={saving}
+                    canSaveSeparately={Object.keys(modalLineCheck.problems).length === 0}
+                    onSaveSeparately={() => void saveModalLinesSeparately()}
+                    current={modalConflictEntry}
+                    onDiscard={() => {
+                      setModalVersionConflict(false)
+                      setShowModal(false)
+                      void loadEntries()
+                    }}
+                  />
+                )}
                 {/* Actions */}
-                <div className="flex justify-between items-center gap-3 pt-4">
+                <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t border-neutral-warm bg-white px-4 py-3 md:static md:mx-0 md:border-0 md:px-0 md:pt-4">
                   <div>
                     {editingEntry && (
                       <button
@@ -1807,8 +1960,8 @@ export default function TimeTracking() {
                     {!(editingEntry?.locked_at) && (
                       <button
                         type="submit"
-                        disabled={saving}
-                        className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                        disabled={saving || (modalSendsLines && !modalLineCheck.canSubmit)}
+                        className="min-h-11 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
                       >
                         {saving ? 'Saving...' : (editingEntry ? 'Update' : 'Save')}
                       </button>

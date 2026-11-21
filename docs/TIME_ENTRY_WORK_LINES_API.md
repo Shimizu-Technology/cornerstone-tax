@@ -43,6 +43,18 @@ Example: stored hours [0.08, 0.08, 0.14, 0.05, 0.17, 0.19] (an entry of 0.71h) a
 
 The result is [0.06, 0.10, 0.14, 0.05, 0.17, 0.19]: the changed lines share the 0.16h left, and the others are untouched.
 
+## Version check (`expected_version`)
+
+Every time entry has a `version` (an integer, serialized exactly). It goes up on **every** change to the entry and on every create, update or delete of one of its work lines, in the same transaction. That includes changing only a split, for example [4h, 4h] → [3h, 5h]. Use `version`, not `updated_at`, to detect changes: `updated_at` doesn't move when only lines change, and two changes can land in the same second.
+
+- **Edits** (`PATCH /api/v1/time_entries/:id`) may send `expected_version`, either top-level or inside `time_entry`: the `version` the client was editing. The server compares it under the entry's row lock. If it differs, nothing is saved and the response is **409**:
+  ```json
+  {"error": "This entry was changed elsewhere after you started. Nothing was saved.", "code": "version_conflict", "time_entry": { …current entry… }}
+  ```
+  Of two saves sent with the same `expected_version`, exactly one wins; the other gets the 409.
+- **Day logs** (`POST` with `work_lines` and no start or end time): if the person already has a non-denied day log for that date, the response is **409** with the same `code` and the **existing** day log in `time_entry`. Send `additional_day_log: true` to create a separate one on purpose. Concurrent creates for the same person are serialized, so only one gets through.
+- **Optional.** Clients that don't send `expected_version` (clock-out, older screens, scripts) keep working, last write wins, as before. The app's Log my day and edit modals always send it. On a 409 they refetch the entry and show the conflict panel: "Save my lines as a separate day log" or "Discard my lines".
+
 ## Cutover rule
 
 From Settings → "Require client and description from": every line needs a client and a description; internal lines (Internal – Cornerstone) also need a category; the task is always optional.

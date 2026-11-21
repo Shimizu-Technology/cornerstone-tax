@@ -232,4 +232,252 @@ RSpec.describe "Time entry work lines API", type: :request do
     expect(response).to have_http_status(:ok)
     expect(json.dig(:time_entry, :work_lines).map { |line| line[:hours] }.last).to eq(stored[2])
   end
+
+  it "suggests the person's recent clients and descriptions" do
+    entry = create(:time_entry, user: employee, work_date: Date.current - 2, approval_status: "approved")
+    entry.work_lines_input = [ { client_id: client_a.id, description: "Bank recs", minutes: 240 },
+                               { client_id: client_b.id, description: "Payroll inputs", minutes: 120 },
+                               { client_id: client_a.id, description: "Credit card recs", minutes: 120 } ]
+    entry.save!
+    create(:time_entry, user: admin, work_date: Date.current - 1, client: client_b, description: "Not mine")
+
+    get "/api/v1/time_entries/work_line_suggestions", headers: headers_for(employee)
+
+    expect(response).to have_http_status(:ok)
+    expect(json[:recent_clients].map { |client| client[:name] }).to eq([ "Alpha Co", "Beta Co" ])
+    expect(json[:descriptions_by_client][client_a.id.to_s.to_sym]).to contain_exactly("Bank recs", "Credit card recs")
+    expect(json[:descriptions_by_client].values.flatten).not_to include("Not mine")
+  end
+
+  describe "work-only edits leave attendance alone" do
+    let(:tz) { ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE] }
+    let!(:clock_entry) do
+      start = tz.parse("#{work_date} 08:00:01")
+      finish = tz.parse("#{work_date} 08:07:59")
+      record = TimeEntry.create!(user: employee, work_date: work_date, entry_method: "clock", status: "completed",
+                                 start_time: start, end_time: finish, clock_in_at: start, clock_out_at: finish,
+                                 approval_status: "approved", approved_by: admin, approved_at: 1.hour.ago, client: client_a)
+      record
+    end
+
+    it "keeps clock seconds, hours and approval when only work lines are sent" do
+      expect(clock_entry.hours).to eq(BigDecimal("0.13"))
+
+      patch "/api/v1/time_entries/#{clock_entry.id}", params: {
+        time_entry: { work_lines: [ { client_id: client_a.id, description: "Bank recs", minutes: 8 } ] }
+      }.to_json, headers: headers_for(employee)
+
+      expect(response).to have_http_status(:ok)
+      clock_entry.reload
+      expect(clock_entry.hours).to eq(BigDecimal("0.13"))
+      expect(clock_entry.clock_in_at.sec).to eq(1)
+      expect(clock_entry.approval_status).to eq("approved")
+      expect(clock_entry.work_lines.sole).to have_attributes(description: "Bank recs", hours: BigDecimal("0.13"))
+    end
+
+    it "ignores unchanged HH:MM times an older form resends, so seconds are not truncated" do
+      patch "/api/v1/time_entries/#{clock_entry.id}", params: {
+        time_entry: { work_date: work_date.iso8601, start_time: "08:00", end_time: "08:07",
+                      work_lines: [ { client_id: client_a.id, description: "Bank recs", minutes: 8 } ] }
+      }.to_json, headers: headers_for(employee)
+
+      expect(response).to have_http_status(:ok)
+      clock_entry.reload
+      expect([ clock_entry.hours, clock_entry.clock_in_at.sec, clock_entry.clock_out_at.sec ]).to eq([ BigDecimal("0.13"), 1, 59 ])
+      expect(clock_entry.approval_status).to eq("approved")
+    end
+
+    it "still applies a real time correction" do
+      patch "/api/v1/time_entries/#{clock_entry.id}", params: { time_entry: { end_time: "08:30" } }.to_json, headers: headers_for(employee)
+
+      expect(response).to have_http_status(:ok)
+      expect(clock_entry.reload.clock_out_at.in_time_zone(tz).strftime("%H:%M:%S")).to eq("08:30:00")
+      expect(clock_entry.approval_status).to eq("pending")
+    end
+  end
+
+  it "keeps per-client hours when a scaled split is resubmitted with its stored hours" do
+    tz = ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE]
+    entry = TimeEntry.new(user: employee, work_date: work_date, entry_method: "clock", approval_status: nil,
+                          start_time: tz.parse("#{work_date} 09:00"), end_time: tz.parse("#{work_date} 09:07"))
+    entry.work_lines_input = Array.new(6) { |index| { client_id: index.even? ? client_a.id : client_b.id, description: "Step #{index}", minutes: 1 } }
+    entry.work_lines_tolerance_minutes = WorkLineHours::CLOCK_OUT_TOLERANCE_MINUTES
+    entry.save!
+    per_client = ->(record) { record.work_lines.reload.group_by(&:client_id).transform_values { |rows| rows.sum(&:hours) } }
+    hours_before = per_client.call(entry)
+
+    lines = entry.work_lines.map do |line|
+      { client_id: line.client_id, description: line.position == 1 ? "Filed checks" : line.description, exact_hours: line.hours.to_f }
+    end
+    patch "/api/v1/time_entries/#{entry.id}", params: { time_entry: { work_lines: lines } }.to_json, headers: headers_for(admin)
+
+    expect(response).to have_http_status(:ok)
+    expect(entry.work_lines.reload.map { |line| line.hours.to_f }).to eq([ 0.02 ] * 6)
+    expect(per_client.call(entry)).to eq(hours_before)
+  end
+
+  describe "change token (work_version) and expected_version" do
+    include ActiveSupport::Testing::TimeHelpers
+
+    let(:split_entry) do
+      entry = create(:time_entry, user: employee, work_date: work_date, approval_status: "approved")
+      entry.work_lines_input = [ { client_id: client_a.id, description: "Recs", minutes: 240 }, { client_id: client_b.id, description: "Payroll", minutes: 240 } ]
+      entry.save!
+      entry
+    end
+
+    def version_of(entry)
+      get "/api/v1/time_entries/#{entry.id}", headers: headers_for(admin)
+      json.dig(:time_entry, :version)
+    end
+
+    def save_lines(entry, hours, expected: nil)
+      lines = [ { client_id: client_a.id, description: "Recs", minutes: (hours[0] * 60).to_i }, { client_id: client_b.id, description: "Payroll", minutes: (hours[1] * 60).to_i } ]
+      body = { time_entry: { work_lines: lines } }
+      body[:expected_version] = expected if expected
+      patch "/api/v1/time_entries/#{entry.id}", params: body.to_json, headers: headers_for(admin)
+    end
+
+    it "moves when only the split changes ([4h, 4h] to [3h, 5h])" do
+      before_version = version_of(split_entry)
+      save_lines(split_entry, [ 3, 5 ])
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:time_entry, :version)).to be > before_version
+      expect(split_entry.reload.client_id).to eq(client_a.id) # entry columns unchanged; only the lines moved
+    end
+
+    it "rejects a stale save with 409 and the current entry, changing nothing" do
+      stale = version_of(split_entry)
+      save_lines(split_entry, [ 3, 5 ], expected: stale)
+      expect(response).to have_http_status(:ok)
+
+      save_lines(split_entry, [ 4, 4 ], expected: stale)
+
+      expect(response).to have_http_status(:conflict)
+      expect(json[:code]).to eq("version_conflict")
+      expect(json.dig(:time_entry, :work_lines).map { |line| line[:hours] }).to eq([ 3.0, 5.0 ])
+      expect(split_entry.work_lines.reload.map { |line| line.hours.to_f }).to eq([ 3.0, 5.0 ])
+    end
+
+    it "tells two changes within the same second apart" do
+      travel_to(Time.current.change(usec: 0)) do
+        v0 = version_of(split_entry)
+        save_lines(split_entry, [ 3, 5 ], expected: v0)
+        v1 = json.dig(:time_entry, :version)
+        updated_at_after_first = split_entry.reload.updated_at
+        save_lines(split_entry, [ 2, 6 ], expected: v1)
+        expect(response).to have_http_status(:ok)
+
+        expect(split_entry.reload.updated_at).to eq(updated_at_after_first) # a timestamp can't tell these apart
+        save_lines(split_entry, [ 4, 4 ], expected: v1)
+        expect(response).to have_http_status(:conflict)
+      end
+    end
+
+    it "moves when a line changes on its own" do
+      before_version = split_entry.reload.work_version
+      split_entry.work_lines.first.update!(description: "Bank recs")
+      expect(split_entry.reload.work_version).to be > before_version
+    end
+
+    it "is serialized exactly" do
+      expect(version_of(split_entry)).to eq(split_entry.reload.work_version)
+      get "/api/v1/time_entries/#{split_entry.id}", headers: headers_for(admin)
+      expect(json.dig(:time_entry, :updated_at)).to match(/\.\d{6}/)
+    end
+
+    it "keeps working for clients that don't send expected_version" do
+      save_lines(split_entry, [ 3, 5 ])
+      expect(response).to have_http_status(:ok)
+      save_lines(split_entry, [ 4, 4 ])
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "returns 409 with the existing day log instead of creating a second one, unless asked for" do
+      post "/api/v1/time_entries", params: { time_entry: { work_date: work_date.iso8601, work_lines: [ { client_id: client_a.id, minutes: 30 } ] } }.to_json,
+                                   headers: headers_for(employee)
+      expect(response).to have_http_status(:created)
+      existing_id = json.dig(:time_entry, :id)
+
+      post "/api/v1/time_entries", params: { time_entry: { work_date: work_date.iso8601, work_lines: [ { client_id: client_b.id, minutes: 45 } ] } }.to_json,
+                                   headers: headers_for(employee)
+      expect(response).to have_http_status(:conflict)
+      expect(json.dig(:time_entry, :id)).to eq(existing_id)
+
+      post "/api/v1/time_entries", params: { additional_day_log: true,
+                                             time_entry: { work_date: work_date.iso8601, work_lines: [ { client_id: client_b.id, minutes: 45 } ] } }.to_json,
+                                   headers: headers_for(employee)
+      expect(response).to have_http_status(:created)
+    end
+  end
+
+  describe "break corrections and the change token" do
+    let(:tz) { ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE] }
+    let!(:with_break) do
+      entry = create(:time_entry, user: employee, work_date: work_date, approval_status: "approved", break_minutes: 15, client: client_a)
+      entry.time_entry_breaks.create!(start_time: tz.parse("#{work_date} 12:00"), end_time: tz.parse("#{work_date} 12:15"))
+      entry.reload
+    end
+
+    def move_break(to_start, to_end, expected:)
+      patch "/api/v1/time_entries/#{with_break.id}", params: {
+        expected_version: expected, time_entry: { breaks: [ { start_time: to_start, end_time: to_end } ] }
+      }.to_json, headers: headers_for(admin)
+    end
+
+    it "moves the version when a break moves but the total stays the same, so a second stale save gets 409" do
+      version = with_break.work_version
+      hours = with_break.hours
+
+      move_break("12:30", "12:45", expected: version)
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:time_entry, :version)).to be > version
+      expect(with_break.reload.hours).to eq(hours)
+
+      move_break("13:00", "13:15", expected: version)
+      expect(response).to have_http_status(:conflict)
+      expect(with_break.time_entry_breaks.reload.map { |b| b.start_time.in_time_zone(tz).strftime("%H:%M") }).to eq([ "12:30" ])
+    end
+
+    it "moves the version for any break create, change or delete" do
+      version = with_break.reload.work_version
+      with_break.time_entry_breaks.first.update!(end_time: tz.parse("#{work_date} 12:14"))
+      expect(with_break.reload.work_version).to be > version
+
+      version = with_break.work_version
+      with_break.time_entry_breaks.first.destroy!
+      expect(with_break.reload.work_version).to be > version
+    end
+  end
+
+  describe "versioned bulk writes and deletions" do
+    it "releases a deleted schedule's entries through the versioned path" do
+      schedule = Schedule.create!(user: employee, work_date: work_date, start_time: "09:00", end_time: "17:00")
+      entry = create(:time_entry, user: employee, work_date: work_date, schedule: schedule)
+      version = entry.reload.work_version
+
+      schedule.destroy!
+
+      expect(entry.reload).to have_attributes(schedule_id: nil)
+      expect(entry.work_version).to be > version
+    end
+
+    it "refuses to hard-delete a client, user or catalog item that time still uses, keeping attribution" do
+      category = ServiceType.create!(name: "Bookkeeping #{SecureRandom.hex(2)}")
+      entry = create(:time_entry, user: employee, work_date: work_date, client: client_a, service_type: category, approval_status: "approved", approved_by: admin)
+
+      expect(client_a.destroy).to be(false)
+      expect(category.destroy).to be(false)
+      expect(employee.destroy).to be(false)
+      expect(admin.destroy).to be(false)
+      expect(entry.work_lines.reload.sole).to have_attributes(client_id: client_a.id, service_type_id: category.id)
+      expect(entry.reload).to have_attributes(client_id: client_a.id, user_id: employee.id, approved_by_id: admin.id)
+    end
+
+    it "refuses versioned bulk writes outside a transaction" do
+      allow(TimeEntry.connection).to receive(:transaction_open?).and_return(false)
+      expect { TimeEntry.versioned_update!(TimeEntry.all, schedule_id: nil) }.to raise_error(ActiveRecord::TransactionIsolationError)
+    end
+  end
 end

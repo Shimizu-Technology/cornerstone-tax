@@ -117,6 +117,7 @@ Rails.application.routes.draw do
           get :pending_approvals
           get :whos_working
           get :unassigned
+          get :work_line_suggestions
         end
         member do
           post :approve

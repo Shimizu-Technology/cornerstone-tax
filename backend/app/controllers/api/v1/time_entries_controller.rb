@@ -112,7 +112,24 @@ module Api
           @time_entry.approval_status = "pending"
         end
 
-        if @time_entry.save
+        existing_day_log = nil
+        saved = TimeEntry.transaction do
+          # One day log per person per day unless another is asked for
+          # deliberately. The owner's row lock serializes concurrent creates.
+          if @time_entry.duration_only? && !additional_day_log?
+            entry_owner.lock!
+            existing_day_log = entry_owner.time_entries.where(work_date: @time_entry.work_date, entry_method: "manual",
+                                                              start_time: nil, end_time: nil)
+                                          .where("approval_status IS NULL OR approval_status <> 'denied'").order(:id).first
+            raise ActiveRecord::Rollback if existing_day_log
+          end
+          @time_entry.save
+        end
+
+        if existing_day_log
+          render_version_conflict(eager_reload(existing_day_log),
+                                  message: "A day log already exists for this day. Edit it, or save these lines as a separate day log.")
+        elsif saved
           AuditLog.log(
             auditable: @time_entry,
             action: "created",
@@ -170,9 +187,16 @@ module Api
 
         saved = false
         break_replace_error = nil
+        version_conflict = false
         @time_entry.transaction do
           # Serialize edits of one entry (see TimeEntry#lock_for_work_lines!).
           @time_entry.lock_for_work_lines!
+          # Optimistic check on the locked row: the client edited the
+          # version it sent; anything newer means someone else saved first.
+          if expected_version && @time_entry.work_version != expected_version
+            version_conflict = true
+            raise ActiveRecord::Rollback
+          end
           saved = @time_entry.update(update_params)
           if saved && break_update
             break_replace_error = replace_break_records(@time_entry, break_update[:breaks])
@@ -242,7 +266,9 @@ module Api
           invalidate_payroll_exports!
         end
 
-        if break_replace_error
+        if version_conflict
+          render_version_conflict(eager_reload(@time_entry))
+        elsif break_replace_error
           render json: { error: break_replace_error }, status: :unprocessable_entity
         elsif saved
           render json: { time_entry: serialize_time_entry(eager_reload(@time_entry)) }
@@ -570,6 +596,35 @@ module Api
         }
       end
 
+      # GET /api/v1/time_entries/work_line_suggestions
+      # Shortcuts for the work-line editor, from the person's own lines in the
+      # last 90 days: recent clients (most recent first) and recent
+      # descriptions per client. Admins may pass user_id.
+      def work_line_suggestions
+        owner_id = current_user.admin? && params[:user_id].present? ? params[:user_id].to_i : current_user.id
+        rows = TimeEntryAllocation.joins(:time_entry)
+                                  .where(time_entries: { user_id: owner_id, work_date: 90.days.ago.to_date.. })
+                                  .order("time_entries.work_date DESC", "time_entry_allocations.id DESC")
+                                  .limit(400)
+                                  .pluck(:client_id, :description)
+
+        recent_client_ids = rows.filter_map(&:first).uniq.first(8)
+        clients_by_id = Client.active.where(id: recent_client_ids).index_by(&:id)
+        descriptions = rows.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |(client_id, description), memo|
+          text = description.to_s.strip
+          next if text.empty?
+
+          list = memo[client_id.to_s]
+          list << text unless list.include?(text) || list.size >= 6
+        end
+
+        render json: {
+          recent_clients: recent_client_ids.filter_map { |id| clients_by_id[id] && WorkLineSerializer.client_payload(clients_by_id[id]) },
+          descriptions_by_client: descriptions,
+          work_details_required_from: TimeEntryWorkRequirement.cutover_date&.iso8601
+        }
+      end
+
       # GET /api/v1/time_entries/whos_working
       def whos_working
         return render json: { error: "Admin access required" }, status: :forbidden unless current_user.admin?
@@ -660,6 +715,26 @@ module Api
 
       # Work lines sent with a create/update, or nil when the request did not
       # include them (the entry's single line then follows the entry).
+      # Optional optimistic-concurrency token (TimeEntry#work_version) the
+      # client last saw; absent for clock-out and older clients.
+      def expected_version
+        raw = params[:expected_version]
+        raw = params.dig(:time_entry, :expected_version) if raw.blank? && params[:time_entry].respond_to?(:key?)
+        return nil if raw.blank?
+
+        Integer(raw.to_s, 10)
+      rescue ArgumentError
+        nil
+      end
+
+      def additional_day_log?
+        ActiveModel::Type::Boolean.new.cast(params[:additional_day_log] || params.dig(:time_entry, :additional_day_log))
+      end
+
+      def render_version_conflict(current_entry, message: "This entry was changed elsewhere after you started. Nothing was saved.")
+        render json: { error: message, code: "version_conflict", time_entry: serialize_time_entry(current_entry) }, status: :conflict
+      end
+
       def submitted_work_lines
         payload = params[:time_entry]
         return nil unless payload.respond_to?(:key?) && (payload.key?(:work_lines) || payload.key?("work_lines"))
@@ -842,6 +917,10 @@ module Api
         return unless entry.clock_entry?
 
         target_work_date = raw_params[:work_date].presence || params_hash[:work_date].presence || entry.work_date
+        # A form that resends the clock times it showed (HH:MM) must not
+        # truncate the recorded seconds: an unchanged time is left as it is.
+        drop_unchanged_clock_time(entry, params_hash, raw_params, :start_time, target_work_date)
+        drop_unchanged_clock_time(entry, params_hash, raw_params, :end_time, target_work_date) unless entry.active?
         start_value = raw_params[:start_time].presence || params_hash[:start_time]
         corrected_start = time_on_work_date(start_value, Date.parse(target_work_date.to_s)) if start_value.present?
 
@@ -880,6 +959,19 @@ module Api
         end
       rescue Date::Error, ArgumentError
         render json: { error: "Clock times are invalid" }, status: :unprocessable_entity
+      end
+
+      def drop_unchanged_clock_time(entry, params_hash, raw_params, field, target_work_date)
+        value = raw_params[field].presence
+        current = entry.public_send(field)
+        return unless value.is_a?(String) && current.present? && target_work_date.to_s == entry.work_date.iso8601
+
+        match = value.match(/\A(\d{1,2}):(\d{2})\z/)
+        return unless match
+        return unless format("%02d:%02d", match[1].to_i, match[2].to_i) == current.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).strftime("%H:%M")
+
+        raw_params.delete(field)
+        params_hash.delete(field)
       end
 
       def raw_time_entry_params
@@ -1009,6 +1101,8 @@ module Api
 
         {
           id: entry.id,
+          # Exact change token for expected_version (see TimeEntry#work_version).
+          version: entry.work_version,
           work_date: entry.work_date.iso8601,
           start_time: entry.start_time&.in_time_zone(tz)&.strftime("%H:%M"),
           end_time: entry.end_time&.in_time_zone(tz)&.strftime("%H:%M"),
@@ -1090,7 +1184,7 @@ module Api
           } : nil,
           locked_at: entry.locked_at&.iso8601,
           created_at: entry.created_at.iso8601,
-          updated_at: entry.updated_at.iso8601
+          updated_at: entry.updated_at.iso8601(6)
         }
       end
 

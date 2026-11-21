@@ -214,4 +214,76 @@ RSpec.describe "Api::V1::IntakeSubmissions", type: :request do
       expect(json.dig("client", "intake_reviews")).to eq([])
     end
   end
+
+  describe "time logged against the intake duplicate" do
+    let(:other_client) { Client.create!(first_name: "Other", last_name: "Client", client_type: "business", business_name: "Other Co") }
+    let(:staff_time_user) { create(:user, :employee) }
+
+    def split_entry(client:, tax_return: nil, lines:)
+      entry = TimeEntry.new(user: staff_time_user, work_date: Date.current - 1, entry_method: "manual", approval_status: "approved",
+                            start_time: Time.zone.parse("2000-01-01 09:00"), end_time: Time.zone.parse("2000-01-01 13:00"),
+                            client: client, tax_return: tax_return)
+      entry.work_lines_input = lines
+      entry.save!
+      entry.reload
+    end
+
+    it "moves entries and their work lines to the existing client, bumping each entry's version" do
+      existing_return = existing_client.tax_returns.create!(tax_year: tax_year, return_type: "individual", form_type: "1040",
+                                                            source: "admin_created", workflow_stage: stage)
+      submission = submit_matching_intake
+      intake_client = submission.client
+      intake_return = submission.tax_return
+      on_return = split_entry(client: intake_client, tax_return: intake_return,
+                              lines: [ { client_id: intake_client.id, description: "Intake review", minutes: 180 },
+                                       { client_id: other_client.id, description: "Other work", minutes: 60 } ])
+      elsewhere = split_entry(client: other_client,
+                              lines: [ { client_id: other_client.id, description: "Other work", minutes: 120 },
+                                       { client_id: intake_client.id, description: "Call about intake", minutes: 120 } ])
+      versions = [ on_return.work_version, elsewhere.work_version ]
+
+      post "/api/v1/intake_submissions/#{submission.id}/merge", params: { fields: [ "phone" ] }, headers: auth_headers_for(staff_user)
+
+      expect(response).to have_http_status(:ok)
+      on_return.reload
+      elsewhere.reload
+      expect(on_return).to have_attributes(client_id: existing_client.id, tax_return_id: existing_return.id)
+      expect(on_return.work_lines.map(&:client_id)).to eq([ existing_client.id, other_client.id ])
+      expect(elsewhere).to have_attributes(client_id: other_client.id)
+      expect(elsewhere.work_lines.map(&:client_id)).to eq([ other_client.id, existing_client.id ])
+      expect([ on_return.work_version, elsewhere.work_version ].zip(versions)).to all(satisfy { |now, before| now > before })
+      # Nothing is left attributed to the archived duplicate, and lines still match their entries.
+      expect(TimeEntryAllocation.where(client_id: intake_client.id)).to be_empty
+      expect(TimeEntry.where(client_id: intake_client.id)).to be_empty
+      expect([ on_return, elsewhere ].map { |entry| entry.work_lines.sum(&:hours) }).to eq([ on_return.hours, elsewhere.hours ])
+      expect(intake_client.reload).to be_archived
+      expect { intake_return.reload }.to raise_error(ActiveRecord::RecordNotFound)
+    end
+
+    it "moves the intake return's time with it when there is no existing return to fold into" do
+      submission = submit_matching_intake
+      intake_client = submission.client
+      entry = split_entry(client: intake_client, tax_return: submission.tax_return,
+                          lines: [ { client_id: intake_client.id, description: "Intake review", minutes: 240 } ])
+      version = entry.work_version
+
+      post "/api/v1/intake_submissions/#{submission.id}/merge", params: { fields: [ "phone" ] }, headers: auth_headers_for(staff_user)
+
+      expect(response).to have_http_status(:ok)
+      entry.reload
+      expect(entry).to have_attributes(client_id: existing_client.id, tax_return_id: submission.tax_return_id)
+      expect(entry.work_lines.sole.client_id).to eq(existing_client.id)
+      expect(entry.work_version).to be > version
+    end
+
+    it "refuses to hard-delete a client whose time is still attributed to it, with no FK error" do
+      submission = submit_matching_intake
+      intake_client = submission.client
+      split_entry(client: intake_client, lines: [ { client_id: intake_client.id, minutes: 240 } ])
+
+      expect(intake_client.destroy).to be(false)
+      expect(intake_client.errors.full_messages.to_sentence).to match(/time entr/i)
+      expect(TimeEntryAllocation.where(client_id: intake_client.id).count).to eq(1)
+    end
+  end
 end

@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../lib/api'
 import type { ClockStatus } from '../../lib/api'
-import TimeEntryWorkFields from './TimeEntryWorkFields'
-import { EMPTY_WORK_FIELDS, useTimeEntryWorkOptions, workFieldsFromEntry, workFieldsPayload, type WorkFieldsValue } from './timeEntryWorkForm'
+import WorkLinesEditor from './WorkLinesEditor'
+import WorkLinesSheet from './WorkLinesSheet'
+import { useTimeEntryWorkOptions } from './timeEntryWorkForm'
+import { checkLines, detailsRequired, draftsFromEntry, linesPayload, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
 
 interface ClockInOutCardProps {
   onStatusChange?: () => void
@@ -22,11 +24,15 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
   const [breakElapsed, setBreakElapsed] = useState(0)
   const [showClockOutModal, setShowClockOutModal] = useState(false)
   const [correctionTime, setCorrectionTime] = useState('')
-  const [clockOutWork, setClockOutWork] = useState<WorkFieldsValue>(EMPTY_WORK_FIELDS)
+  const [clockOutLines, setClockOutLines] = useState<WorkLineDraft[]>(() => draftsFromEntry(null))
+  // Worked minutes when the sheet opened. The server scales lines that are a
+  // few minutes off, so the clock running on does not block the submit.
+  const [sessionMinutesAtOpen, setSessionMinutesAtOpen] = useState(0)
   // Which clock-in the draft belongs to; a failed clock-out keeps the draft
   // for a retry on the same entry.
   const [clockOutDraftEntryId, setClockOutDraftEntryId] = useState<number | null>(null)
   const workOptions = useTimeEntryWorkOptions(showClockOutModal)
+  const suggestions = useWorkLineSuggestions(showClockOutModal)
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const isOnBreakRef = useRef(false)
@@ -162,11 +168,26 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
       setCorrectionTime('')
     }
     if (!status?.entry_id || status.entry_id !== clockOutDraftEntryId) {
-      setClockOutWork(status?.work_details ? workFieldsFromEntry(status.work_details) : EMPTY_WORK_FIELDS)
+      setClockOutLines(draftsFromEntry(status?.work_details ?? null))
       setClockOutDraftEntryId(status?.entry_id ?? null)
     }
+    const breakSecondsSoFar = (status?.break_minutes || 0) * 60 + (status?.active_break ? breakElapsed : 0)
+    setSessionMinutesAtOpen(Math.max(0, Math.floor((elapsedSeconds - breakSecondsSoFar) / 60)))
     setShowClockOutModal(true)
   }
+
+  // With a corrected end time the session ends then, not now.
+  const sessionMinutes = (() => {
+    if (!correctionTime || !status?.clock_in_at) return sessionMinutesAtOpen
+    const [inH, inM] = guamHHMM(new Date(status.clock_in_at)).split(':').map(Number)
+    const [outH, outM] = correctionTime.split(':').map(Number)
+    let minutes = outH * 60 + outM - (inH * 60 + inM)
+    if (minutes < 0) minutes += 24 * 60
+    const breakMinutes = (status.break_minutes || 0) + (status.active_break ? Math.floor(breakElapsed / 60) : 0)
+    return Math.max(0, minutes - breakMinutes)
+  })()
+  const linesRequired = detailsRequired(suggestions.requiredFrom ?? status?.work_details_required_from, status?.work_date)
+  const lineCheck = checkLines(clockOutLines, { targetMinutes: sessionMinutes, required: linesRequired, clients: workOptions.clients })
 
   const handleClockOutSubmit = async () => {
     setShowClockOutModal(false)
@@ -177,13 +198,12 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
         const guamDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Guam', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
         return `${guamDate}T${correctionTime}:00`
       })() : undefined
-      const { description, ...workDetails } = workFieldsPayload(clockOutWork)
-      const result = await api.clockOut(correctedEnd, description.trim() || undefined, workDetails, status?.entry_id)
+      const result = await api.clockOut(correctedEnd, undefined, undefined, status?.entry_id, sessionMinutes > 0 ? linesPayload(clockOutLines, sessionMinutes) : undefined)
       if (result?.error) {
         setError(result.error)
         await fetchStatus()
       } else {
-        setClockOutWork(EMPTY_WORK_FIELDS)
+        setClockOutLines(draftsFromEntry(null))
         setClockOutDraftEntryId(null)
         await fetchStatus()
         onStatusChange?.()
@@ -454,98 +474,98 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
         )}
       </div>
 
-      {/* Clock-out modal: description + optional time correction */}
-      {showClockOutModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowClockOutModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start gap-3 mb-5">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Clock Out</h3>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  {status?.clock_in_at && `You've been working since ${fmtTime(status.clock_in_at)}`}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-medium text-gray-700">What did you work on?</h4>
-                <p className="text-xs text-gray-400 mt-0.5 mb-3">All optional, but it helps keep track of client time.</p>
-                <TimeEntryWorkFields
-                  idPrefix="clock-out"
-                  value={clockOutWork}
-                  onChange={setClockOutWork}
-                  clients={workOptions.clients}
-                  serviceTypes={workOptions.serviceTypes}
-                  current={status?.work_details}
-                  referenceDate={status?.work_date || undefined}
-                  loadError={workOptions.error}
-                  onRetry={workOptions.retry}
-                  commentsPlaceholder="e.g. Reconciled October bank statements, prepared GRT return..."
-                />
-              </div>
-
-              {correctionTime && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                  <div className="flex items-start gap-2 mb-3">
-                    <svg className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div>
-                      <p className="text-sm font-medium text-amber-700">Past scheduled shift end</p>
-                      <p className="text-xs text-amber-600 mt-0.5">
-                        Your shift was scheduled to end at {status?.schedule?.end_time}. What time did you actually stop?
-                      </p>
-                    </div>
-                  </div>
-                  <input
-                    type="time"
-                    value={correctionTime}
-                    onChange={e => setCorrectionTime(e.target.value)}
-                    className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white ${
-                      correctionBeforeClockIn ? 'border-red-300 bg-red-50' : 'border-amber-300'
-                    }`}
-                  />
-                  {correctionBeforeClockIn && (
-                    <p className="text-xs text-red-500 mt-1.5">Time must be after your clock-in ({fmtTime(status!.clock_in_at!)})</p>
-                  )}
-                  <div className="flex items-center gap-2 mt-2">
-                    <button
-                      onClick={() => setCorrectionTime('')}
-                      className="text-xs text-amber-700 hover:text-amber-900 font-medium hover:underline"
-                    >
-                      I worked until now instead
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2 mt-5">
+      {/* Clock-out: split the session across clients, optional time correction */}
+      <WorkLinesSheet
+        open={showClockOutModal}
+        title="Clock out"
+        subtitle={status?.clock_in_at ? `You've been working since ${fmtTime(status.clock_in_at)}` : undefined}
+        onClose={() => setShowClockOutModal(false)}
+        footer={
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
+            {!lineCheck.canSubmit && (
+              <p className="text-sm text-amber-800 md:mr-auto" id="clock-out-blocked">
+                {lineCheck.remainingMinutes !== 0 ? lineCheck.summary : 'Finish the highlighted lines to clock out.'}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowClockOutModal(false); setClockOutDraftEntryId(null) }}
+                className="min-h-11 flex-1 rounded-xl border border-gray-300 px-5 text-sm font-semibold text-gray-700 hover:bg-gray-50 md:flex-none"
+              >
+                Cancel
+              </button>
               <button
                 onClick={handleClockOutSubmit}
-                disabled={correctionTime !== '' && (!correctionTime || correctionBeforeClockIn)}
-                className="flex-1 min-h-[44px] bg-primary text-white font-semibold rounded-xl text-sm hover:bg-primary-dark disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                disabled={!lineCheck.canSubmit || (correctionTime !== '' && (!correctionTime || correctionBeforeClockIn))}
+                aria-describedby={!lineCheck.canSubmit ? 'clock-out-blocked' : undefined}
+                className="flex min-h-11 flex-[2] items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-50 md:flex-none"
               >
                 <StopIcon />
                 {correctionTime ? `Clock Out at ${fmt12(correctionTime)}` : 'Clock Out'}
               </button>
-              <button
-                onClick={() => { setShowClockOutModal(false); setClockOutDraftEntryId(null) }}
-                className="min-h-[44px] px-5 border border-gray-300 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
             </div>
           </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-medium text-gray-700">What did you work on?</h3>
+            <p className="mt-0.5 text-xs text-gray-500">
+              {linesRequired
+                ? 'Every line needs a client and a description; internal lines (Internal – Cornerstone, for office work and errands) also need a category; the task is always optional.'
+                : 'Pick the client and say what you did; category and task are optional. Split the session if you worked for more than one client.'}
+            </p>
+          </div>
+
+          {workOptions.error && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              <span>{workOptions.error}</span>
+              <button type="button" onClick={workOptions.retry} className="min-h-11 rounded-lg border border-red-300 bg-white px-3 text-sm font-semibold text-red-700">Try again</button>
+            </div>
+          )}
+
+          {correctionTime && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-700">Past scheduled shift end</p>
+              <p className="mt-0.5 text-xs text-amber-600">
+                Your shift was scheduled to end at {status?.schedule?.end_time}. What time did you actually stop?
+              </p>
+              <label htmlFor="clock-out-correction" className="sr-only">Actual stop time</label>
+              <input
+                id="clock-out-correction"
+                type="time"
+                value={correctionTime}
+                onChange={e => setCorrectionTime(e.target.value)}
+                className={`mt-3 min-h-11 w-full rounded-xl border bg-white px-4 py-2.5 text-base focus:border-primary focus:ring-2 focus:ring-primary/30 md:text-sm ${
+                  correctionBeforeClockIn ? 'border-red-300 bg-red-50' : 'border-amber-300'
+                }`}
+              />
+              {correctionBeforeClockIn && (
+                <p className="mt-1.5 text-xs text-red-500">Time must be after your clock-in ({fmtTime(status!.clock_in_at!)})</p>
+              )}
+              <button
+                type="button"
+                onClick={() => setCorrectionTime('')}
+                className="mt-2 min-h-11 text-sm font-medium text-amber-700 hover:text-amber-900 hover:underline"
+              >
+                I worked until now instead
+              </button>
+            </div>
+          )}
+
+          <WorkLinesEditor
+            idPrefix="clock-out"
+            lines={clockOutLines}
+            onChange={setClockOutLines}
+            targetMinutes={sessionMinutes}
+            clients={workOptions.clients}
+            serviceTypes={workOptions.serviceTypes}
+            suggestions={suggestions}
+            required={linesRequired}
+            referenceDate={status?.work_date || undefined}
+          />
         </div>
-      )}
+      </WorkLinesSheet>
     </div>
   )
 }

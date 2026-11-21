@@ -11,6 +11,7 @@ const apiMock = vi.hoisted(() => ({
   endBreak: vi.fn(),
   getServiceTypes: vi.fn(),
   getClientOptions: vi.fn(),
+  getWorkLineSuggestions: vi.fn(),
 }))
 vi.mock('../../lib/api', () => ({ api: apiMock }))
 vi.mock('framer-motion', () => ({
@@ -37,8 +38,8 @@ const clockedIn = {
     period_start: null,
     description: null,
   },
-  clock_in_at: new Date().toISOString(),
-  elapsed_minutes: 5,
+  clock_in_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  elapsed_minutes: 120,
   break_minutes: 0,
   active_break: false,
   active_break_started_at: null,
@@ -51,9 +52,9 @@ const clockedIn = {
 async function openClockOut() {
   render(<ClockInOutCard />)
   fireEvent.click((await screen.findAllByRole('button', { name: /Clock Out/ }))[0])
-  const fields = within(await screen.findByTestId('time-entry-work-fields'))
-  await waitFor(() => expect(fields.getAllByRole('option', { name: 'Payroll' }).length).toBeGreaterThan(0))
-  return fields
+  const sheet = within(await screen.findByRole('dialog', { name: 'Clock out' }))
+  await waitFor(() => expect(sheet.getAllByRole('option', { name: 'Payroll' }).length).toBeGreaterThan(0))
+  return sheet
 }
 
 function submitClockOut() {
@@ -68,50 +69,96 @@ describe('ClockInOutCard clock-out', () => {
     apiMock.getServiceTypes.mockResolvedValue({ data: { service_types: serviceTypes } })
     apiMock.getClientOptions.mockResolvedValue({ data: { clients: [{ id: 5, name: "MoSa's" }, { id: 6, name: 'Jose Cruz' }] } })
     apiMock.clockOut.mockResolvedValue({ data: { time_entry: {} } })
+    apiMock.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: null } })
   })
 
-  it('starts from the saved details and targets the open clock-in', async () => {
-    const fields = await openClockOut()
+  it('starts from the saved details and sends the whole session as one line', async () => {
+    const sheet = await openClockOut()
 
-    expect((fields.getByLabelText(/^Client/, { selector: 'select' }) as HTMLSelectElement).value).toBe('5')
-    expect((fields.getByLabelText('Task') as HTMLSelectElement).value).toBe('11')
+    expect((sheet.getByLabelText('Client', { selector: 'select' }) as HTMLSelectElement).value).toBe('5')
+    expect((sheet.getByLabelText(/^Category/) as HTMLSelectElement).value).toBe('1')
+    expect(sheet.getByText(/the whole session/)).toBeInTheDocument()
 
-    // Changing the category clears the task; an emptied client is sent as an explicit clear.
-    fireEvent.change(fields.getByLabelText(/^Client/, { selector: 'select' }), { target: { value: '' } })
-    fireEvent.change(fields.getByLabelText('Category'), { target: { value: '2' } })
+    fireEvent.change(sheet.getByLabelText('Client', { selector: 'select' }), { target: { value: '' } })
+    fireEvent.change(sheet.getByLabelText(/^Category/), { target: { value: '2' } })
+    fireEvent.change(sheet.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
     submitClockOut()
 
     await waitFor(() => expect(apiMock.clockOut).toHaveBeenCalled())
-    const [, , details, entryId] = apiMock.clockOut.mock.calls[0]
+    const [, , , entryId, lines] = apiMock.clockOut.mock.calls[0]
     expect(entryId).toBe(42)
-    expect(details).toEqual({ client_id: null, service_type_id: 2, service_task_id: null, period_type: null, period_start: null })
+    expect(lines).toEqual([
+      { client_id: null, description: 'Payroll run', service_type_id: 2, service_task_id: null, period_type: null, period_start: null, minutes: 120 },
+    ])
   })
 
   it('prefills a month period from the Guam work date, not the UTC date', async () => {
-    const fields = await openClockOut()
+    const sheet = await openClockOut()
 
-    fireEvent.change(fields.getByLabelText('Period type'), { target: { value: 'month' } })
+    // The saved task keeps "Task and period" open.
+    expect(sheet.getByRole('button', { name: 'Hide task and period' })).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.change(sheet.getByLabelText('Period type'), { target: { value: 'month' } })
 
-    expect(fields.getByText('December 2026')).toBeInTheDocument()
+    expect(sheet.getByText('December 2026')).toBeInTheDocument()
+  })
+
+  it('splits the session across clients and blocks clock-out until nothing is left', async () => {
+    const sheet = await openClockOut()
+
+    fireEvent.click(sheet.getByRole('button', { name: 'Split across clients' }))
+    fireEvent.change(sheet.getByLabelText('Line 2 client'), { target: { value: '6' } })
+    fireEvent.change(sheet.getByLabelText('Line 2 time'), { target: { value: '30' } })
+    expect(sheet.getByTestId('work-lines-remaining')).toHaveTextContent('30m over')
+    expect(screen.getAllByRole('button', { name: /^Clock Out/ }).at(-1)).toBeDisabled()
+
+    fireEvent.click(sheet.getByRole('button', { name: 'Take 30m from line 1' }))
+    expect(sheet.getByTestId('work-lines-remaining')).toHaveTextContent('All time is assigned')
+    submitClockOut()
+
+    await waitFor(() => expect(apiMock.clockOut).toHaveBeenCalled())
+    const lines = apiMock.clockOut.mock.calls[0][4]
+    expect(lines.map((line: { client_id: number; minutes: number }) => [line.client_id, line.minutes])).toEqual([[5, 90], [6, 30]])
+  })
+
+  it('accepts hours with the unit toggle on a decimal keypad', async () => {
+    const sheet = await openClockOut()
+
+    fireEvent.click(sheet.getByRole('button', { name: 'Split across clients' }))
+    const time = sheet.getByLabelText('Line 2 time')
+    expect(time).toHaveAttribute('inputmode', 'decimal')
+    fireEvent.click(within(sheet.getByRole('group', { name: 'Line 2 time unit' })).getByRole('button', { name: 'h' }))
+    fireEvent.change(time, { target: { value: '0.5' } })
+
+    expect(sheet.getByText('= 30m (0.50h)')).toBeInTheDocument()
   })
 
   it('keeps the draft when clock-out fails so the retry sends the same details', async () => {
     apiMock.clockOut.mockResolvedValueOnce({ error: 'Network error' }).mockResolvedValueOnce({ data: { time_entry: {} } })
-    const fields = await openClockOut()
+    const sheet = await openClockOut()
 
-    fireEvent.change(fields.getByLabelText('Category'), { target: { value: '2' } })
-    fireEvent.change(fields.getByLabelText('Task'), { target: { value: '21' } })
-    fireEvent.change(fields.getByLabelText('Comments'), { target: { value: 'Payroll run' } })
+    fireEvent.change(sheet.getByLabelText(/^Category/), { target: { value: '2' } })
+    fireEvent.change(sheet.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
     submitClockOut()
     expect((await screen.findAllByText('Network error')).length).toBeGreaterThan(0)
 
     fireEvent.click(screen.getAllByRole('button', { name: /Clock Out/ })[0])
-    const reopened = within(await screen.findByTestId('time-entry-work-fields'))
-    expect((reopened.getByLabelText('Task') as HTMLSelectElement).value).toBe('21')
+    const reopened = within(await screen.findByRole('dialog', { name: 'Clock out' }))
+    expect((reopened.getByLabelText('What I did') as HTMLInputElement).value).toBe('Payroll run')
     submitClockOut()
 
     await waitFor(() => expect(apiMock.clockOut).toHaveBeenCalledTimes(2))
-    expect(apiMock.clockOut.mock.calls[1][1]).toBe('Payroll run')
-    expect(apiMock.clockOut.mock.calls[1][2]).toEqual(apiMock.clockOut.mock.calls[0][2])
+    expect(apiMock.clockOut.mock.calls[1][4]).toEqual(apiMock.clockOut.mock.calls[0][4])
+  })
+
+  it('keeps focus in the field while typing several characters', async () => {
+    const sheet = await openClockOut()
+    const field = sheet.getByLabelText('What I did') as HTMLInputElement
+
+    field.focus()
+    for (const text of ['B', 'Ba', 'Ban', 'Bank', 'Bank r', 'Bank rec']) {
+      fireEvent.change(field, { target: { value: text } })
+      expect(field).toHaveFocus()
+    }
+    expect(field.value).toBe('Bank rec')
   })
 })

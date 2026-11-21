@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { api } from '../../lib/api'
-import type { ServiceType } from '../../lib/api'
+import type { ServiceType, TimeEntry, WorkLine } from '../../lib/api'
 import type { ClientOption } from '../../lib/timeEntryWork'
 import TimeEntryWorkFields from './TimeEntryWorkFields'
+import WorkLinesEditor from './WorkLinesEditor'
+import VersionConflictPanel from './VersionConflictPanel'
 import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, workFieldsFromEntry, type WorkFieldsValue } from './timeEntryWorkForm'
+import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, linesPayload, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
 
 interface EditableTimeEntry {
   id: number
@@ -37,6 +40,10 @@ interface EditableTimeEntry {
   service_task?: { id: number; name: string } | null
   period_type?: string | null
   period_start?: string | null
+  hours?: number
+  version?: number
+  duration_only?: boolean
+  work_lines?: WorkLine[]
   breaks?: Array<{
     id?: number
     start_time: string | null
@@ -58,6 +65,8 @@ interface EditTimeEntryModalProps {
   onSaved: () => void | Promise<void>
   onDeleted: () => void | Promise<void>
   onError?: (message: string | null) => void
+  /** Called as soon as a save hits a version conflict, so the caller can refetch. */
+  onConflict?: () => void
 }
 
 const BUSINESS_TIME_ZONE = 'Pacific/Guam'
@@ -104,6 +113,7 @@ export default function EditTimeEntryModal({
   onSaved,
   onDeleted,
   onError,
+  onConflict,
 }: EditTimeEntryModalProps) {
   const [formData, setFormData] = useState({
     work_date: '',
@@ -112,13 +122,22 @@ export default function EditTimeEntryModal({
     break_minutes: null as number | null,
   })
   const [workFields, setWorkFields] = useState<WorkFieldsValue>(EMPTY_WORK_FIELDS)
+  const [lines, setLines] = useState<WorkLineDraft[]>(() => draftsFromEntry(null))
+  const [initialLines, setInitialLines] = useState<WorkLineDraft[]>(() => draftsFromEntry(null))
+  const suggestions = useWorkLineSuggestions(isOpen, entry?.user?.id)
   const [breakRows, setBreakRows] = useState<Array<{ id?: number; start_time: string; end_time: string }>>([])
+  const [initialBreakRows, setInitialBreakRows] = useState<Array<{ id?: number; start_time: string; end_time: string }>>([])
+  const breakRowsUntouched = JSON.stringify(breakRows) === JSON.stringify(initialBreakRows)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [correctionReason, setCorrectionReason] = useState('')
   const [correctionReferences, setCorrectionReferences] = useState<string[]>([])
   const [requiresCorrectionReason, setRequiresCorrectionReason] = useState(false)
+  // Set when the server refused the save because the entry changed elsewhere.
+  const [versionConflict, setVersionConflict] = useState(false)
+  const [conflictEntry, setConflictEntry] = useState<TimeEntry | null>(null)
+  const [savingSeparately, setSavingSeparately] = useState(false)
 
   useEffect(() => {
     if (!isOpen || !entry) return
@@ -130,15 +149,22 @@ export default function EditTimeEntryModal({
       break_minutes: entry.break_minutes,
     })
     setWorkFields(workFieldsFromEntry(entry))
-    setBreakRows((entry.breaks || [])
+    const drafts = draftsFromEntry(entry)
+    setLines(drafts)
+    setInitialLines(drafts)
+    const rows = (entry.breaks || [])
       .filter((row) => row.start_time && row.end_time)
       .map((row) => ({
         id: row.id,
         start_time: timeInputValue(row.start_time),
         end_time: timeInputValue(row.end_time),
       }))
-      .filter((row) => row.start_time && row.end_time))
+      .filter((row) => row.start_time && row.end_time)
+    setBreakRows(rows)
+    setInitialBreakRows(rows)
     setError(null)
+    setVersionConflict(false)
+    setConflictEntry(null)
     setCorrectionReason('')
     setCorrectionReferences([])
     setRequiresCorrectionReason(false)
@@ -162,6 +188,18 @@ export default function EditTimeEntryModal({
   const ownerName = entry?.user?.full_name || entry?.user?.display_name || entry?.user?.email?.split('@')[0] || 'Unknown team member'
   const isLocked = !!entry?.locked_at
   const isActiveClockEntry = entry?.entry_method === 'clock' && (entry.status === 'clocked_in' || entry.status === 'on_break')
+  const isDayLog = Boolean(entry?.duration_only)
+  // While the times are untouched, the stored hours are the target (a clock
+  // entry's seconds can make them a minute off what the HH:MM fields give).
+  const timesUntouched = Boolean(entry) && formData.start_time === (entry?.start_time || '08:00') &&
+    formData.end_time === (entry?.end_time || '17:00') && formData.break_minutes === entry?.break_minutes && breakRowsUntouched
+  const targetMinutes = isDayLog
+    ? null
+    : timesUntouched && entry?.hours !== undefined ? Math.round(entry.hours * 60) : Math.round(calculatedHours * 60)
+  const linesRequired = detailsRequired(suggestions.requiredFrom, formData.work_date)
+  const lineCheck = checkLines(lines, { targetMinutes, required: linesRequired, clients })
+  const linesChanged = JSON.stringify(linesPayload(lines, targetMinutes)) !== JSON.stringify(linesPayload(initialLines, targetMinutes))
+  const hoursChanged = !isDayLog && entry?.hours !== undefined && Math.round(entry.hours * 60) !== targetMinutes
 
   const setLocalError = (message: string | null) => {
     setError(message)
@@ -176,19 +214,48 @@ export default function EditTimeEntryModal({
 
     try {
       const shouldSubmitDetailedBreaks = breakRows.length > 0 || (entry.breaks?.length ?? 0) > 0
-      const payload = {
-        work_date: formData.work_date,
-        start_time: formData.start_time,
+      // Work lines are sent when they changed, or when the hours changed and
+      // the entry is split (its lines must be re-balanced to the new hours).
+      const sendLines = !isActiveClockEntry && (linesChanged || (hoursChanged && lines.length > 1))
+      // Only attendance fields the user actually changed are sent. Resending
+      // an unchanged HH:MM would drop a clock entry's seconds, change its
+      // hours and send an approved entry back for review.
+      const attendance = attendanceChanges({
+        workDate: [formData.work_date, entry.work_date],
+        startTime: [formData.start_time, entry.start_time || '08:00'],
+        endTime: isActiveClockEntry ? null : [formData.end_time, entry.end_time || '17:00'],
+        breakMinutes: isActiveClockEntry ? null : [formData.break_minutes, entry.break_minutes],
+      })
+      const breaksChanged = !isActiveClockEntry && shouldSubmitDetailedBreaks && !breakRowsUntouched
+      const payload = isDayLog ? {
+        ...attendance,
+        ...(linesChanged ? { work_lines: linesPayload(lines, null) } : {}),
+      } : {
+        ...attendance,
         // Only what the user changed, so concurrent edits are not overwritten.
-        ...changedWorkFieldsPayload(workFieldsFromEntry(entry), workFields),
-        ...(isActiveClockEntry ? {} : {
-          end_time: formData.end_time,
-          break_minutes: formData.break_minutes,
-          ...(shouldSubmitDetailedBreaks ? { breaks: breakRows } : {}),
-        }),
+        ...(isActiveClockEntry ? changedWorkFieldsPayload(workFieldsFromEntry(entry), workFields) : {}),
+        ...(breaksChanged ? { breaks: breakRows } : {}),
+        ...(sendLines ? { work_lines: linesPayload(lines, targetMinutes) } : {}),
       }
 
-      const response = await api.updateTimeEntry(entry.id, payload, correctionReason)
+      // Nothing changed: close without a request (an empty update is an error).
+      if (Object.keys(payload).length === 0) {
+        await onSaved()
+        return
+      }
+
+      const response = await api.updateTimeEntry(entry.id, payload, correctionReason, { expectedVersion: entry.version })
+
+      if (response.status === 409) {
+        // Refetch at once so the panel (and the list behind) show what is
+        // saved now, not what this modal opened with.
+        setVersionConflict(true)
+        setConflictEntry(response.current_entry ?? null)
+        onConflict?.()
+        const fresh = await api.getTimeEntry(entry.id)
+        if (fresh.data?.time_entry) setConflictEntry(fresh.data.time_entry)
+        return
+      }
 
       if (response.error) {
         if (response.code === 'correction_reason_required') {
@@ -205,6 +272,24 @@ export default function EditTimeEntryModal({
     } finally {
       setSaving(false)
     }
+  }
+
+  // Keep the lines as their own day log instead of overwriting the entry.
+  const saveSeparately = async () => {
+    if (!entry) return
+    setSavingSeparately(true)
+    const response = await api.createTimeEntry({
+      work_date: formData.work_date,
+      work_lines: linesPayload(lines, null),
+      additional_day_log: true,
+      ...(entry.user ? { user_id: entry.user.id } : {}),
+    })
+    setSavingSeparately(false)
+    if (response.error) {
+      setLocalError(response.error)
+      return
+    }
+    await onSaved()
   }
 
   const handleDelete = async () => {
@@ -241,7 +326,7 @@ export default function EditTimeEntryModal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 md:items-center md:p-4"
           onClick={(event) => {
             if (event.target === event.currentTarget) onClose()
           }}
@@ -251,10 +336,13 @@ export default function EditTimeEntryModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.25, delay: 0.1 }}
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-time-entry-title"
+            className="h-[100dvh] w-full overflow-y-auto overscroll-contain bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-2xl"
           >
-            <div className="p-6">
-              <h2 className="mb-1 text-xl font-bold text-primary-dark">Edit Time Entry</h2>
+            <div className="p-4 md:p-6">
+              <h2 id="edit-time-entry-title" className="mb-1 text-xl font-bold text-primary-dark">Edit Time Entry</h2>
               <div className="mb-4">
                 <p className="text-sm text-primary-dark/70">
                   Entry for: <span className="font-medium text-primary-dark">{ownerName}</span>
@@ -298,6 +386,11 @@ export default function EditTimeEntryModal({
                     />
                   </div>
 
+                  {isDayLog ? (
+                    <p className="mt-4 rounded-lg bg-neutral-warm/30 p-3 text-sm text-primary-dark">
+                      Day log without clock times: its hours are the total of the work lines below.
+                    </p>
+                  ) : (<>
                   <div className={`mt-4 grid gap-4 ${isActiveClockEntry ? 'grid-cols-1' : 'grid-cols-2'}`}>
                     <div>
                       <label className="mb-1 block text-sm font-medium text-primary-dark">{isActiveClockEntry ? 'Clock-in Time *' : 'Start Time *'}</label>
@@ -405,19 +498,49 @@ export default function EditTimeEntryModal({
                     </div>
                   )}
 
+                  </>)}
+
                   <div className="mt-4 border-t border-neutral-warm pt-4">
                     <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-text-muted">Work details</h3>
-                    <TimeEntryWorkFields
-                      idPrefix={`edit-entry-${entry.id}`}
-                      value={workFields}
-                      onChange={setWorkFields}
-                      clients={clients}
-                      serviceTypes={serviceTypes}
-                      current={entry}
-                      referenceDate={formData.work_date}
-                      loadError={catalogError}
-                      onRetry={onRetryCatalog}
-                    />
+                    {isActiveClockEntry ? (
+                      <TimeEntryWorkFields
+                        idPrefix={`edit-entry-${entry.id}`}
+                        value={workFields}
+                        onChange={setWorkFields}
+                        clients={clients}
+                        serviceTypes={serviceTypes}
+                        current={entry}
+                        referenceDate={formData.work_date}
+                        loadError={catalogError}
+                        onRetry={onRetryCatalog}
+                      />
+                    ) : (
+                      <>
+                        {catalogError && (
+                          <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                            <span>{catalogError}</span>
+                            {onRetryCatalog && <button type="button" onClick={onRetryCatalog} className="min-h-11 rounded-lg border border-red-300 bg-white px-3 text-sm font-semibold text-red-700">Try again</button>}
+                          </div>
+                        )}
+                        {entry.time_category && !entry.service_type && (
+                          <p className="mb-3 rounded-lg bg-secondary/40 px-3 py-2 text-sm text-primary-dark">
+                            Legacy category: <span className="font-semibold">{entry.time_category.name}</span>. It stays on this entry.
+                          </p>
+                        )}
+                        <WorkLinesEditor
+                          idPrefix={`edit-entry-${entry.id}`}
+                          lines={lines}
+                          onChange={setLines}
+                          targetMinutes={targetMinutes}
+                          clients={clients}
+                          serviceTypes={serviceTypes}
+                          suggestions={suggestions}
+                          required={linesRequired}
+                          referenceDate={formData.work_date}
+                          mode={isDayLog ? 'day' : 'session'}
+                        />
+                      </>
+                    )}
                   </div>
 
                   {requiresCorrectionReason && (
@@ -444,9 +567,19 @@ export default function EditTimeEntryModal({
                   )}
                 </fieldset>
 
-                {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
+                {versionConflict ? (
+                  <VersionConflictPanel
+                    title="This entry was changed elsewhere after you opened it."
+                    detail="Nothing was saved, so that change isn’t overwritten."
+                    busy={savingSeparately}
+                    canSaveSeparately={lineCheck.problems && Object.keys(lineCheck.problems).length === 0}
+                    onSaveSeparately={() => void saveSeparately()}
+                    onDiscard={() => void onSaved()}
+                    current={conflictEntry}
+                  />
+                ) : error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 
-                <div className="flex items-center justify-between gap-3 pt-4">
+                <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t border-neutral-warm bg-white px-4 py-3 md:static md:mx-0 md:border-0 md:px-0 md:pt-4">
                   <button
                     type="button"
                     onClick={handleDelete}
@@ -458,8 +591,8 @@ export default function EditTimeEntryModal({
                   </button>
 
                   <div className="flex gap-3">
-                    <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 font-medium text-primary-dark transition-colors hover:bg-neutral-warm">Cancel</button>
-                    {!isLocked && <button type="submit" disabled={saving || deleting} className="rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-dark disabled:opacity-50">{saving ? 'Saving...' : 'Update'}</button>}
+                    <button type="button" onClick={onClose} className="min-h-11 rounded-lg px-4 py-2 font-medium text-primary-dark transition-colors hover:bg-neutral-warm">Cancel</button>
+                    {!isLocked && <button type="submit" disabled={saving || deleting || (!isActiveClockEntry && (linesChanged || (hoursChanged && lines.length > 1)) && !lineCheck.canSubmit)} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-dark disabled:opacity-50">{saving ? 'Saving...' : 'Update'}</button>}
                   </div>
                 </div>
               </form>

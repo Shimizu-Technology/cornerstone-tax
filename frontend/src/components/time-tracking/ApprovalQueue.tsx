@@ -5,6 +5,7 @@ import type { ApprovalReason, PendingApprovalsParams, PendingApprovalsSummary, S
 import { formatDateISO, formatWorkDate } from '../../lib/dateUtils'
 import { parseCategoryFilter, workSummary, type ClientOption } from '../../lib/timeEntryWork'
 import EditTimeEntryModal from './EditTimeEntryModal'
+import { formatMinutes } from '../../lib/workDuration'
 import { CategoryFilterSelect, ClientPicker } from './TimeEntryWorkFields'
 
 interface ApprovalQueueProps {
@@ -426,7 +427,17 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
                   {approvalReasonsFor(entry).map((reason) => <span key={reason.key} className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${reasonTone(reason.key)}`}>{reason.label}</span>)}
                 </div>
                 <p className="mt-1 text-xs text-text-muted">{formatWorkDate(entry.work_date)} · {entryTimeLabel(entry)}</p>
-                <p className="mt-1 text-xs text-primary-dark">{workSummary(entry)}</p>
+                {(entry.work_lines?.length ?? 0) > 1 ? (
+                  <ul className="mt-1 space-y-0.5 text-xs text-primary-dark" aria-label="Work lines">
+                    {entry.work_lines!.map((line) => (
+                      <li key={line.id ?? line.position}>
+                        {line.client_label}{line.description ? ` — ${line.description}` : ''} · <span className="tabular-nums">{formatMinutes(line.minutes)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-xs text-primary-dark">{workSummary(entry)}</p>
+                )}
                 <p className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-text-muted">{entry.entry_method}</p>
                 {entry.description && (
                   <div className="mt-2">
@@ -609,6 +620,7 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
         onSaved={handleEditSaved}
         onDeleted={handleEditSaved}
         onError={setActionError}
+        onConflict={() => void fetchPending()}
       />
     </>
   )

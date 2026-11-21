@@ -35,7 +35,10 @@ class TaxReturn < ApplicationRecord
   has_many :intake_submissions, dependent: :destroy
   has_many :workflow_events, dependent: :destroy
   has_many :documents, dependent: :destroy
-  has_many :time_entries, dependent: :nullify
+  has_many :time_entries
+  # Deleting a return (e.g. a folded intake return) releases its time
+  # through the versioned path rather than a bare nullify.
+  before_destroy :release_time_entries, prepend: true
   has_many :transmittals, dependent: :nullify
   has_many :notifications, dependent: :destroy
 
@@ -112,6 +115,10 @@ class TaxReturn < ApplicationRecord
   end
 
   private
+
+  def release_time_entries
+    TimeEntry.versioned_update!(TimeEntry.where(tax_return_id: id), tax_return_id: nil)
+  end
 
   def sync_signature_status_for_stage
     @signature_status_synced_from_stage = false

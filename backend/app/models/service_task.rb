@@ -2,8 +2,10 @@
 
 class ServiceTask < ApplicationRecord
   belongs_to :service_type
-  has_many :time_entries, dependent: :nullify
-  has_many :time_entry_allocations, dependent: :nullify
+  # Deactivate instead of deleting once time uses it (the app only
+  # deactivates); nullifying would drop attribution without a version bump.
+  has_many :time_entries, dependent: :restrict_with_error
+  has_many :time_entry_allocations, dependent: :restrict_with_error
 
   validates :name, presence: true
   validates :name, uniqueness: { scope: :service_type_id }

@@ -12,6 +12,8 @@ RSpec.describe "Concurrent work-line saves", type: :request do
 
   # Lets the first thread to read the lines wait (briefly) for the other.
   class LineReadBarrier
+    attr_reader :arrived
+
     def initialize(parties, timeout)
       @parties = parties
       @timeout = timeout
@@ -148,6 +150,64 @@ RSpec.describe "Concurrent work-line saves", type: :request do
       expect(active.status).to eq("completed")
       expect(active.approval_status).to eq("pending")
       expect(active.work_lines.sole).to have_attributes(client_id: clients[0].id, description: "Bank recs")
+    end
+  end
+
+  describe "expected_version under concurrency" do
+    def request(method, path, body, as: admin)
+      env = Rack::MockRequest.env_for(path, method: method, input: body.to_json, "CONTENT_TYPE" => "application/json",
+                                            "HTTP_AUTHORIZATION" => "Bearer test_token_#{as.id}", "HTTP_HOST" => "www.example.com")
+      status, _headers, rack_body = Rails.application.call(env)
+      text = +""
+      rack_body.each { |part| text << part }
+      rack_body.close if rack_body.respond_to?(:close)
+      [ status, text ]
+    end
+
+    # Both requests must have loaded the entry before either takes the row
+    # lock, so the version check (not a lucky sequential schedule) decides.
+    def overlap_before(klass, method)
+      barrier = LineReadBarrier.new(2, 3)
+      allow_any_instance_of(klass).to receive(method).and_wrap_original do |original, *args|
+        barrier.wait
+        original.call(*args)
+      end
+      barrier
+    end
+
+    it "lets exactly one of two saves with the same expected version win; the other gets 409" do
+      BarrierOnLineRead.barrier = nil
+      expect(patch_lines(Array.new(7) { { client_id: clients[0].id, minutes: 1 } }).first).to eq(200) # warm up routes
+      version = entry.reload.work_version
+      overlap = overlap_before(TimeEntry, :lock_for_work_lines!)
+      bodies = [
+        { expected_version: version, time_entry: { work_lines: [ { client_id: clients[0].id, minutes: 7 } ] } },
+        { expected_version: version, time_entry: { work_lines: [ { client_id: clients[1].id, minutes: 7 } ] } }
+      ]
+
+      results = bodies.map { |body| Thread.new { request("PATCH", "/api/v1/time_entries/#{entry.id}", body) } }.map(&:value)
+
+      expect(overlap.arrived).to eq(2) # both requests overlapped
+      expect(results.map(&:first).sort).to eq([ 200, 409 ]), results.inspect
+      expect(entry.work_lines.reload.size).to eq(1)
+    end
+
+    it "lets only one of two concurrent day-log creates through; the other gets 409" do
+      BarrierOnLineRead.barrier = nil
+      day = Date.new(2026, 11, 17)
+      body = { time_entry: { work_date: day.iso8601, work_lines: [ { client_id: clients[0].id, minutes: 30 } ] } }
+      request("GET", "/api/v1/time_entries", {}) # warm up routes
+      overlap = overlap_before(User, :lock!)
+
+      results = Array.new(2) { Thread.new { request("POST", "/api/v1/time_entries", body) } }.map(&:value)
+
+      expect(overlap.arrived).to eq(2) # both creates overlapped
+      expect(results.map(&:first).sort).to eq([ 201, 409 ]), results.inspect
+      expect(TimeEntry.where(user: admin, work_date: day).count).to eq(1)
+    ensure
+      ids = TimeEntry.where(user: admin, work_date: day).pluck(:id)
+      AuditLog.where(auditable_type: "TimeEntry", auditable_id: ids).delete_all
+      TimeEntry.where(id: ids).delete_all
     end
   end
 end

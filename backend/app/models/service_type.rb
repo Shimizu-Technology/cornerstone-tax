@@ -4,8 +4,10 @@ class ServiceType < ApplicationRecord
   has_many :service_tasks, dependent: :destroy
   has_many :client_service_types, dependent: :destroy
   has_many :clients, through: :client_service_types
-  has_many :time_entries, dependent: :nullify
-  has_many :time_entry_allocations, dependent: :nullify
+  # Deactivate instead of deleting once time uses it (the app only
+  # deactivates); nullifying would drop attribution without a version bump.
+  has_many :time_entries, dependent: :restrict_with_error
+  has_many :time_entry_allocations, dependent: :restrict_with_error
 
   validates :name, presence: true, uniqueness: true
 
