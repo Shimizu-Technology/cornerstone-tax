@@ -22,7 +22,14 @@ module Reports
       @acknowledge_draft = ActiveModel::Type::Boolean.new.cast(acknowledge_draft)
     end
 
+    # The report and its export snapshot come from one consistent read.
     def call
+      TimeEntry.consistent_read { generate }
+    end
+
+    private
+
+    def generate
       validate_export_type!
       report = build_report
       validate_employee_selection!(report)
@@ -45,7 +52,6 @@ module Reports
       )
     end
 
-    private
 
     attr_reader :export_type, :report_params, :generated_by, :acknowledge_draft
 

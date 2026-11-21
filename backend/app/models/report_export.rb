@@ -109,7 +109,7 @@ class ReportExport < ApplicationRecord
               "overtime_hours", "break_minutes", "description", "entry_method",
               "status", "approval_status", "overtime_status", "approved_at", "overtime_approved_at",
               "locked_at", "time_category", "client", "tax_return", "service_type", "service_task",
-              "category_label", "period_type", "period_start", "period_label", "breaks"
+              "category_label", "period_type", "period_start", "period_label", "breaks", "work_lines"
             ).merge("employee_id" => employee_id, "employee_name" => employee_name)
           end
         else

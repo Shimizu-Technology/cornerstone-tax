@@ -5,6 +5,7 @@ class ServiceType < ApplicationRecord
   has_many :client_service_types, dependent: :destroy
   has_many :clients, through: :client_service_types
   has_many :time_entries, dependent: :nullify
+  has_many :time_entry_allocations, dependent: :nullify
 
   validates :name, presence: true, uniqueness: true
 

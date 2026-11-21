@@ -281,7 +281,8 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       expect(json[:ready]).to eq(true)
       expect(json.dig(:summary, :denied_count)).to eq(1)
       expect(json.dig(:summary, :entries_count)).to eq(2)
-      expect(json.dig(:employees, 0, :days).flatten.to_s).not_to include(denied.id.to_s)
+      included_ids = json.dig(:employees, 0, :days).flat_map { |day| day[:entries].map { |entry| entry[:id] } }
+      expect(included_ids).not_to include(denied.id)
       expect(json.dig(:employees, 0, :excluded_entries).map { |entry| entry[:id] }).to include(denied.id)
     end
 
@@ -368,7 +369,7 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
             headers: auth_headers_for[admin]
 
         row = json.dig(:employees, 0, :work_breakdown, 0)
-        expect(row).to include(category_name: "Tax Prep (legacy)", legacy_category: true, task_name: "No task", period_label: "No period", client_name: "No client")
+        expect(row).to include(category_name: "Tax Prep (legacy)", legacy_category: true, task_name: "No task", period_label: "No period", client_name: "Unassigned")
         expect(json.dig(:employees, 0, :categories, 0, :name)).to eq("Tax Prep")
       end
 
@@ -392,7 +393,7 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
         expect(rows.headers).to eq([
           "Export Reference", "Employee", "Date", "Start", "End", "Break Minutes",
           "Client", "Category", "Task", "Period", "Tax Year", "Entry Method", "Regular Hours", "Overtime Hours",
-          "Total Hours", "Approval Status", "Approved By", "Approved At", "Finalized", "Comments"
+          "Total Hours", "Approval Status", "Approved By", "Approved At", "Finalized", "Comments", "Entry ID", "Line"
         ])
         first = rows.find { |row| row["Task"] == "Bank Reconciliation" }
         expect(first.to_h.slice("Client", "Category", "Period")).to eq("Client" => "MoSa's", "Category" => "Bookkeeping", "Period" => "July 2026")

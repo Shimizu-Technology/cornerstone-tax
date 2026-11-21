@@ -228,12 +228,21 @@ module Reports
       report.dig(:finalization, :label).presence || "Not finalized"
     end
 
+    # A split entry lists each work line with its hours (client names stay
+    # out of PDFs; see the detailed CSV).
     def work_label(entry)
-      # Fixed positions so a period is never mistaken for a task: an entry with
+      lines = Array(entry[:work_lines])
+      return line_work_label(lines.first || entry) if lines.size <= 1
+
+      lines.map { |line| "#{line_work_label(line)} (#{hours(line[:total_hours])})" }.join("; ")
+    end
+
+    def line_work_label(line)
+      # Fixed positions so a period is never mistaken for a task: a line with
       # a period but no task shows "No task" in the task slot.
-      task = entry.dig(:service_task, :name).presence
-      period = entry[:period_label].presence
-      parts = [ entry[:category_label] || "Uncategorized" ]
+      task = line.dig(:service_task, :name).presence
+      period = line[:period_label].presence
+      parts = [ line[:category_label] || "Uncategorized" ]
       parts << (task || "No task") if task || period
       parts << period if period
       parts.join(" / ")

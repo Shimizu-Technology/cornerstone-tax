@@ -6,6 +6,8 @@ module Api
       PENDING_APPROVAL_SORTS = %w[work_date created_at employee hours approval_type category client service].freeze
       PENDING_APPROVAL_DIRECTIONS = %w[asc desc].freeze
       PENDING_APPROVAL_TYPES = %w[time_entry overtime both].freeze
+      WORK_LINE_PARAMS = %i[client_id description service_type_id service_task_id period_type period_start hours minutes duration exact_hours].freeze
+      WORK_LINE_INCLUDES = [ :client, :service_type, :service_task, { time_entry: :time_category } ].freeze
 
       before_action :authenticate_user!
       before_action :require_staff!
@@ -18,7 +20,7 @@ module Api
         @time_entries = current_user.admin? ? TimeEntry.all : TimeEntry.for_user(current_user)
         @time_entries = @time_entries.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by,
                                                :overtime_approved_by, :time_entry_breaks, :service_type, :service_task,
-                                               :linked_operation_tasks)
+                                               :linked_operation_tasks, work_lines: WORK_LINE_INCLUDES)
 
         if params[:user_id].present? && current_user.admin?
           @time_entries = @time_entries.where(user_id: params[:user_id])
@@ -35,9 +37,9 @@ module Api
         end
 
         @time_entries = @time_entries.where(time_category_id: params[:time_category_id]) if params[:time_category_id].present?
-        @time_entries = @time_entries.where(client_id: params[:client_id]) if params[:client_id].present?
-        @time_entries = @time_entries.where(service_type_id: params[:service_type_id]) if params[:service_type_id].present?
-        @time_entries = @time_entries.where(service_task_id: params[:service_task_id]) if params[:service_task_id].present?
+        @time_entries = @time_entries.with_work_line_value(:client_id, params[:client_id]) if params[:client_id].present?
+        @time_entries = @time_entries.with_work_line_value(:service_type_id, params[:service_type_id]) if params[:service_type_id].present?
+        @time_entries = @time_entries.with_work_line_value(:service_task_id, params[:service_task_id]) if params[:service_task_id].present?
         @time_entries = @time_entries.where(entry_method: params[:entry_method]) if params[:entry_method].present?
 
         period_filter = work_period_filter_params
@@ -97,8 +99,9 @@ module Api
         entry_owner = resolve_entry_owner
         return unless entry_owner
 
-        @time_entry = entry_owner.time_entries.build(time_entry_params.except(:user_id, :breaks))
+        @time_entry = entry_owner.time_entries.build(time_entry_params.except(:user_id, :breaks, :work_lines))
         @time_entry.entry_method = "manual"
+        @time_entry.work_lines_input = submitted_work_lines
 
         if current_user.admin?
           @time_entry.admin_override = true if entry_owner.id != current_user.id
@@ -147,10 +150,12 @@ module Api
           period_start: @time_entry.period_start&.iso8601,
           overtime_status: @time_entry.overtime_status,
           start_time: @time_entry.formatted_start_time,
-          end_time: @time_entry.formatted_end_time
+          end_time: @time_entry.formatted_end_time,
+          work_lines: work_lines_audit_value(@time_entry)
         }
 
-        update_params = time_entry_params.except(:user_id, :breaks).to_h.symbolize_keys
+        update_params = time_entry_params.except(:user_id, :breaks, :work_lines).to_h.symbolize_keys
+        @time_entry.work_lines_input = submitted_work_lines
         raw_clock_params = raw_time_entry_params.slice(:work_date, :start_time, :end_time)
         normalize_clock_entry_time_update(@time_entry, update_params, raw_clock_params)
         return if performed?
@@ -159,16 +164,20 @@ module Api
         return if performed?
         update_params[:break_minutes] = break_update[:total_minutes] if break_update
 
-        if !current_user.admin? && @time_entry.status == "completed"
-          update_params[:approval_status] = "pending"
-          update_params[:approved_by_id] = nil
-          update_params[:approved_at] = nil
-          update_params[:approval_note] = append_review_note(@time_entry.approval_note)
-        end
-
         saved = false
         break_replace_error = nil
         @time_entry.transaction do
+          # Serialize edits of one entry (see TimeEntry#lock_for_work_lines!).
+          @time_entry.lock_for_work_lines!
+          # Decided on the locked, re-read row: a clock-out that completed the
+          # entry after this request loaded it must not let a staff edit skip
+          # review.
+          if !current_user.admin? && @time_entry.status == "completed"
+            update_params[:approval_status] = "pending"
+            update_params[:approved_by_id] = nil
+            update_params[:approved_at] = nil
+            update_params[:approval_note] = append_review_note(@time_entry.approval_note)
+          end
           saved = @time_entry.update(update_params)
           if saved && break_update
             break_replace_error = replace_break_records(@time_entry, break_update[:breaks])
@@ -202,7 +211,8 @@ module Api
             period_start: @time_entry.period_start&.iso8601,
             overtime_status: @time_entry.overtime_status,
             start_time: @time_entry.formatted_start_time,
-            end_time: @time_entry.formatted_end_time
+            end_time: @time_entry.formatted_end_time,
+            work_lines: work_lines_audit_value(@time_entry.reload)
           }
 
           changes = old_values.each_with_object({}) do |(key, old_val), hash|
@@ -247,6 +257,7 @@ module Api
         entry_id = @time_entry.id
 
         TimeEntry.transaction do
+          @time_entry.lock_for_work_lines!
           @time_entry.destroy!
 
           AuditLog.create!(
@@ -288,14 +299,16 @@ module Api
       def clock_out
         target_user = resolve_clock_target_user
         admin_override = (current_user.admin? && target_user.id != current_user.id) ? current_user : nil
-        permitted = params.permit(:corrected_end_time, :description, :time_entry_id, *TimeClockService::CLOCK_OUT_WORK_FIELDS)
+        permitted = params.permit(:corrected_end_time, :description, :time_entry_id, *TimeClockService::CLOCK_OUT_WORK_FIELDS,
+                                  work_lines: WORK_LINE_PARAMS)
         entry = TimeClockService.clock_out(
           user: target_user,
           admin_override_by: admin_override,
           corrected_end_time: permitted[:corrected_end_time],
           description: permitted[:description],
           work_details: permitted.slice(*TimeClockService::CLOCK_OUT_WORK_FIELDS).to_h.symbolize_keys,
-          expected_entry_id: permitted[:time_entry_id]
+          expected_entry_id: permitted[:time_entry_id],
+          work_lines: params.key?(:work_lines) ? Array(permitted[:work_lines]).map(&:to_h) : nil
         )
         render json: { time_entry: serialize_time_entry(eager_reload(entry)) }
       rescue TimeClockService::ClockError => e
@@ -434,7 +447,9 @@ module Api
         updated_entry_ids = []
         error_message = nil
         ActiveRecord::Base.transaction do
-          entries_by_id = TimeEntry.where(id: entry_ids).lock.index_by(&:id)
+          # Multi-row locks are always taken in id order, so two bulk
+          # approvals over overlapping entries cannot deadlock.
+          entries_by_id = TimeEntry.where(id: entry_ids).order(:id).lock.index_by(&:id)
           missing_ids = entry_ids - entries_by_id.keys
           if missing_ids.any?
             error_message = "One or more selected entries could not be found"
@@ -557,7 +572,23 @@ module Api
       def time_entry_serializer_scope
         TimeEntry.includes(:user, :client, :tax_return, :time_category, :schedule, :approved_by,
                           :overtime_approved_by, :time_entry_breaks, :service_type, :service_task,
-                          :linked_operation_tasks)
+                          :linked_operation_tasks, work_lines: WORK_LINE_INCLUDES)
+      end
+
+      # Work lines sent with a create/update, or nil when the request did not
+      # include them (the entry's single line then follows the entry).
+      def submitted_work_lines
+        payload = params[:time_entry]
+        return nil unless payload.respond_to?(:key?) && (payload.key?(:work_lines) || payload.key?("work_lines"))
+
+        Array(params.require(:time_entry).permit(work_lines: WORK_LINE_PARAMS)[:work_lines]).map(&:to_h)
+      end
+
+      def work_lines_audit_value(entry)
+        entry.work_lines.map do |line|
+          [ line.client_id, line.service_type_id, line.service_task_id, line.period_type, line.period_start&.iso8601,
+            line.hours.to_f, line.description ].join("|")
+        end
       end
 
       def approve_bulk_time_entry(entry, note, overtime_context)
@@ -690,7 +721,8 @@ module Api
           :service_task_id,
           :period_type,
           :period_start,
-          breaks: [ :id, :start_time, :end_time, :_destroy ]
+          breaks: [ :id, :start_time, :end_time, :_destroy ],
+          work_lines: WORK_LINE_PARAMS
         )
         normalize_manual_time(permitted, :start_time)
         normalize_manual_time(permitted, :end_time)
@@ -952,6 +984,8 @@ module Api
           period_type: entry.period_type,
           period_start: entry.period_start&.iso8601,
           period_label: entry.period_label,
+          duration_only: entry.duration_only?,
+          work_lines: entry.work_lines.map { |line| WorkLineSerializer.call(line) },
           linked_operation_task: linked_operation_task ? {
             id: linked_operation_task.id,
             title: linked_operation_task.title
@@ -1118,9 +1152,9 @@ module Api
         entries = entries.where("time_entries.work_date >= ?", filters[:since_date]) if filters[:since_date]
         entries = entries.where(user_id: filters[:user_id]) if filters[:user_id]
         entries = entries.where(time_category_id: filters[:time_category_id]) if filters[:time_category_id]
-        entries = entries.where(client_id: filters[:client_id]) if filters[:client_id]
-        entries = entries.where(service_type_id: filters[:service_type_id]) if filters[:service_type_id]
-        entries = entries.where(service_task_id: filters[:service_task_id]) if filters[:service_task_id]
+        entries = entries.with_work_line_value(:client_id, filters[:client_id]) if filters[:client_id]
+        entries = entries.with_work_line_value(:service_type_id, filters[:service_type_id]) if filters[:service_type_id]
+        entries = entries.with_work_line_value(:service_task_id, filters[:service_task_id]) if filters[:service_task_id]
         entries = entries.where(entry_method: filters[:entry_method]) if filters[:entry_method]
 
         case filters[:approval_type]
@@ -1260,7 +1294,7 @@ module Api
         TimeEntry
           .preload(:user, :schedule, :approved_by, :overtime_approved_by, :time_entry_breaks,
                    :time_category, :client, :tax_return, :service_type, :service_task,
-                   :linked_operation_tasks)
+                   :linked_operation_tasks, work_lines: WORK_LINE_INCLUDES)
           .where("time_entries.approval_status = ? OR time_entries.overtime_status = ?", "pending", "pending")
       end
 

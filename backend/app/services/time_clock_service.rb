@@ -52,19 +52,23 @@ class TimeClockService
     # ── Clock Out ──
     # expected_entry_id: the active entry the clock-out form was opened for.
     # When given, a different (or no) active entry is rejected unchanged.
-    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil, description: nil, work_details: {}, expected_entry_id: nil)
+    # work_lines: optional split of the session's time across clients (see
+    # TimeEntry#work_lines_input). The clock keeps running while the form is
+    # open, so lines within a few minutes of the final duration are scaled to
+    # it exactly.
+    def clock_out(user:, admin_override_by: nil, corrected_end_time: nil, description: nil, work_details: {}, expected_entry_id: nil, work_lines: nil)
       entry = active_entry_for(user)
       raise ClockError, "Not currently clocked in" unless entry
       ensure_expected_entry!(entry, expected_entry_id)
 
       ActiveRecord::Base.transaction do
-        # Re-read under a row lock so two clock-outs cannot both complete it.
-        entry.lock!
+        # Re-read under a row lock so two clock-outs cannot both complete it
+        # (and its work lines are read only while the lock is held).
+        entry.lock_for_work_lines!
         raise ClockError, "This clock-in has already ended. Refresh to see your current status." unless entry.active?
 
         if entry.status == "on_break"
-          active_break = entry.active_break
-          active_break&.close!
+          locked_active_break(entry)&.close!
         end
 
         now = Time.current
@@ -96,6 +100,10 @@ class TimeClockService
 
         entry.description = description if description.present?
         apply_clock_out_work_details(entry, work_details)
+        unless work_lines.nil?
+          entry.work_lines_input = work_lines
+          entry.work_lines_tolerance_minutes = WorkLineHours::CLOCK_OUT_TOLERANCE_MINUTES
+        end
         entry.status = "completed"
         entry.break_minutes = entry.total_break_minutes
         entry.calculate_hours_from_times
@@ -113,12 +121,18 @@ class TimeClockService
     end
 
     # ── Start Break ──
+    # Lock order for every break operation: the time entry first, then its
+    # break, with the status re-checked after the locks (clock-out and the
+    # stale auto-close use the same order, so they cannot deadlock).
     def start_break(user:, admin_override_by: nil)
       entry = active_entry_for(user)
       raise ClockError, "You are not currently clocked in" unless entry
-      raise ClockError, "You are already on a break" if entry.status == "on_break"
 
       ActiveRecord::Base.transaction do
+        entry.lock_for_work_lines!
+        raise ClockError, "You are not currently clocked in" unless entry.active?
+        raise ClockError, "You are already on a break" if entry.status == "on_break"
+
         now = Time.current
         entry.time_entry_breaks.create!(start_time: now)
         entry.admin_override = true if admin_override_by.present?
@@ -134,12 +148,15 @@ class TimeClockService
     def end_break(user:, admin_override_by: nil)
       entry = active_entry_for(user)
       raise ClockError, "You are not currently clocked in" unless entry
-      raise ClockError, "You are not currently on a break" unless entry.status == "on_break"
-
-      active_break = entry.active_break
-      raise ClockError, "No active break found" unless active_break
 
       ActiveRecord::Base.transaction do
+        entry.lock_for_work_lines!
+        raise ClockError, "You are not currently clocked in" unless entry.active?
+        raise ClockError, "You are not currently on a break" unless entry.status == "on_break"
+
+        active_break = locked_active_break(entry)
+        raise ClockError, "No active break found" unless active_break
+
         active_break.close!
         entry.admin_override = true if admin_override_by.present?
         entry.update!(status: "clocked_in")
@@ -195,7 +212,8 @@ class TimeClockService
     def approve_entry(entry:, approved_by:, note: nil)
       raise AuthorizationError, "Only admins can approve entries" unless approved_by.admin?
 
-      entry.with_lock do
+      entry.transaction do
+        entry.lock_for_work_lines!
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
         combined_note = build_approval_note(entry.approval_note, note)
@@ -221,7 +239,8 @@ class TimeClockService
     def deny_entry(entry:, denied_by:, note: nil)
       raise AuthorizationError, "Only admins can deny entries" unless denied_by.admin?
 
-      entry.with_lock do
+      entry.transaction do
+        entry.lock_for_work_lines!
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 
         combined_note = build_approval_note(entry.approval_note, note)
@@ -239,7 +258,8 @@ class TimeClockService
     def approve_overtime(entry:, approved_by:, note: nil)
       raise AuthorizationError, "Only admins can approve overtime" unless approved_by.admin?
 
-      entry.with_lock do
+      entry.transaction do
+        entry.lock_for_work_lines!
         raise ClockError, "Entry does not have pending overtime" unless entry.overtime_status == "pending"
 
         entry.update!(
@@ -256,7 +276,8 @@ class TimeClockService
     def deny_overtime(entry:, denied_by:, note: nil)
       raise AuthorizationError, "Only admins can deny overtime" unless denied_by.admin?
 
-      entry.with_lock do
+      entry.transaction do
+        entry.lock_for_work_lines!
         raise ClockError, "Entry does not have pending overtime" unless entry.overtime_status == "pending"
 
         entry.update!(
@@ -270,6 +291,11 @@ class TimeClockService
     end
 
     # ── Helpers ──
+
+    # The open break, row-locked. Call only after the entry is locked.
+    def locked_active_break(entry)
+      entry.time_entry_breaks.active.order(:id).lock.first
+    end
 
     def ensure_expected_entry!(entry, expected_entry_id)
       return if expected_entry_id.blank?
@@ -304,8 +330,12 @@ class TimeClockService
       stale.find_each do |entry|
         begin
           ActiveRecord::Base.transaction do
+            # A clock-out may have completed it since the query above.
+            entry.lock_for_work_lines!
+            next unless entry.active?
+
             if entry.status == "on_break"
-              entry.active_break&.close!
+              locked_active_break(entry)&.close!
             end
 
             guam_now = Time.current.in_time_zone(business_timezone)
