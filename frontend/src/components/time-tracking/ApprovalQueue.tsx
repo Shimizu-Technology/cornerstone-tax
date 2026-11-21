@@ -178,6 +178,8 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
   const [unscheduledLoading, setUnscheduledLoading] = useState(false)
   const [unscheduledApproving, setUnscheduledApproving] = useState(false)
   const [unscheduledResult, setUnscheduledResult] = useState<string | null>(null)
+  // Shown inside the confirmation sheet (the page's error banner is behind it).
+  const [unscheduledError, setUnscheduledError] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('cornerstone_pending_approvals_collapsed') === 'true')
   const fetchGenerationRef = useRef(0)
 
@@ -399,6 +401,7 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
     setUnscheduledLoading(true)
     setActionError(null)
     setUnscheduledResult(null)
+    setUnscheduledError(null)
     try {
       const result = await api.getUnscheduledOnlyApprovals()
       if (result.error || !result.data) {
@@ -414,10 +417,11 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
   const confirmUnscheduledApproval = async () => {
     if (!unscheduledPreview || unscheduledPreview.count === 0) return
     setUnscheduledApproving(true)
+    setUnscheduledError(null)
     try {
       const result = await api.approveUnscheduledOnly(unscheduledPreview.entries)
       if (result.error || !result.data) {
-        setActionError(result.error || 'Could not approve the entries. Please try again.')
+        setUnscheduledError(result.error || 'Could not approve the entries. Please try again.')
         return
       }
       const { approved_count: approved, changed_count: changed, ineligible_count: ineligible } = result.data
@@ -675,11 +679,11 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
         open={unscheduledPreview !== null}
         title="Approve unscheduled-only entries"
         subtitle="Pending only because the person clocked in without a schedule."
-        onClose={() => { if (!unscheduledApproving) setUnscheduledPreview(null) }}
+        onClose={() => { if (!unscheduledApproving) { setUnscheduledPreview(null); setUnscheduledError(null) } }}
         wide={false}
         footer={(
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button type="button" onClick={() => setUnscheduledPreview(null)} disabled={unscheduledApproving} className="min-h-11 rounded-xl border border-neutral-warm bg-white px-4 text-sm font-semibold text-primary-dark hover:bg-secondary disabled:opacity-50">Cancel</button>
+            <button type="button" onClick={() => { setUnscheduledPreview(null); setUnscheduledError(null) }} disabled={unscheduledApproving} className="min-h-11 rounded-xl border border-neutral-warm bg-white px-4 text-sm font-semibold text-primary-dark hover:bg-secondary disabled:opacity-50">Cancel</button>
             <button type="button" onClick={() => void confirmUnscheduledApproval()} disabled={unscheduledApproving || !unscheduledPreview?.count} className="min-h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
               {unscheduledApproving ? 'Approving…' : `Approve ${unscheduledPreview?.count ?? 0} entr${unscheduledPreview?.count === 1 ? 'y' : 'ies'}`}
             </button>
@@ -688,6 +692,12 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
       >
         {unscheduledPreview && (
           <div className="space-y-3 text-sm text-primary-dark" data-testid="unscheduled-preview">
+            {unscheduledError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-red-700">{unscheduledError}</div>}
+            {unscheduledPreview.total_count > unscheduledPreview.count && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                This approves the oldest {unscheduledPreview.count} of {unscheduledPreview.total_count}. Run it again afterwards for the rest.
+              </p>
+            )}
             {unscheduledPreview.count === 0 ? (
               <p>No pending entries are waiting only for a missing schedule.</p>
             ) : (

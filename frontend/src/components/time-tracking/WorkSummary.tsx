@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import type { PayPeriods, WorkSummaryResponse } from '../../lib/api'
 import { formatMinutes } from '../../lib/workDuration'
@@ -60,6 +60,10 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
   const [payPeriods, setPayPeriods] = useState<PayPeriods | null>(null)
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
+  // Set once the person picks a period or a date; the starting period is
+  // applied only if they haven't, and then as a whole (preset and both dates).
+  const touched = useRef(false)
+  const presetPick = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -67,11 +71,12 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
       if (cancelled) return
       const periods = response.data ?? null
       setPayPeriods(periods)
-      const range = periods ? presetRange('this_pay_period', periods) : presetRange('two_weeks')
-      if (!periods) setPreset('two_weeks')
-      // Only fill the dates if nobody has picked any yet.
-      setStart((current) => current || range!.start)
-      setEnd((current) => current || range!.end)
+      if (touched.current) return
+      const initial: Preset = periods ? 'this_pay_period' : 'two_weeks'
+      const range = presetRange(initial, periods)!
+      setPreset(initial)
+      setStart(range.start)
+      setEnd(range.end)
     })
     return () => { cancelled = true }
   }, [])
@@ -92,9 +97,22 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
     return () => { cancelled = true }
   }, [currentUserId, start, end, targetUser, requestKey])
 
-  const choosePreset = (next: Preset) => {
+  const choosePreset = async (next: Preset) => {
+    touched.current = true
+    const pick = ++presetPick.current
     setPreset(next)
-    const range = presetRange(next, payPeriods)
+    let periods = payPeriods
+    // Loaded before a period boundary passed (the page stayed open): ask
+    // again so "This pay period" is today's.
+    if ((next === 'this_pay_period' || next === 'last_pay_period') && periods && guamToday() > periods.current.end_date) {
+      const response = await api.getPayPeriods()
+      if (pick !== presetPick.current) return // a newer choice was made meanwhile
+      if (response.data) {
+        periods = response.data
+        setPayPeriods(periods)
+      }
+    }
+    const range = presetRange(next, periods)
     if (range) {
       setStart(range.start)
       setEnd(range.end)
@@ -142,7 +160,7 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
           )}
           <div>
             <label htmlFor="work-summary-preset" className="mb-1 block text-sm font-medium text-primary-dark">Period</label>
-            <select id="work-summary-preset" value={preset} onChange={(e) => choosePreset(e.target.value as Preset)} className={fieldClass} aria-describedby={payPeriods ? 'work-summary-schedule' : undefined}>
+            <select id="work-summary-preset" value={preset} onChange={(e) => void choosePreset(e.target.value as Preset)} className={fieldClass} aria-describedby={payPeriods ? 'work-summary-schedule' : undefined}>
               {!payPeriods && preset === 'this_pay_period' && <option value="this_pay_period">This pay period</option>}
               {payPeriods && (
                 <>
@@ -158,11 +176,11 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
           </div>
           <div>
             <label htmlFor="work-summary-start" className="mb-1 block text-sm font-medium text-primary-dark">From</label>
-            <input id="work-summary-start" type="date" value={start} max={end} onChange={(e) => { setPreset('custom'); setStart(e.target.value) }} className={fieldClass} />
+            <input id="work-summary-start" type="date" value={start} max={end} onChange={(e) => { touched.current = true; presetPick.current += 1; setPreset('custom'); setStart(e.target.value) }} className={fieldClass} />
           </div>
           <div>
             <label htmlFor="work-summary-end" className="mb-1 block text-sm font-medium text-primary-dark">To</label>
-            <input id="work-summary-end" type="date" value={end} min={start} onChange={(e) => { setPreset('custom'); setEnd(e.target.value) }} className={fieldClass} />
+            <input id="work-summary-end" type="date" value={end} min={start} onChange={(e) => { touched.current = true; presetPick.current += 1; setPreset('custom'); setEnd(e.target.value) }} className={fieldClass} />
           </div>
         </div>
         {payPeriods && (

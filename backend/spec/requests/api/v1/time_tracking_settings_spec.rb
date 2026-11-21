@@ -232,6 +232,20 @@ RSpec.describe "Time tracking settings", type: :request do
       expect(only_unscheduled.reload.approval_status).to eq("pending")
     end
 
+    it "previews one batch of at most the confirm limit, oldest first, with figures for that batch" do
+      stub_const("Api::V1::TimeEntriesController::UNSCHEDULED_BATCH_LIMIT", 1)
+
+      get "/api/v1/time_entries/unscheduled_only_approvals", headers: headers_for(admin)
+
+      expect(json).to include(entry_ids: [ only_unscheduled.id ], count: 1, hours: 2.0, total_count: 2, batch_limit: 1,
+                              newest_work_date: "2026-11-03")
+      expect(json[:by_user]).to eq([ { id: employee.id, name: "Casey Clock", entry_count: 1, hours: 2.0 } ])
+
+      confirm(only_unscheduled, second)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to eq("Approve at most 1 entries at a time")
+    end
+
     it "requires the version from the preview" do
       post "/api/v1/time_entries/approve_unscheduled_only", params: { entries: [ { id: only_unscheduled.id } ] }.to_json, headers: headers_for(admin)
       expect(response).to have_http_status(:unprocessable_entity)
@@ -457,6 +471,19 @@ RSpec.describe "Time tracking settings", type: :request do
 
       Setting.set("time_pay_schedule", "weekly")
       expect(periods_on("2026-11-21")[:current]).to eq(start_date: "2026-11-15", end_date: "2026-11-21")
+    end
+
+    it "derives the schedule, label and periods from one read of the settings" do
+      Setting.set("time_pay_schedule", "weekly")
+      Setting.set("time_pay_period_anchor", "2026-10-18")
+      # Simulates the anchor being cleared between two separate reads.
+      allow(Setting).to receive(:get).and_call_original
+      allow(Setting).to receive(:get).with("time_pay_period_anchor").and_return("2026-10-18", "")
+
+      periods = periods_on("2026-11-21")
+
+      expect(periods).to include(schedule: "weekly", label: "Every week",
+                                 current: { start_date: "2026-11-15", end_date: "2026-11-21" })
     end
 
     it "falls back to semi-monthly when a biweekly anchor is missing" do

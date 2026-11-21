@@ -146,4 +146,22 @@ describe('Users', () => {
     // Terminated people have no switch.
     expect(screen.queryByRole('switch', { name: 'Flexible hours for Daena Mansapit' })).not.toBeInTheDocument()
   })
+
+  it('holds the role control while a flexible-hours change is saving, and keeps the newer row data', async () => {
+    let resolve: (value: unknown) => void = () => {}
+    apiMocks.setUserFlexibleHours.mockReturnValue(new Promise((r) => { resolve = r }))
+    render(<Users />)
+
+    const [toggle] = await screen.findAllByRole('switch', { name: 'Flexible hours for Kami Employee' })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Role for Kami Employee' })).toBeDisabled())
+    // The response carries an older snapshot of the row (role admin).
+    resolve({ data: { user: { ...activeEmployee, role: 'admin', flexible_hours: true } } })
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Role for Kami Employee' })).toBeEnabled())
+    expect((screen.getByRole('combobox', { name: 'Role for Kami Employee' }) as HTMLSelectElement).value).toBe('employee')
+    expect(screen.getAllByRole('switch', { name: 'Flexible hours for Kami Employee' })[0]).toBeChecked()
+  })
 })

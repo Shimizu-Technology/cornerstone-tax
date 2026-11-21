@@ -88,13 +88,20 @@ describe('WorkLinesEditor (day grid)', () => {
     fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '30' } })
     expect(screen.getByText('Choose a category and a task')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText(/^Work category/), { target: { value: '10' } })
+    const category = screen.getByLabelText(/^Work category/)
+    expect(category).toHaveAttribute('aria-invalid', 'true')
+    expect(category).toHaveAccessibleDescription(/Choose a category and a task/)
+
+    fireEvent.change(category, { target: { value: '10' } })
+    expect(category).not.toHaveAttribute('aria-invalid')
     // Visible without opening "Task and period".
     const task = screen.getByLabelText(/^Task/)
     expect(task).toHaveAttribute('aria-required', 'true')
-    expect(screen.getByText('Choose a task')).toBeInTheDocument()
+    expect(task).toHaveAttribute('aria-invalid', 'true')
+    expect(task).toHaveAccessibleDescription('Choose a task')
 
     fireEvent.change(task, { target: { value: '100' } })
+    expect(task).not.toHaveAttribute('aria-invalid')
     expect(screen.queryByText('Choose a task')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Period' })).toBeInTheDocument()
   })

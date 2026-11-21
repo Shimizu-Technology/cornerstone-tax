@@ -246,6 +246,10 @@ function WorkLineRow({
   const descriptionChips = (suggestions?.descriptionsByClient[line.client_id || ''] || []).slice(0, 4)
   const minutes = wholeSession ? wholeSessionMinutes : draftMinutes(line)
   const problemId = `${id}-problems`
+  // The category and task pickers point at the line's message when it is
+  // about them, and say they're invalid.
+  const categoryInvalid = problems.some((problem) => problem.startsWith('Choose a category'))
+  const taskInvalid = problems.some((problem) => problem === 'Choose a task' || problem === 'Choose a category and a task')
   // With "Require a task" on, the task sits next to the category; otherwise
   // it is tucked away with the period.
   const taskField = (
@@ -259,6 +263,8 @@ function WorkLineRow({
         onChange={(event) => onChange({ service_task_id: event.target.value })}
         className={inputClass}
         aria-required={taskNeeded}
+        aria-invalid={taskInvalid || undefined}
+        aria-describedby={taskInvalid ? problemId : undefined}
         disabled={disabled || !line.service_type_id || tasks.length === 0}
       >
         <option value="">{line.service_type_id ? (tasks.length ? (taskNeeded ? 'Choose task…' : 'No task') : 'No tasks for this category') : 'Choose a category first'}</option>
@@ -333,6 +339,8 @@ function WorkLineRow({
           className={inputClass}
           aria-label={wholeSession ? undefined : `${lineName} category`}
           aria-required={categoryNeeded}
+          aria-invalid={categoryInvalid || undefined}
+          aria-describedby={categoryInvalid ? problemId : undefined}
           disabled={disabled}
         >
           <option value="">{categoryNeeded ? 'Choose category…' : 'No category'}</option>

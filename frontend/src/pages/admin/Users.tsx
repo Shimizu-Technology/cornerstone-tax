@@ -163,12 +163,18 @@ export default function Users() {
     await fetchUsers()
   }
 
+  // One change per person at a time: role and flexible hours wait for each other.
+  const userBusy = (userId: number) => pendingIds.has(userId) || updatingRoleIds.has(userId)
+
   const handleFlexibleHoursChange = async (user: AdminUser, flexibleHours: boolean) => {
     setPageError('')
     await withPending(user.id, async () => {
       const response = await api.setUserFlexibleHours(user.id, flexibleHours)
       if (response.error) return setPageError(response.error)
-      if (response.data) setAllUsers(previous => previous.map(row => (row.id === user.id ? { ...row, ...response.data!.user } : row)))
+      // Only the field this request changed: the rest of the row may be newer
+      // (a role change and reload can land first).
+      const flexible = response.data?.user.flexible_hours
+      if (flexible !== undefined) setAllUsers(previous => previous.map(row => (row.id === user.id ? { ...row, flexible_hours: flexible } : row)))
     })
   }
 
@@ -187,7 +193,7 @@ export default function Users() {
             aria-checked={on}
             aria-label={`Flexible hours for ${name}`}
             aria-describedby={`flexible-hint-${user.id}`}
-            disabled={currentUserState !== 'ready' || pendingIds.has(user.id)}
+            disabled={currentUserState !== 'ready' || userBusy(user.id)}
             onChange={event => void handleFlexibleHoursChange(user, event.target.checked)}
             className="peer sr-only"
           />
@@ -290,7 +296,7 @@ export default function Users() {
                     <td className="px-6 py-4"><p className="font-semibold text-gray-900">{user.full_name || user.email}</p><p className="text-sm text-gray-500">{user.email}</p></td>
                     <td className="px-6 py-4">
                       {isTeam && user.employment_status === 'active' ? (
-                        <select value={user.role} onChange={event => void handleRoleChange(user, event.target.value as 'admin' | 'employee')} disabled={currentUserState !== 'ready' || updatingRoleIds.has(user.id) || user.id === currentUserId} className="min-h-11 rounded-lg border border-secondary-dark bg-secondary px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50" aria-label={`Role for ${user.full_name || user.email}`}><option value="admin">Admin</option><option value="employee">Employee</option></select>
+                        <select value={user.role} onChange={event => void handleRoleChange(user, event.target.value as 'admin' | 'employee')} disabled={currentUserState !== 'ready' || userBusy(user.id) || user.id === currentUserId} className="min-h-11 rounded-lg border border-secondary-dark bg-secondary px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50" aria-label={`Role for ${user.full_name || user.email}`}><option value="admin">Admin</option><option value="employee">Employee</option></select>
                       ) : <span className="text-sm capitalize text-gray-700">{user.role}</span>}
                     </td>
                     {isTeam && <td className="px-6 py-4">{user.employment_status === 'active' ? flexibleHoursSwitch(user) : <span className="text-sm text-gray-500">—</span>}</td>}

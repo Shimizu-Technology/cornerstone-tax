@@ -27,6 +27,17 @@ class Setting < ApplicationRecord
     "time_pay_period_anchor" => ""
   }.freeze
 
+  # Settings saves that check one setting against another (the pay schedule
+  # and its anchor) take this transaction-scoped advisory lock, so a check
+  # can't be made stale by a save that commits in between.
+  UPDATE_ADVISORY_KEY = 0x53455454 # "SETT"
+
+  def self.serialize_updates!
+    raise ActiveRecord::TransactionIsolationError, "serialize_updates! must run inside a transaction" unless connection.transaction_open?
+
+    connection.execute("SELECT pg_advisory_xact_lock(#{UPDATE_ADVISORY_KEY})")
+  end
+
   # Get a setting value (with default fallback)
   def self.get(key)
     setting = find_by(key: key)

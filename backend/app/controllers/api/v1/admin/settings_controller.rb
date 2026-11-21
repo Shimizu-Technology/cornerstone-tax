@@ -44,12 +44,21 @@ module Api
             errors << "#{key.to_s.humanize} must be a valid number"
           end
 
-          errors.concat(pay_schedule_errors) if errors.empty?
           return render json: { error: errors.join(", ") }, status: :unprocessable_entity if errors.any?
 
-          settings_params.each do |key, value|
-            Setting.set(key, value)
+          # The schedule/anchor pair is checked against the stored values and
+          # saved under one lock, so two admins saving at once can't leave a
+          # weekly or biweekly schedule without its anchor.
+          Setting.transaction do
+            Setting.serialize_updates!
+            errors.concat(pay_schedule_errors)
+            raise ActiveRecord::Rollback if errors.any?
+
+            settings_params.each do |key, value|
+              Setting.set(key, value)
+            end
           end
+          return render json: { error: errors.join(", ") }, status: :unprocessable_entity if errors.any?
 
           render json: Setting.all_as_hash
         end

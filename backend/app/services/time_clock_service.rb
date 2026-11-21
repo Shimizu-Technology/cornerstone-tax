@@ -231,6 +231,9 @@ class TimeClockService
       raise AuthorizationError, "Only admins can approve entries" unless approved_by.admin?
 
       entry.transaction do
+        # Owner before entry, like the bulk approvals: the overtime check below
+        # reads the person's approved hours (see lock_entry_owners!).
+        User.where(id: entry.user_id).lock.pluck(:id)
         entry.lock_for_work_lines!
         raise ClockError, "Entry is not pending approval" unless entry.pending_approval?
 

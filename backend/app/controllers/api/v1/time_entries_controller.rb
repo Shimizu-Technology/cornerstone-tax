@@ -7,6 +7,8 @@ module Api
       PENDING_APPROVAL_DIRECTIONS = %w[asc desc].freeze
       PENDING_APPROVAL_TYPES = %w[time_entry overtime both].freeze
       UNASSIGNED_ISSUES = %w[client any].freeze
+      # Most entries one "Approve unscheduled-only entries" confirm takes.
+      UNSCHEDULED_BATCH_LIMIT = 500
       WORK_LINE_PARAMS = %i[client_id description service_type_id service_task_id period_type period_start hours minutes duration exact_hours].freeze
       WORK_LINE_INCLUDES = [ :client, :service_type, :service_task, { time_entry: :time_category } ].freeze
 
@@ -487,6 +489,7 @@ module Api
         ActiveRecord::Base.transaction do
           # Multi-row locks are always taken in id order, so two bulk
           # approvals over overlapping entries cannot deadlock.
+          lock_entry_owners!(entry_ids)
           entries_by_id = TimeEntry.where(id: entry_ids).order(:id).lock.index_by(&:id)
           missing_ids = entry_ids - entries_by_id.keys
           if missing_ids.any?
@@ -540,9 +543,12 @@ module Api
       # only reason is a clock-in without a schedule. Entries that still miss
       # required work details are counted separately and left in the queue.
       def unscheduled_only_approvals
-        ready, needs_details = partition_unscheduled_only(
+        qualifying, needs_details = partition_unscheduled_only(
           TimeEntry.unscheduled_only_pending.includes(:user, work_lines: [ :client, :service_type ]).order(:work_date, :id).to_a
         )
+        # One confirm takes at most UNSCHEDULED_BATCH_LIMIT entries, so the
+        # preview is that batch (oldest first) and every figure describes it.
+        ready = qualifying.first(UNSCHEDULED_BATCH_LIMIT)
 
         by_user = ready.group_by(&:user).map do |user, entries|
           { id: user.id, name: user.full_name, entry_count: entries.size, hours: entries.sum { |entry| entry.hours.to_f }.round(2) }
@@ -558,7 +564,10 @@ module Api
           oldest_work_date: ready.first&.work_date&.iso8601,
           newest_work_date: ready.map(&:work_date).max&.iso8601,
           by_user: by_user,
-          needs_work_details_count: needs_details.size
+          needs_work_details_count: needs_details.size,
+          # All qualifying entries; more than count means run it again after.
+          total_count: qualifying.size,
+          batch_limit: UNSCHEDULED_BATCH_LIMIT
         }
       end
 
@@ -582,6 +591,7 @@ module Api
           # Same guard as locking a period (TimePeriodLock), taken before the
           # period check in unscheduled_only_pending below.
           TimePeriodLock.serialize_with_approvals!
+          lock_entry_owners!(previewed.keys)
           locked = TimeEntry.where(id: previewed.keys).order(:id).lock.to_a
           unchanged = locked.select { |entry| entry.work_version == previewed[entry.id] }
           changed = previewed.size - unchanged.size
@@ -852,6 +862,15 @@ module Api
         end
       end
 
+      # Approvals project overtime from each person's approved hours, so two
+      # approvals for the same person must not read that total at the same
+      # time. Lock the owners (id order) before any entry; every approval path
+      # takes users before entries, so they can't deadlock.
+      def lock_entry_owners!(entry_ids)
+        user_ids = TimeEntry.where(id: entry_ids).distinct.pluck(:user_id).compact.sort
+        User.where(id: user_ids).order(:id).lock.pluck(:id)
+      end
+
       # { id => version } from the preview; renders 422 when it's missing or
       # malformed (a version is required so a stale preview can't approve).
       def unscheduled_preview_versions
@@ -867,7 +886,9 @@ module Api
           memo[id] = version
         end
         return render(json: { error: "Nothing to approve. Refresh the preview." }, status: :unprocessable_entity) if previewed.empty?
-        return render(json: { error: "Approve at most 500 entries at a time" }, status: :unprocessable_entity) if previewed.size > 500
+        if previewed.size > UNSCHEDULED_BATCH_LIMIT
+          return render(json: { error: "Approve at most #{UNSCHEDULED_BATCH_LIMIT} entries at a time" }, status: :unprocessable_entity)
+        end
 
         previewed
       end

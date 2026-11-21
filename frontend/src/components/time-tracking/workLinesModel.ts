@@ -258,9 +258,11 @@ export interface WorkLineSuggestions {
   requiredFrom: string | null
   /** Settings > "Require a task on every work line". */
   taskRequired: boolean
+  /** True once a response arrived (fetched when the editor opens, so newest). */
+  loaded?: boolean
 }
 
-const EMPTY_SUGGESTIONS: WorkLineSuggestions = { recentClients: [], descriptionsByClient: {}, requiredFrom: null, taskRequired: false }
+const EMPTY_SUGGESTIONS: WorkLineSuggestions = { recentClients: [], descriptionsByClient: {}, requiredFrom: null, taskRequired: false, loaded: false }
 
 /** Recent clients and descriptions for the editor; empty until loaded. */
 export function useWorkLineSuggestions(enabled = true, userId?: number | null): WorkLineSuggestions {
@@ -276,6 +278,7 @@ export function useWorkLineSuggestions(enabled = true, userId?: number | null): 
         descriptionsByClient: response.data.descriptions_by_client,
         requiredFrom: response.data.work_details_required_from ?? null,
         taskRequired: response.data.work_task_required === true,
+        loaded: true,
       })
     }).catch(() => undefined)
     return () => { cancelled = true }

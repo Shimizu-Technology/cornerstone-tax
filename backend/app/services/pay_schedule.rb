@@ -27,23 +27,38 @@ module PaySchedule
 
   module_function
 
-  def schedule
-    value = Setting.get(SCHEDULE_KEY).to_s
-    return DEFAULT unless SCHEDULES.include?(value)
-    return DEFAULT if LENGTHS.key?(value) && anchor.nil?
-
-    value
+  # [schedule, anchor] from one read of both settings, so the name, label
+  # and periods always describe the same configuration.
+  def config
+    stored = Setting.where(key: [ SCHEDULE_KEY, ANCHOR_KEY ]).pluck(:key, :value).to_h
+    resolve(stored.fetch(SCHEDULE_KEY, Setting::DEFAULTS[SCHEDULE_KEY]), stored.fetch(ANCHOR_KEY, Setting::DEFAULTS[ANCHOR_KEY]))
   end
 
-  def anchor
-    value = Setting.get(ANCHOR_KEY)
+  def resolve(raw_schedule, raw_anchor)
+    anchor_date = parse_anchor(raw_anchor)
+    name = raw_schedule.to_s
+    name = DEFAULT unless SCHEDULES.include?(name)
+    name = DEFAULT if LENGTHS.key?(name) && anchor_date.nil?
+    [ name, anchor_date ]
+  end
+
+  def parse_anchor(value)
     value.present? ? Date.iso8601(value.to_s) : nil
   rescue Date::Error
     nil
   end
 
+  def schedule
+    config.first
+  end
+
+  def anchor
+    config.last
+  end
+
   # The period containing date.
-  def period_for(date, schedule_name = schedule, anchor_date = anchor)
+  def period_for(date, schedule_name = nil, anchor_date = nil)
+    schedule_name, anchor_date = config if schedule_name.nil?
     if (length = LENGTHS[schedule_name]) && anchor_date
       offset = ((date - anchor_date).to_i / length.to_f).floor * length
       start = anchor_date + offset
@@ -56,8 +71,7 @@ module PaySchedule
   end
 
   def current_and_previous(today = Time.current.in_time_zone(TimeClockService::BUSINESS_TIMEZONE).to_date)
-    name = schedule
-    anchor_date = anchor
+    name, anchor_date = config
     current = period_for(today, name, anchor_date)
     previous = period_for(current.start_date - 1, name, anchor_date)
     { schedule: name, label: LABELS.fetch(name), current: current, previous: previous }

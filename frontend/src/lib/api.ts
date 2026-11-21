@@ -839,6 +839,9 @@ export interface UnscheduledOnlyPreview {
   by_user: Array<{ id: number; name: string; entry_count: number; hours: number }>;
   /** Also unscheduled-only, but missing required work details: left in the queue. */
   needs_work_details_count: number;
+  /** Every qualifying entry; above `count` when the preview is one batch of `batch_limit`. */
+  total_count: number;
+  batch_limit: number;
 }
 
 export interface PayPeriod {

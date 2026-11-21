@@ -186,8 +186,11 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
     const breakMinutes = (status.break_minutes || 0) + (status.active_break ? Math.floor(breakElapsed / 60) : 0)
     return Math.max(0, minutes - breakMinutes)
   })()
-  const linesRequired = detailsRequired(suggestions.requiredFrom ?? status?.work_details_required_from, status?.work_date)
-  const taskRequired = linesRequired && (status?.work_task_required ?? suggestions.taskRequired)
+  // The suggestions are fetched when the sheet opens, so once they arrive
+  // they are newer than the clock status; until then the status decides.
+  const requiredFrom = suggestions.loaded ? suggestions.requiredFrom : status?.work_details_required_from
+  const linesRequired = detailsRequired(requiredFrom, status?.work_date)
+  const taskRequired = linesRequired && (suggestions.loaded ? suggestions.taskRequired : Boolean(status?.work_task_required))
   const lineCheck = checkLines(clockOutLines, { targetMinutes: sessionMinutes, required: linesRequired, clients: workOptions.clients, serviceTypes: workOptions.serviceTypes, taskRequired })
 
   const handleClockOutSubmit = async () => {

@@ -163,7 +163,9 @@ module Api
             permitted[:flexible_hours] = flexible
           end
 
-          saved = User.transaction do
+          # Locked and re-read first, so the audit row records the change that
+          # actually happened even when two admins switch it at once.
+          saved = @user.with_lock do
             changes = permitted.to_h { |key, value| [ key.to_s, [ @user.public_send(key), value ] ] }.reject { |_, (from, to)| from == to }
             next false unless @user.update(permitted)
 
