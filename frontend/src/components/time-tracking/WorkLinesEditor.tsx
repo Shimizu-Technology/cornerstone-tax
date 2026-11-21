@@ -24,7 +24,7 @@ const chipClass = 'min-h-11 max-w-full whitespace-normal break-words rounded-[1.
 // sheet, and a viewport breakpoint squeezed it into an overflowing grid in the
 // narrower ones. Below this width each line stacks with visible labels.
 // Minimums (51rem plus gaps and the line's padding) fit inside the 56rem threshold.
-const gridColumns = '@4xl:grid-cols-[minmax(11.5rem,1.2fr)_minmax(13rem,2fr)_minmax(10rem,1.2fr)_10.5rem_6rem]'
+const gridColumns = '@4xl:grid-cols-[minmax(14rem,1.3fr)_minmax(11rem,2fr)_minmax(10rem,1.2fr)_10.5rem_6rem]'
 
 export interface WorkLinesEditorProps {
   lines: WorkLineDraft[]

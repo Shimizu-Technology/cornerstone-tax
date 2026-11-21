@@ -230,7 +230,7 @@ export default function ClientList() {
               setPage(1)
             }}
             aria-pressed={showArchived}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${
+            className={`min-h-11 px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${
               showArchived ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-white text-gray-500 border-secondary-dark hover:bg-secondary'
             }`}
           >
