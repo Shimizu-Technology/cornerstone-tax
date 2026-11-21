@@ -5,6 +5,7 @@ import type { ServiceType, WorkLine } from '../../lib/api'
 import type { ClientOption } from '../../lib/timeEntryWork'
 import TimeEntryWorkFields from './TimeEntryWorkFields'
 import WorkLinesEditor from './WorkLinesEditor'
+import VersionConflictPanel from './VersionConflictPanel'
 import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, workFieldsFromEntry, type WorkFieldsValue } from './timeEntryWorkForm'
 import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, linesPayload, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
 
@@ -40,6 +41,7 @@ interface EditableTimeEntry {
   period_type?: string | null
   period_start?: string | null
   hours?: number
+  version?: number
   duration_only?: boolean
   work_lines?: WorkLine[]
   breaks?: Array<{
@@ -129,6 +131,9 @@ export default function EditTimeEntryModal({
   const [correctionReason, setCorrectionReason] = useState('')
   const [correctionReferences, setCorrectionReferences] = useState<string[]>([])
   const [requiresCorrectionReason, setRequiresCorrectionReason] = useState(false)
+  // Set when the server refused the save because the entry changed elsewhere.
+  const [versionConflict, setVersionConflict] = useState(false)
+  const [savingSeparately, setSavingSeparately] = useState(false)
 
   useEffect(() => {
     if (!isOpen || !entry) return
@@ -154,6 +159,7 @@ export default function EditTimeEntryModal({
     setBreakRows(rows)
     setInitialBreakRows(rows)
     setError(null)
+    setVersionConflict(false)
     setCorrectionReason('')
     setCorrectionReferences([])
     setRequiresCorrectionReason(false)
@@ -233,7 +239,12 @@ export default function EditTimeEntryModal({
         return
       }
 
-      const response = await api.updateTimeEntry(entry.id, payload, correctionReason)
+      const response = await api.updateTimeEntry(entry.id, payload, correctionReason, { expectedVersion: entry.version })
+
+      if (response.status === 409) {
+        setVersionConflict(true)
+        return
+      }
 
       if (response.error) {
         if (response.code === 'correction_reason_required') {
@@ -250,6 +261,24 @@ export default function EditTimeEntryModal({
     } finally {
       setSaving(false)
     }
+  }
+
+  // Keep the lines as their own day log instead of overwriting the entry.
+  const saveSeparately = async () => {
+    if (!entry) return
+    setSavingSeparately(true)
+    const response = await api.createTimeEntry({
+      work_date: formData.work_date,
+      work_lines: linesPayload(lines, null),
+      additional_day_log: true,
+      ...(entry.user ? { user_id: entry.user.id } : {}),
+    })
+    setSavingSeparately(false)
+    if (response.error) {
+      setLocalError(response.error)
+      return
+    }
+    await onSaved()
   }
 
   const handleDelete = async () => {
@@ -527,7 +556,16 @@ export default function EditTimeEntryModal({
                   )}
                 </fieldset>
 
-                {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
+                {versionConflict ? (
+                  <VersionConflictPanel
+                    title="This entry was changed elsewhere after you opened it."
+                    detail="Nothing was saved, so that change isn’t overwritten."
+                    busy={savingSeparately}
+                    canSaveSeparately={lineCheck.problems && Object.keys(lineCheck.problems).length === 0}
+                    onSaveSeparately={() => void saveSeparately()}
+                    onDiscard={() => void onSaved()}
+                  />
+                ) : error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 
                 <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t border-neutral-warm bg-white px-4 py-3 md:static md:mx-0 md:border-0 md:px-0 md:pt-4">
                   <button

@@ -112,7 +112,24 @@ module Api
           @time_entry.approval_status = "pending"
         end
 
-        if @time_entry.save
+        existing_day_log = nil
+        saved = TimeEntry.transaction do
+          # One day log per person per day unless another is asked for
+          # deliberately. The owner's row lock serializes concurrent creates.
+          if @time_entry.duration_only? && !additional_day_log?
+            entry_owner.lock!
+            existing_day_log = entry_owner.time_entries.where(work_date: @time_entry.work_date, entry_method: "manual",
+                                                              start_time: nil, end_time: nil)
+                                          .where("approval_status IS NULL OR approval_status <> 'denied'").order(:id).first
+            raise ActiveRecord::Rollback if existing_day_log
+          end
+          @time_entry.save
+        end
+
+        if existing_day_log
+          render_version_conflict(eager_reload(existing_day_log),
+                                  message: "A day log already exists for this day. Edit it, or save these lines as a separate day log.")
+        elsif saved
           AuditLog.log(
             auditable: @time_entry,
             action: "created",
@@ -170,9 +187,16 @@ module Api
 
         saved = false
         break_replace_error = nil
+        version_conflict = false
         @time_entry.transaction do
           # Serialize edits of one entry (see TimeEntry#lock_for_work_lines!).
           @time_entry.lock_for_work_lines!
+          # Optimistic check on the locked row: the client edited the
+          # version it sent; anything newer means someone else saved first.
+          if expected_version && @time_entry.work_version != expected_version
+            version_conflict = true
+            raise ActiveRecord::Rollback
+          end
           saved = @time_entry.update(update_params)
           if saved && break_update
             break_replace_error = replace_break_records(@time_entry, break_update[:breaks])
@@ -242,7 +266,9 @@ module Api
           invalidate_payroll_exports!
         end
 
-        if break_replace_error
+        if version_conflict
+          render_version_conflict(eager_reload(@time_entry))
+        elsif break_replace_error
           render json: { error: break_replace_error }, status: :unprocessable_entity
         elsif saved
           render json: { time_entry: serialize_time_entry(eager_reload(@time_entry)) }
@@ -689,6 +715,26 @@ module Api
 
       # Work lines sent with a create/update, or nil when the request did not
       # include them (the entry's single line then follows the entry).
+      # Optional optimistic-concurrency token (TimeEntry#work_version) the
+      # client last saw; absent for clock-out and older clients.
+      def expected_version
+        raw = params[:expected_version]
+        raw = params.dig(:time_entry, :expected_version) if raw.blank? && params[:time_entry].respond_to?(:key?)
+        return nil if raw.blank?
+
+        Integer(raw.to_s, 10)
+      rescue ArgumentError
+        nil
+      end
+
+      def additional_day_log?
+        ActiveModel::Type::Boolean.new.cast(params[:additional_day_log] || params.dig(:time_entry, :additional_day_log))
+      end
+
+      def render_version_conflict(current_entry, message: "This entry was changed elsewhere after you started. Nothing was saved.")
+        render json: { error: message, code: "version_conflict", time_entry: serialize_time_entry(current_entry) }, status: :conflict
+      end
+
       def submitted_work_lines
         payload = params[:time_entry]
         return nil unless payload.respond_to?(:key?) && (payload.key?(:work_lines) || payload.key?("work_lines"))
@@ -1055,6 +1101,8 @@ module Api
 
         {
           id: entry.id,
+          # Exact change token for expected_version (see TimeEntry#work_version).
+          version: entry.work_version,
           work_date: entry.work_date.iso8601,
           start_time: entry.start_time&.in_time_zone(tz)&.strftime("%H:%M"),
           end_time: entry.end_time&.in_time_zone(tz)&.strftime("%H:%M"),
@@ -1136,7 +1184,7 @@ module Api
           } : nil,
           locked_at: entry.locked_at&.iso8601,
           created_at: entry.created_at.iso8601,
-          updated_at: entry.updated_at.iso8601
+          updated_at: entry.updated_at.iso8601(6)
         }
       end
 

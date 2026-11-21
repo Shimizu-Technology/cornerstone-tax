@@ -7,6 +7,8 @@ export interface DayDraft {
   baseEntryId?: number | null
   /** updated_at of that entry when the draft started (null for a new day log). */
   baseUpdatedAt: string | null
+  /** That entry's exact change token (version) when the draft started. */
+  baseVersion?: number | null
   /** Short label for the "Also unsaved" list. */
   label: string
 }

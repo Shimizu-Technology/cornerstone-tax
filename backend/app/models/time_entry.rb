@@ -57,6 +57,10 @@ class TimeEntry < ApplicationRecord
   before_validation :set_zero_hours_if_clocked_in, if: -> { status.in?(%w[clocked_in on_break]) }
   # Runs last: line hours are split from the entry's final hours.
   before_validation :apply_work_lines
+  # Change token (see the migration): bumped for any change to the entry;
+  # its work lines bump it themselves (TimeEntryAllocation callbacks).
+  before_update :bump_work_version, if: :has_changes_to_save?
+  after_save :refresh_work_version
   after_save :clear_work_lines_input
 
   attr_reader :work_lines_input
@@ -275,6 +279,19 @@ class TimeEntry < ApplicationRecord
   end
 
   private
+
+  def bump_work_version
+    self.work_version = work_version.to_i + 1 unless will_save_change_to_work_version?
+  end
+
+  # Line callbacks increment the column in SQL; keep this object in step.
+  def refresh_work_version
+    current = self.class.where(id: id).pick(:work_version)
+    return if current.nil? || current == work_version
+
+    self[:work_version] = current
+    clear_attribute_change(:work_version)
+  end
 
   def clear_work_lines_input
     @work_lines_input = nil

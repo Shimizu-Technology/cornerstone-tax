@@ -366,6 +366,30 @@ describe('TimeTracking log time', () => {
     expect(payload.work_lines).toEqual([expect.objectContaining({ client_id: 6, description: 'Old work, filed', minutes: 60 })])
   })
 
+  it('shows the conflict panel when the entry changed elsewhere (409)', async () => {
+    const entry = {
+      id: 78, work_date: formatDateISO(new Date()), start_time: '09:00', end_time: '10:00', formatted_start_time: '9:00 AM', formatted_end_time: '10:00 AM',
+      hours: 1, version: 3, break_minutes: null, description: 'Old work', entry_method: 'manual', status: 'completed', approval_status: 'approved',
+      overtime_status: 'none', approved_by: null, approval_note: null, locked_at: null,
+      user: { id: 1, email: 'alice@example.com', display_name: 'Alice', full_name: 'Alice Smith' },
+      time_category: null, client: { id: 6, name: 'Jose Cruz' }, tax_return: null, service_type: null, service_task: null,
+      period_type: null, period_start: null, period_label: null, breaks: [],
+      work_lines: [{ id: 1, position: 0, client: { id: 6, name: 'Jose Cruz' }, client_label: 'Jose Cruz', description: 'Old work', service_type: null, service_task: null, category_label: null, period_type: null, period_start: null, period_label: null, hours: 1, minutes: 60 }],
+    }
+    apiMocks.getTimeEntries.mockResolvedValue(emptyEntryResponse([entry]))
+    apiMocks.updateTimeEntry.mockResolvedValueOnce({ status: 409, code: 'version_conflict', error: 'Changed elsewhere' })
+
+    renderPage('/admin/time')
+    fireEvent.click(await screen.findByText('Jose Cruz'))
+    const editor = within(await screen.findByTestId('work-lines-editor'))
+    fireEvent.change(editor.getByLabelText('What I did'), { target: { value: 'New note' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+
+    expect(await screen.findByText('This entry was changed elsewhere after you opened it.')).toBeInTheDocument()
+    expect(apiMocks.updateTimeEntry.mock.calls[0][3]).toEqual({ expectedVersion: 3 })
+    expect(screen.getByRole('button', { name: 'Discard my lines' })).toBeInTheDocument()
+  })
+
   it('shows a retry when categories or clients fail to load', async () => {
     apiMocks.getServiceTypes
       .mockResolvedValueOnce({ error: 'Server error' })

@@ -10,6 +10,8 @@ interface ApiResponse<T> {
   status?: number;
   code?: string;
   export_references?: string[];
+  /** On a 409 version_conflict: the entry as it is now on the server. */
+  current_entry?: TimeEntry;
 }
 
 // Store for the auth token getter function
@@ -95,6 +97,7 @@ async function fetchApi<T>(
         status: response.status,
         code: data.code,
         export_references: data.export_references,
+        ...(response.status === 409 && data.time_entry ? { current_entry: data.time_entry } : {}),
       };
     }
 
@@ -752,6 +755,8 @@ export interface TimeEntry {
     id: number;
     title: string;
   } | null;
+  /** Exact change token; send it back as expected_version when editing. */
+  version?: number;
   locked_at: string | null;
   created_at: string;
   updated_at: string;
@@ -2218,6 +2223,8 @@ export const api = {
     start_time?: string;
     end_time?: string;
     work_lines?: WorkLineInput[];
+    /** Create a day log even if one exists for that day (otherwise 409). */
+    additional_day_log?: boolean;
     description?: string;
     time_category_id?: number;
     client_id?: number | null;
@@ -2231,10 +2238,10 @@ export const api = {
     operation_task_id?: number;
   }) =>
     fetchApi<{ time_entry: TimeEntry }>('/api/v1/time_entries', (() => {
-      const { operation_task_id, ...timeEntryData } = data;
+      const { operation_task_id, additional_day_log, ...timeEntryData } = data;
       return {
         method: 'POST',
-        body: JSON.stringify({ time_entry: timeEntryData, operation_task_id }),
+        body: JSON.stringify({ time_entry: timeEntryData, operation_task_id, ...(additional_day_log ? { additional_day_log: true } : {}) }),
       };
     })()),
 
@@ -2254,12 +2261,18 @@ export const api = {
     operation_task_id: number;
     breaks: Array<{ id?: number; start_time: string; end_time: string; _destroy?: boolean }>;
     work_lines: WorkLineInput[];
-  }>, correctionReason?: string) =>
+  }>, correctionReason?: string, options: { expectedVersion?: number } = {}) =>
     fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}`, (() => {
       const { operation_task_id, ...timeEntryData } = data;
       return {
         method: 'PATCH',
-        body: JSON.stringify({ time_entry: timeEntryData, operation_task_id, correction_reason: correctionReason }),
+        body: JSON.stringify({
+          time_entry: timeEntryData,
+          operation_task_id,
+          correction_reason: correctionReason,
+          // Server answers 409 version_conflict if the entry changed since.
+          ...(options.expectedVersion !== undefined ? { expected_version: options.expectedVersion } : {}),
+        }),
       };
     })()),
 

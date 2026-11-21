@@ -41,6 +41,13 @@ function draftLabel(date: string, session: TimeEntry | null): string {
   return session ? `${dayText}, clock ${session.formatted_start_time}–${session.formatted_end_time}` : `${dayText}, day log`
 }
 
+// Changed on the server since the draft began? Prefer the exact version;
+// drafts saved before versions existed fall back to updated_at.
+function changedSince(draft: DayDraft, entry: TimeEntry): boolean {
+  if (draft.baseVersion != null && entry.version != null) return entry.version !== draft.baseVersion
+  return Boolean(draft.baseUpdatedAt && entry.updated_at !== draft.baseUpdatedAt)
+}
+
 const entryMinutes = (entry: TimeEntry) => Math.round(entry.hours * 60)
 const assignedMinutes = (entry: TimeEntry) =>
   (entry.work_lines || []).filter((line) => line.client).reduce((sum, line) => sum + line.minutes, 0)
@@ -122,6 +129,7 @@ export default function LogMyDay({
         lines: next,
         baseEntryId: draft ? draft.baseEntryId ?? null : editing?.id ?? null,
         baseUpdatedAt: draft ? draft.baseUpdatedAt : editing?.updated_at ?? null,
+        baseVersion: draft ? draft.baseVersion ?? null : editing?.version ?? null,
         label: draftLabel(date, session),
       },
     })
@@ -138,12 +146,12 @@ export default function LogMyDay({
     if (loading) return null
     if (target !== DAY_LOG) {
       if (!session) return 'missing'
-      return draft?.baseUpdatedAt && session.updated_at !== draft.baseUpdatedAt ? 'changed' : null
+      return draft && changedSince(draft, session) ? 'changed' : null
     }
     if (!draft) return null
     if (draft.baseEntryId) {
       if (!dayLog || dayLog.id !== draft.baseEntryId) return 'missing'
-      return dayLog.updated_at !== draft.baseUpdatedAt ? 'changed' : null
+      return changedSince(draft, dayLog) ? 'changed' : null
     }
     // A new day log was started here, but one has been saved since.
     return dayLog ? 'changed' : null
@@ -202,13 +210,21 @@ export default function LogMyDay({
     if (!userId || !check.canSubmit || draftConflict) return
     setSaving(true)
     setMessage(null)
-    // Each target saves only to its own record (never falls back to another).
+    // Each target saves only to its own record (never falls back to another),
+    // and only if it is still the version this draft was started on.
+    const expectedVersion = draft?.baseVersion ?? editing?.version ?? undefined
     const response = target !== DAY_LOG
-      ? await api.updateTimeEntry(session!.id, { work_lines: linesPayload(lines, targetMinutes, false) })
+      ? await api.updateTimeEntry(session!.id, { work_lines: linesPayload(lines, targetMinutes, false) }, undefined, { expectedVersion })
       : dayLog
-        ? await api.updateTimeEntry(dayLog.id, { work_date: date, work_lines: linesPayload(lines, null) })
+        ? await api.updateTimeEntry(dayLog.id, { work_date: date, work_lines: linesPayload(lines, null) }, undefined, { expectedVersion })
         : await api.createTimeEntry({ work_date: date, work_lines: linesPayload(lines, null) })
     setSaving(false)
+    if (response.status === 409) {
+      // Someone saved this entry (or a day log for this day) first. Refetch;
+      // the draft then no longer matches and the conflict panel takes over.
+      setReload((value) => value + 1)
+      return
+    }
     if (response.error) {
       setMessage({ tone: 'error', text: response.error })
       return
@@ -225,7 +241,7 @@ export default function LogMyDay({
     if (!userId || saving) return
     setSaving(true)
     setMessage(null)
-    const response = await api.createTimeEntry({ work_date: date, work_lines: linesPayload(lines, null) })
+    const response = await api.createTimeEntry({ work_date: date, work_lines: linesPayload(lines, null), additional_day_log: true })
     setSaving(false)
     if (response.error) {
       setMessage({ tone: 'error', text: response.error })

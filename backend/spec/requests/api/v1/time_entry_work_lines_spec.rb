@@ -315,4 +315,100 @@ RSpec.describe "Time entry work lines API", type: :request do
     expect(entry.work_lines.reload.map { |line| line.hours.to_f }).to eq([ 0.02 ] * 6)
     expect(per_client.call(entry)).to eq(hours_before)
   end
+
+  describe "change token (work_version) and expected_version" do
+    include ActiveSupport::Testing::TimeHelpers
+
+    let(:split_entry) do
+      entry = create(:time_entry, user: employee, work_date: work_date, approval_status: "approved")
+      entry.work_lines_input = [ { client_id: client_a.id, description: "Recs", minutes: 240 }, { client_id: client_b.id, description: "Payroll", minutes: 240 } ]
+      entry.save!
+      entry
+    end
+
+    def version_of(entry)
+      get "/api/v1/time_entries/#{entry.id}", headers: headers_for(admin)
+      json.dig(:time_entry, :version)
+    end
+
+    def save_lines(entry, hours, expected: nil)
+      lines = [ { client_id: client_a.id, description: "Recs", minutes: (hours[0] * 60).to_i }, { client_id: client_b.id, description: "Payroll", minutes: (hours[1] * 60).to_i } ]
+      body = { time_entry: { work_lines: lines } }
+      body[:expected_version] = expected if expected
+      patch "/api/v1/time_entries/#{entry.id}", params: body.to_json, headers: headers_for(admin)
+    end
+
+    it "moves when only the split changes ([4h, 4h] to [3h, 5h])" do
+      before_version = version_of(split_entry)
+      save_lines(split_entry, [ 3, 5 ])
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:time_entry, :version)).to be > before_version
+      expect(split_entry.reload.client_id).to eq(client_a.id) # entry columns unchanged; only the lines moved
+    end
+
+    it "rejects a stale save with 409 and the current entry, changing nothing" do
+      stale = version_of(split_entry)
+      save_lines(split_entry, [ 3, 5 ], expected: stale)
+      expect(response).to have_http_status(:ok)
+
+      save_lines(split_entry, [ 4, 4 ], expected: stale)
+
+      expect(response).to have_http_status(:conflict)
+      expect(json[:code]).to eq("version_conflict")
+      expect(json.dig(:time_entry, :work_lines).map { |line| line[:hours] }).to eq([ 3.0, 5.0 ])
+      expect(split_entry.work_lines.reload.map { |line| line.hours.to_f }).to eq([ 3.0, 5.0 ])
+    end
+
+    it "tells two changes within the same second apart" do
+      travel_to(Time.current.change(usec: 0)) do
+        v0 = version_of(split_entry)
+        save_lines(split_entry, [ 3, 5 ], expected: v0)
+        v1 = json.dig(:time_entry, :version)
+        updated_at_after_first = split_entry.reload.updated_at
+        save_lines(split_entry, [ 2, 6 ], expected: v1)
+        expect(response).to have_http_status(:ok)
+
+        expect(split_entry.reload.updated_at).to eq(updated_at_after_first) # a timestamp can't tell these apart
+        save_lines(split_entry, [ 4, 4 ], expected: v1)
+        expect(response).to have_http_status(:conflict)
+      end
+    end
+
+    it "moves when a line changes on its own" do
+      before_version = split_entry.reload.work_version
+      split_entry.work_lines.first.update!(description: "Bank recs")
+      expect(split_entry.reload.work_version).to be > before_version
+    end
+
+    it "is serialized exactly" do
+      expect(version_of(split_entry)).to eq(split_entry.reload.work_version)
+      get "/api/v1/time_entries/#{split_entry.id}", headers: headers_for(admin)
+      expect(json.dig(:time_entry, :updated_at)).to match(/\.\d{6}/)
+    end
+
+    it "keeps working for clients that don't send expected_version" do
+      save_lines(split_entry, [ 3, 5 ])
+      expect(response).to have_http_status(:ok)
+      save_lines(split_entry, [ 4, 4 ])
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "returns 409 with the existing day log instead of creating a second one, unless asked for" do
+      post "/api/v1/time_entries", params: { time_entry: { work_date: work_date.iso8601, work_lines: [ { client_id: client_a.id, minutes: 30 } ] } }.to_json,
+                                   headers: headers_for(employee)
+      expect(response).to have_http_status(:created)
+      existing_id = json.dig(:time_entry, :id)
+
+      post "/api/v1/time_entries", params: { time_entry: { work_date: work_date.iso8601, work_lines: [ { client_id: client_b.id, minutes: 45 } ] } }.to_json,
+                                   headers: headers_for(employee)
+      expect(response).to have_http_status(:conflict)
+      expect(json.dig(:time_entry, :id)).to eq(existing_id)
+
+      post "/api/v1/time_entries", params: { additional_day_log: true,
+                                             time_entry: { work_date: work_date.iso8601, work_lines: [ { client_id: client_b.id, minutes: 45 } ] } }.to_json,
+                                   headers: headers_for(employee)
+      expect(response).to have_http_status(:created)
+    end
+  end
 end

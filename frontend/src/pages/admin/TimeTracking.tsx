@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import UnassignedTime from '../../components/time-tracking/UnassignedTime'
 import WorkLinesEditor from '../../components/time-tracking/WorkLinesEditor'
+import VersionConflictPanel from '../../components/time-tracking/VersionConflictPanel'
 import LogMyDay from '../../components/time-tracking/LogMyDay'
 import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, linesPayload, newDraft, useWorkLineSuggestions, type WorkLineDraft } from '../../components/time-tracking/workLinesModel'
 import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary, TimeEntry as TimeEntryItem } from '../../lib/api'
@@ -195,6 +196,7 @@ export default function TimeTracking() {
     requestedTab === 'reports' || requestedTab === 'approvals' || requestedTab === 'unassigned' || requestedTab === 'day' ? requestedTab : 'entries'
   )
   const [unassignedRefresh, setUnassignedRefresh] = useState(0)
+  const [modalVersionConflict, setModalVersionConflict] = useState(false)
   
   // View mode: 'day' or 'week'
   const [viewMode, setViewMode] = useState<'day' | 'week'>('week')
@@ -711,6 +713,7 @@ export default function TimeTracking() {
 
   const openEditEntry = (entry: TimeEntryItem) => {
     setEditingEntry(entry)
+    setModalVersionConflict(false)
     setCorrectionReason('')
     setCorrectionReferences([])
     setRequiresCorrectionReason(false)
@@ -769,7 +772,12 @@ export default function TimeTracking() {
         setShowModal(false)
       } else if (editingEntry) {
         // Send only what the user changed so a concurrent edit is not overwritten.
-        const response = await api.updateTimeEntry(editingEntry.id, editPayload, correctionReason)
+        const response = await api.updateTimeEntry(editingEntry.id, editPayload, correctionReason, { expectedVersion: editingEntry.version })
+        if (response.status === 409) {
+          // Changed elsewhere since the modal opened: nothing was saved.
+          setModalVersionConflict(true)
+          return
+        }
         if (response.error) {
           if (response.code === 'correction_reason_required') {
             setRequiresCorrectionReason(true)
@@ -806,6 +814,26 @@ export default function TimeTracking() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // After a version conflict: keep the edited lines as their own day log.
+  const saveModalLinesSeparately = async () => {
+    if (!editingEntry) return
+    setSaving(true)
+    const response = await api.createTimeEntry({
+      work_date: formData.work_date,
+      work_lines: linesPayload(lines, null),
+      additional_day_log: true,
+      user_id: isAdmin && editingEntry.user ? editingEntry.user.id : undefined,
+    })
+    setSaving(false)
+    if (response.error) {
+      setError(response.error)
+      return
+    }
+    setModalVersionConflict(false)
+    setShowModal(false)
+    await loadEntries()
   }
 
   const canDeleteEntry = (entry: TimeEntryItem): boolean => {
@@ -1883,6 +1911,20 @@ export default function TimeTracking() {
                 )}
 
               </fieldset>
+                {modalVersionConflict && editingEntry && (
+                  <VersionConflictPanel
+                    title="This entry was changed elsewhere after you opened it."
+                    detail="Nothing was saved, so that change isn’t overwritten."
+                    busy={saving}
+                    canSaveSeparately={Object.keys(modalLineCheck.problems).length === 0}
+                    onSaveSeparately={() => void saveModalLinesSeparately()}
+                    onDiscard={() => {
+                      setModalVersionConflict(false)
+                      setShowModal(false)
+                      void loadEntries()
+                    }}
+                  />
+                )}
                 {/* Actions */}
                 <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t border-neutral-warm bg-white px-4 py-3 md:static md:mx-0 md:border-0 md:px-0 md:pt-4">
                   <div>

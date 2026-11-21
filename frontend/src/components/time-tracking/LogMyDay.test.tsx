@@ -222,4 +222,47 @@ describe('LogMyDay', () => {
     expect(window.sessionStorage.getItem('cst.logMyDay.drafts.7')).toBeNull()
     expect((screen.getByLabelText('Work description') as HTMLInputElement).value).toBe('')
   })
+
+  describe('409 version conflicts', () => {
+    it('sends the version the draft started on and shows the conflict panel when the server refuses', async () => {
+      apiMock.getTimeEntries.mockResolvedValueOnce({ data: { time_entries: [{ ...session, version: 4 }] } })
+      apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [{ ...session, version: 5, work_lines: [{ ...session.work_lines[0], client: { id: 3, name: 'Beta Co' }, client_label: 'Beta Co' }] }] } })
+      apiMock.updateTimeEntry.mockResolvedValue({ status: 409, code: 'version_conflict', error: 'This entry was changed elsewhere after you started. Nothing was saved.' })
+      render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+
+      fireEvent.change(await screen.findByLabelText('Work client'), { target: { value: '2' } })
+      fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '120' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save session' }))
+
+      await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
+      expect(apiMock.updateTimeEntry.mock.calls[0][3]).toEqual({ expectedVersion: 4 })
+      expect(await screen.findByText('This entry was changed elsewhere after you started these lines.')).toBeInTheDocument()
+      expect(apiMock.getTimeEntries).toHaveBeenCalledTimes(2) // refetched after the 409
+      expect(screen.getByRole('button', { name: 'Save session' })).toBeDisabled()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save my lines as a separate day log' }))
+      await waitFor(() => expect(apiMock.createTimeEntry).toHaveBeenCalled())
+      expect(apiMock.createTimeEntry.mock.calls[0][0]).toMatchObject({ additional_day_log: true })
+      expect(apiMock.updateTimeEntry).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows the conflict panel when a day log was created elsewhere before this one was saved', async () => {
+      const existing = {
+        ...session, id: 61, entry_method: 'manual', duration_only: true, start_time: null, end_time: null,
+        formatted_start_time: null, formatted_end_time: null, hours: 0.5, version: 1,
+        work_lines: [{ ...session.work_lines[0], id: 12, minutes: 30, hours: 0.5 }],
+      }
+      apiMock.getTimeEntries.mockResolvedValueOnce({ data: { time_entries: [] } })
+      apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [existing] } })
+      apiMock.createTimeEntry.mockResolvedValueOnce({ status: 409, code: 'version_conflict', error: 'A day log already exists for this day.' })
+      render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+
+      fireEvent.change(await screen.findByLabelText('Work client'), { target: { value: '2' } })
+      fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '45' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Log day' }))
+
+      expect(await screen.findByText('A day log was saved for this day after you started these lines.')).toBeInTheDocument()
+      expect(apiMock.createTimeEntry.mock.calls[0][0]).not.toHaveProperty('additional_day_log')
+    })
+  })
 })

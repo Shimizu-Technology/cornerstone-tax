@@ -15,6 +15,10 @@ class TimeEntryAllocation < ApplicationRecord
   belongs_to :service_task, optional: true
 
   before_validation :normalize_fields
+  # Every line change moves its entry's change token, in the same
+  # transaction (see AddWorkVersionToTimeEntries).
+  after_save :bump_entry_work_version, if: :saved_changes?
+  after_destroy :bump_entry_work_version
 
   validates :hours, presence: true, numericality: { greater_than: 0, less_than_or_equal_to: 24 }
   validates :period_type, inclusion: { in: TimeEntry::PERIOD_TYPES }, allow_nil: true
@@ -54,6 +58,10 @@ class TimeEntryAllocation < ApplicationRecord
   end
 
   private
+
+  def bump_entry_work_version
+    TimeEntry.where(id: time_entry_id).update_all("work_version = work_version + 1")
+  end
 
   def normalize_fields
     self.description = description.to_s.strip.presence

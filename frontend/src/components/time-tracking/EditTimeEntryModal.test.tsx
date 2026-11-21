@@ -104,6 +104,7 @@ describe('EditTimeEntryModal', () => {
       3,
       expect.any(Object),
       'Employee confirmed the corrected clock-out time.',
+      expect.any(Object),
     )
   })
 
@@ -276,5 +277,26 @@ describe('EditTimeEntryModal', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
     expect(apiMock.updateTimeEntry).not.toHaveBeenCalled()
+  })
+
+  it('sends the entry version and, on a 409, offers to keep the lines separately or discard them', async () => {
+    apiMock.updateTimeEntry.mockResolvedValueOnce({ status: 409, code: 'version_conflict', error: 'This entry was changed elsewhere after you started. Nothing was saved.' })
+    const createTimeEntry = vi.fn().mockResolvedValue({ data: { time_entry: {} } })
+    Object.assign(apiMock, { createTimeEntry })
+    const onSaved = vi.fn()
+    const versioned = { ...entry, hours: 7.5, version: 4, client: { id: 6, name: 'Jose Cruz' } }
+    render(<EditTimeEntryModal isOpen entry={versioned} clients={[{ id: 6, name: 'Jose Cruz' }]} canDelete onClose={vi.fn()} onSaved={onSaved} onDeleted={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
+    fireEvent.click(screen.getByRole('button', { name: /update/i }))
+
+    expect(await screen.findByText('This entry was changed elsewhere after you opened it.')).toBeInTheDocument()
+    expect(apiMock.updateTimeEntry.mock.calls[0][3]).toEqual({ expectedVersion: 4 })
+    expect(onSaved).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save my lines as a separate day log' }))
+    await waitFor(() => expect(createTimeEntry).toHaveBeenCalled())
+    expect(createTimeEntry.mock.calls[0][0]).toMatchObject({ work_date: '2026-05-05', additional_day_log: true, user_id: 1 })
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
   })
 })
