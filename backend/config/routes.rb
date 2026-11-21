@@ -126,6 +126,10 @@ Rails.application.routes.draw do
           post :deny_overtime
         end
       end
+      # Pay-period work summary (own, or anyone's for admins)
+      get "work_summary", to: "work_summaries#show"
+      get "work_summary/csv", to: "work_summaries#csv"
+      get "work_summary/pdf", to: "work_summaries#pdf"
       resources :time_categories, only: [:index]
       resources :time_period_locks, only: [:index]
 

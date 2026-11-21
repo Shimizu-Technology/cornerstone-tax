@@ -793,6 +793,34 @@ export interface WorkLineInput {
   exact_hours?: number;
 }
 
+export interface WorkSummaryLine {
+  entry_id: number;
+  work_date: string;
+  time_range: string | null;
+  client_id: number | null;
+  client_name: string;
+  system_kind: string | null;
+  description: string | null;
+  category: string | null;
+  task: string | null;
+  period: string | null;
+  minutes: number;
+  hours: number;
+  approval_state: 'approved' | 'pending' | 'clock';
+}
+
+export interface WorkSummaryResponse {
+  user: { id: number; full_name: string; email: string };
+  start_date: string;
+  end_date: string;
+  days: Array<{ work_date: string; lines: WorkSummaryLine[]; total_minutes: number; total_hours: number; total_label: string }>;
+  clients: Array<{ client_id: number | null; client_name: string; system_kind: string | null; minutes: number; hours: number; label: string; lines_count: number }>;
+  total_minutes: number;
+  total_hours: number;
+  total_label: string;
+  counts: { entries: number; lines: number; pending_entries: number; denied_entries: number; open_clock_entries: number; unassigned_minutes: number };
+}
+
 export interface UnassignedTimeEntry extends TimeEntry {
   line_issues: Array<{ id: number; missing: Array<'client' | 'description' | 'category'> }>;
 }
@@ -2380,6 +2408,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ note }),
     }),
+
+  getWorkSummary: (params: { start_date: string; end_date: string; user_id?: number }) => {
+    const searchParams = new URLSearchParams({ start_date: params.start_date, end_date: params.end_date });
+    if (params.user_id) searchParams.set('user_id', String(params.user_id));
+    return fetchApi<WorkSummaryResponse>(`/api/v1/work_summary?${searchParams.toString()}`);
+  },
+
+  downloadWorkSummary: (type: 'csv' | 'pdf', params: { start_date: string; end_date: string; user_id?: number }) => {
+    const searchParams = new URLSearchParams({ start_date: params.start_date, end_date: params.end_date });
+    if (params.user_id) searchParams.set('user_id', String(params.user_id));
+    return fetchDownload(`/api/v1/work_summary/${type}?${searchParams.toString()}`);
+  },
 
   getWorkLineSuggestions: (userId?: number) =>
     fetchApi<{

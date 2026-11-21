@@ -7,6 +7,7 @@ import UnassignedTime from '../../components/time-tracking/UnassignedTime'
 import WorkLinesEditor from '../../components/time-tracking/WorkLinesEditor'
 import VersionConflictPanel from '../../components/time-tracking/VersionConflictPanel'
 import LogMyDay from '../../components/time-tracking/LogMyDay'
+import WorkSummary from '../../components/time-tracking/WorkSummary'
 import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, linesPayload, newDraft, useWorkLineSuggestions, type WorkLineDraft } from '../../components/time-tracking/workLinesModel'
 import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary, TimeEntry as TimeEntryItem } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
@@ -192,8 +193,8 @@ export default function TimeTracking() {
   
   // Tab: entries, approvals, or reports
   const requestedTab = searchParams.get('tab')
-  const [activeTab, setActiveTab] = useState<'entries' | 'day' | 'approvals' | 'unassigned' | 'reports'>(
-    requestedTab === 'reports' || requestedTab === 'approvals' || requestedTab === 'unassigned' || requestedTab === 'day' ? requestedTab : 'entries'
+  const [activeTab, setActiveTab] = useState<'entries' | 'day' | 'summary' | 'approvals' | 'unassigned' | 'reports'>(
+    requestedTab === 'reports' || requestedTab === 'approvals' || requestedTab === 'unassigned' || requestedTab === 'day' || requestedTab === 'summary' ? requestedTab : 'entries'
   )
   const [unassignedRefresh, setUnassignedRefresh] = useState(0)
   const [modalVersionConflict, setModalVersionConflict] = useState(false)
@@ -1010,6 +1011,17 @@ export default function TimeTracking() {
             <ClockIcon />
             Log my day
           </button>
+          <button
+            onClick={() => setActiveTab('summary')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'summary'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-muted hover:text-primary-dark'
+            }`}
+          >
+            <ChartIcon />
+            {isAdmin ? 'Work summary' : 'My summary'}
+          </button>
           {isAdmin && (
             <button
               onClick={() => setActiveTab('approvals')}
@@ -1634,6 +1646,11 @@ export default function TimeTracking() {
             if (isAdmin) void loadPendingApprovalSummary()
           }}
         />
+      )}
+
+      {/* Pay-period work summary with CSV/PDF */}
+      {activeTab === 'summary' && (
+        <WorkSummary currentUserId={currentUserId} isAdmin={isAdmin} users={users} />
       )}
 
       {/* Unassigned time (admin clean-up) */}
