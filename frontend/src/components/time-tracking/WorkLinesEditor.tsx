@@ -594,6 +594,21 @@ function GrowingTextField({
     field.style.height = `${field.scrollHeight}px`
   }, [value])
 
+  // The field also changes width (splitting a session moves it into a column), so re-measure then too.
+  useEffect(() => {
+    const field = ref.current
+    if (!field || typeof ResizeObserver === 'undefined') return
+    let width = field.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (field.clientWidth === width) return
+      width = field.clientWidth
+      field.style.height = 'auto'
+      field.style.height = `${field.scrollHeight}px`
+    })
+    observer.observe(field)
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <textarea
       ref={ref}

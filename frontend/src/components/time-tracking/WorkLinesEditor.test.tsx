@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ServiceType } from '../../lib/api'
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import WorkLinesEditor from './WorkLinesEditor'
 import { newDraft, type WorkLineDraft, type WorkLineSuggestions } from './workLinesModel'
 
@@ -122,6 +122,31 @@ describe('WorkLinesEditor (day grid)', () => {
     expect(enter.defaultPrevented).toBe(true)
     fireEvent.change(description, { target: { value: 'First line\nsecond line' } })
     expect((description as HTMLTextAreaElement).value).toBe('First line second line')
+  })
+
+  describe('when the field changes width', () => {
+    afterEach(() => vi.unstubAllGlobals())
+
+    it('grows to fit text that wraps after the field narrows', () => {
+      let resized = () => {}
+      vi.stubGlobal('ResizeObserver', class {
+        constructor(callback: () => void) { resized = callback }
+        observe() {}
+        disconnect() {}
+      })
+      render(<Harness />)
+      const description = screen.getByLabelText('Work description') as HTMLTextAreaElement
+      Object.defineProperty(description, 'clientWidth', { configurable: true, value: 600 })
+      Object.defineProperty(description, 'scrollHeight', { configurable: true, value: 24 })
+      fireEvent.change(description, { target: { value: 'Reconciled operating account and payroll clearing account' } })
+      expect(description.style.height).toBe('24px')
+
+      // Splitting the session moves the field into a narrower column without changing its text.
+      Object.defineProperty(description, 'clientWidth', { configurable: true, value: 220 })
+      Object.defineProperty(description, 'scrollHeight', { configurable: true, value: 72 })
+      resized()
+      expect(description.style.height).toBe('72px')
+    })
   })
 })
 
