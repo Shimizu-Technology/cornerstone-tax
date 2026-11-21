@@ -16,6 +16,8 @@ class TimeClockService
 
   class ClockError < StandardError; end
   class AuthorizationError < StandardError; end
+  # The entry's date is in a locked time period.
+  class PeriodLockedError < ClockError; end
 
   class << self
     # ── Clock In ──
@@ -274,7 +276,14 @@ class TimeClockService
       raise AuthorizationError, "Only admins can mark entries completed" unless by&.admin?
 
       entry.transaction do
+        # Same order as bulk approval: the period-lock guard (which locking a
+        # period also takes), then the entry. A period locked after the
+        # controller's early check is either waited for or seen here.
+        TimePeriodLock.serialize_with_approvals!
         entry.lock_for_work_lines!
+        if TimePeriodLock.locked_for_date?(entry.work_date)
+          raise PeriodLockedError, "This time period is locked. Unlock it to mark the entry completed."
+        end
         if expected_version && entry.work_version != expected_version
           raise ClockError, "This entry changed since you loaded it. Refresh and try again."
         end

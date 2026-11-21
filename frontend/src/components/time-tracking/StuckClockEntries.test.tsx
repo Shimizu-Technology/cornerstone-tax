@@ -60,4 +60,26 @@ describe('StuckClockEntries', () => {
     await waitFor(() => expect(apiMocks.getStuckClockEntries).toHaveBeenCalled())
     expect(container).toBeEmptyDOMElement()
   })
+
+  it('shows a failed check with Try again instead of hiding the card', async () => {
+    apiMocks.getStuckClockEntries.mockResolvedValueOnce({ error: 'Network error' }).mockResolvedValueOnce({ data: { time_entries: [stuck] } })
+    render(<StuckClockEntries />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Network error')
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+
+    expect(await screen.findByRole('list', { name: 'Entries left clocked in' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('hides the card once a retry finds nothing stuck', async () => {
+    apiMocks.getStuckClockEntries.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ data: { time_entries: [] } })
+    const { container } = render(<StuckClockEntries />)
+
+    fireEvent.click(within(await screen.findByRole('alert')).getByRole('button', { name: 'Try again' }))
+
+    await waitFor(() => expect(container).toBeEmptyDOMElement())
+    expect(apiMocks.getStuckClockEntries).toHaveBeenCalledTimes(2)
+  })
 })

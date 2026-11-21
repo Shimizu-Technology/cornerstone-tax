@@ -15,14 +15,35 @@ function formatDate(iso: string) {
  */
 export default function StuckClockEntries({ onResolved }: { onResolved?: () => void }) {
   const [entries, setEntries] = useState<TimeEntry[]>([])
+  // A failed list request is shown, not treated as "nothing stuck".
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloading, setReloading] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const response = await api.getStuckClockEntries()
-    if (response.data) setEntries(response.data.time_entries)
+    try {
+      const response = await api.getStuckClockEntries()
+      if (response.data) {
+        setEntries(response.data.time_entries)
+        setLoadError(null)
+      } else {
+        setLoadError(response.error || 'Could not check for clock entries that need attention.')
+      }
+    } catch {
+      setLoadError('Could not check for clock entries that need attention.')
+    }
   }, [])
+
+  const retry = async () => {
+    setReloading(true)
+    try {
+      await load()
+    } finally {
+      setReloading(false)
+    }
+  }
 
   useEffect(() => {
     void load()
@@ -51,7 +72,8 @@ export default function StuckClockEntries({ onResolved }: { onResolved?: () => v
     }
   }
 
-  if (entries.length === 0 && !message && !error) return null
+  // Hidden only after a successful, empty list.
+  if (entries.length === 0 && !message && !error && !loadError) return null
 
   return (
     <section aria-labelledby="stuck-clock-heading" className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm sm:p-5">
@@ -61,6 +83,14 @@ export default function StuckClockEntries({ onResolved }: { onResolved?: () => v
           {entries.length === 1 ? 'This clock entry was' : 'These clock entries were'} left clocked in with an end time, so the hours don’t count
           and the person can’t clock in. Mark it completed to keep its times and send it for approval.
         </p>
+      )}
+      {loadError && (
+        <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{loadError}</span>
+          <button type="button" onClick={() => void retry()} disabled={reloading} className="min-h-11 rounded-lg border border-red-300 bg-white px-3 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50">
+            {reloading ? 'Checking…' : 'Try again'}
+          </button>
+        </div>
       )}
       {error && <div role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
       {message && <div role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</div>}

@@ -156,6 +156,23 @@ RSpec.describe "Stuck clock entries", type: :request do
       expect(stuck.reload.status).to eq("clocked_in")
     end
 
+    it "refuses when the period is locked after the early check passed" do
+      stuck = clock_entry(end_at: "12:38", hours: 3.63)
+      # The controller's fast check passes, then another admin's lock commits.
+      allow_any_instance_of(Api::V1::TimeEntriesController).to receive(:period_locked_for_date?).and_wrap_original do |original, *args|
+        result = original.call(*args)
+        TimePeriodLock.create!(start_date: Date.new(2026, 4, 26), end_date: Date.new(2026, 5, 2), locked_at: Time.current, locked_by: admin)
+        result
+      end
+
+      post "/api/v1/time_entries/#{stuck.id}/mark_completed", headers: headers_for(admin)
+
+      expect(response).to have_http_status(:forbidden)
+      expect(json[:error]).to eq("This time period is locked. Unlock it to mark the entry completed.")
+      expect(stuck.reload).to have_attributes(status: "clocked_in", approval_status: nil)
+      expect(AuditLog.where(auditable: stuck)).to be_empty
+    end
+
     it "frees the person's clock" do
       stuck = clock_entry(end_at: "12:38", hours: 3.63)
       post "/api/v1/time_entries/clock_in", headers: headers_for(staff)

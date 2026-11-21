@@ -454,6 +454,7 @@ module Api
 
       # POST /api/v1/time_entries/:id/mark_completed [expected_version]
       def mark_completed
+        # Fast path; the service checks again under the period-lock guard.
         if period_locked_for_date?(@time_entry.work_date)
           return render json: { error: "This time period is locked. Unlock it to mark the entry completed." }, status: :forbidden
         end
@@ -462,7 +463,7 @@ module Api
         expected = params[:expected_version].presence && Integer(params[:expected_version], exception: false)
         entry = TimeClockService.mark_stuck_entry_completed(entry: @time_entry, by: current_user, expected_version: expected)
         render json: { time_entry: serialize_time_entry(eager_reload(entry)) }
-      rescue TimeClockService::AuthorizationError => e
+      rescue TimeClockService::AuthorizationError, TimeClockService::PeriodLockedError => e
         render json: { error: e.message }, status: :forbidden
       rescue TimeClockService::ClockError => e
         render json: { error: e.message }, status: :unprocessable_entity
