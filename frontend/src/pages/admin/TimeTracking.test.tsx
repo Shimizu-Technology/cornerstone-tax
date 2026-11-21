@@ -398,6 +398,17 @@ describe('TimeTracking log time', () => {
     expect(screen.getByRole('button', { name: 'Discard my lines' })).toBeInTheDocument()
   })
 
+  it('names the calendar arrows for the current view', async () => {
+    renderPage('/admin/time')
+
+    // Phone and desktop each render their own pair; desktop opens on Week.
+    expect(await screen.findAllByRole('button', { name: 'Previous week' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Next week' })).toHaveLength(2)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Day' })[0])
+    expect(screen.getAllByRole('button', { name: 'Previous day' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Next day' })).toHaveLength(2)
+  })
+
   it('shows a retry when categories or clients fail to load', async () => {
     apiMocks.getServiceTypes
       .mockResolvedValueOnce({ error: 'Server error' })

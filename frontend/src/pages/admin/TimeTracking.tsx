@@ -125,6 +125,12 @@ const ChevronRightIcon = () => (
   </svg>
 )
 
+// Tabs drop their icons on phones so the staff tabs fit without scrolling.
+const tabClassName = (active: boolean) =>
+  `pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap [&>svg]:hidden sm:[&>svg]:block ${
+    active ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-primary-dark'
+  }`
+
 const ChartIcon = () => (
   <svg className="h-5 w-5" fill="none" aria-hidden="true" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -1000,36 +1006,24 @@ export default function TimeTracking() {
 
       {/* Tab Navigation */}
       <div className="border-b border-neutral-warm">
-        <nav className="flex gap-4 overflow-x-auto" aria-label="Time tracking sections">
+        <nav className="flex gap-4 overflow-x-auto pr-8 [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)] sm:pr-0 sm:[mask-image:none]" aria-label="Time tracking sections">
           <button
             onClick={() => setActiveTab('entries')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'entries'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-text-muted hover:text-primary-dark'
-            }`}
+            className={tabClassName(activeTab === 'entries')}
           >
             <ClockIcon />
             Time Entries
           </button>
           <button
             onClick={() => setActiveTab('day')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'day'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-text-muted hover:text-primary-dark'
-            }`}
+            className={tabClassName(activeTab === 'day')}
           >
             <ClockIcon />
             Log my day
           </button>
           <button
             onClick={() => setActiveTab('summary')}
-            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'summary'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-text-muted hover:text-primary-dark'
-            }`}
+            className={tabClassName(activeTab === 'summary')}
           >
             <ChartIcon />
             {isAdmin ? 'Work summary' : 'My summary'}
@@ -1038,11 +1032,7 @@ export default function TimeTracking() {
             <button
               onClick={() => setActiveTab('approvals')}
               aria-label={pendingApprovalCount > 0 ? `Approvals, ${pendingApprovalCount} pending` : 'Approvals'}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
-                activeTab === 'approvals'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-text-muted hover:text-primary-dark'
-              }`}
+              className={tabClassName(activeTab === 'approvals')}
             >
               <ClockIcon />
               <span>Approvals</span>
@@ -1059,11 +1049,7 @@ export default function TimeTracking() {
           {isAdmin && (
             <button
               onClick={() => setActiveTab('unassigned')}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
-                activeTab === 'unassigned'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-text-muted hover:text-primary-dark'
-              }`}
+              className={tabClassName(activeTab === 'unassigned')}
             >
               <ClockIcon />
               Unassigned
@@ -1072,11 +1058,7 @@ export default function TimeTracking() {
           {isAdmin && (
             <button
               onClick={() => setActiveTab('reports')}
-              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 shrink-0 whitespace-nowrap ${
-                activeTab === 'reports'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-text-muted hover:text-primary-dark'
-              }`}
+              className={tabClassName(activeTab === 'reports')}
             >
               <ChartIcon />
               Reports
@@ -1211,6 +1193,7 @@ export default function TimeTracking() {
             <div className="flex items-center gap-1">
               <button
                 onClick={goToPrevious}
+                aria-label={viewMode === 'day' ? 'Previous day' : 'Previous week'}
                 className="p-2 text-primary-dark hover:bg-neutral-warm rounded-lg"
               >
                 <ChevronLeftIcon />
@@ -1227,6 +1210,7 @@ export default function TimeTracking() {
               </button>
               <button
                 onClick={goToNext}
+                aria-label={viewMode === 'day' ? 'Next day' : 'Next week'}
                 className="p-2 text-primary-dark hover:bg-neutral-warm rounded-lg"
               >
                 <ChevronRightIcon />
@@ -1267,6 +1251,7 @@ export default function TimeTracking() {
           <div className="flex items-center justify-center gap-2">
             <button
               onClick={goToPrevious}
+              aria-label={viewMode === 'day' ? 'Previous day' : 'Previous week'}
               className="p-2 text-primary-dark hover:text-primary hover:bg-neutral-warm rounded-lg transition-colors"
             >
               <ChevronLeftIcon />
@@ -1283,6 +1268,7 @@ export default function TimeTracking() {
             </button>
             <button
               onClick={goToNext}
+              aria-label={viewMode === 'day' ? 'Next day' : 'Next week'}
               className="p-2 text-primary-dark hover:text-primary hover:bg-neutral-warm rounded-lg transition-colors"
             >
               <ChevronRightIcon />
