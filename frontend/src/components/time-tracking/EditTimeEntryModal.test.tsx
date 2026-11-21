@@ -235,12 +235,13 @@ describe('EditTimeEntryModal', () => {
     const sent = payload.work_lines
     // Untouched times go back as their exact stored hours, so no hours move
     // between clients (rounded display minutes would have sent 1,1,2,1,1,1).
-    expect(sent.map((line: { hours?: number; minutes?: number }) => [line.hours, line.minutes])).toEqual(Array(6).fill([0.02, undefined]))
+    expect(sent.map((line: { exact_hours?: number; minutes?: number }) => [line.exact_hours, line.minutes])).toEqual(Array(6).fill([0.02, undefined]))
     const perClient = (lines: Array<{ client_id: number; hours: number }>) => lines.reduce<Record<number, number>>((totals, line) => {
       totals[line.client_id] = Math.round(((totals[line.client_id] ?? 0) + line.hours) * 100) / 100
       return totals
     }, {})
-    expect(perClient(sent)).toEqual(perClient(scaled.work_lines.map((line) => ({ client_id: line.client.id, hours: line.hours }))))
+    expect(perClient(sent.map((line: { client_id: number; exact_hours: number }) => ({ client_id: line.client_id, hours: line.exact_hours }))))
+      .toEqual(perClient(scaled.work_lines.map((line) => ({ client_id: line.client.id, hours: line.hours }))))
     expect(sent[1].description).toBe('Filed checks')
     // And no attendance fields: the times were not touched.
     expect(Object.keys(payload)).toEqual(['work_lines'])

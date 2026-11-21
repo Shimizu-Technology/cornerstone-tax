@@ -52,7 +52,8 @@ describe('LogMyDay', () => {
     render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
 
     expect(await screen.findByText('Clock time without a client')).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /Clock 9:00 AM–11:00 AM/ })).toHaveAttribute('aria-checked', 'true')
+    // The header renders before the entries load; wait for the session itself.
+    expect(await screen.findByRole('radio', { name: /Clock 9:00 AM–11:00 AM/ })).toHaveAttribute('aria-checked', 'true')
     fireEvent.change(screen.getByLabelText('Work client'), { target: { value: '2' } })
     fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '90' } })
     expect(screen.getByTestId('work-lines-remaining')).toHaveTextContent('30m left to assign')
@@ -130,7 +131,7 @@ describe('LogMyDay', () => {
     expect(screen.getByRole('radio', { name: /My day/ })).toBeDisabled()
     finish({ data: { time_entry: { approval_status: 'pending' } } })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Previous day' })).toBeEnabled())
-    expect(window.sessionStorage.length).toBe(0)
+    expect(window.sessionStorage.getItem('cst.logMyDay.drafts.7')).toBeNull()
   })
 
   it('reopens on the session or day log that has unsaved lines after a remount', async () => {
@@ -144,5 +145,81 @@ describe('LogMyDay', () => {
 
     await waitFor(() => expect(screen.getByRole('radio', { name: /Work off the clock/ })).toHaveAttribute('aria-checked', 'true'))
     expect((screen.getByLabelText('Work client') as HTMLSelectElement).value).toBe('3')
+  })
+
+  describe('stale drafts', () => {
+    const dayLog = {
+      ...session, id: 60, entry_method: 'manual', duration_only: true, start_time: null, end_time: null,
+      formatted_start_time: null, formatted_end_time: null, hours: 1, updated_at: '2026-11-16T01:00:00Z',
+      work_lines: [{ ...session.work_lines[0], id: 9, minutes: 60, hours: 1 }],
+    }
+
+    it('blocks saving when the draft’s clock session was deleted, and never writes to the day log', async () => {
+      apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [session, dayLog] } })
+      const { unmount } = render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+      await screen.findByRole('radio', { name: /Clock 9:00 AM/ })
+      fireEvent.click(screen.getByRole('radio', { name: /Clock 9:00 AM/ }))
+      fireEvent.change(screen.getByLabelText('Work client'), { target: { value: '2' } })
+      fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '120' } })
+      unmount()
+
+      // An admin deleted the session; the day log is still there.
+      apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [dayLog] } })
+      render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+
+      expect(await screen.findByText('The clock session these lines were for no longer exists.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save session' })).toBeDisabled()
+      // The stale session lines are not counted as a day log.
+      expect(screen.getByText('Total logged').nextElementSibling).toHaveTextContent('1h')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save my lines as a separate day log' }))
+      await waitFor(() => expect(apiMock.createTimeEntry).toHaveBeenCalled())
+      expect(apiMock.updateTimeEntry).not.toHaveBeenCalled()
+      expect(apiMock.createTimeEntry.mock.calls[0][0].work_lines).toEqual([expect.objectContaining({ client_id: 2, exact_hours: 2 })])
+    })
+
+    it('blocks saving when the session changed on the server since the draft started, and can discard', async () => {
+      apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [{ ...session, updated_at: '2026-11-16T02:00:00Z' }] } })
+      const { unmount } = render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+      fireEvent.change(await screen.findByLabelText('Work client'), { target: { value: '3' } })
+      unmount()
+
+      apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [{ ...session, updated_at: '2026-11-16T03:00:00Z' }] } })
+      render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+
+      expect(await screen.findByText('This entry was changed elsewhere after you started these lines.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save session' })).toBeDisabled()
+      fireEvent.click(screen.getByRole('button', { name: 'Discard my lines' }))
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+      expect(apiMock.updateTimeEntry).not.toHaveBeenCalled()
+    })
+
+    it('blocks a new day log draft once a day log has been saved elsewhere', async () => {
+      apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [] } })
+      const { unmount } = render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+      fireEvent.change(await screen.findByLabelText('Work client'), { target: { value: '2' } })
+      fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '30' } })
+      unmount()
+
+      apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [dayLog] } })
+      render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+
+      expect(await screen.findByText('A day log was saved for this day after you started these lines.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save day' })).toBeDisabled()
+    })
+  })
+
+  it('wipes another person’s stored drafts when a different user opens Log my day', async () => {
+    apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [] } })
+    const { unmount } = render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
+    fireEvent.change(await screen.findByLabelText('Work description'), { target: { value: 'Private client note' } })
+    expect(window.sessionStorage.getItem('cst.logMyDay.drafts.7')).toContain('Private client note')
+    unmount()
+
+    render(<LogMyDay userId={8} clients={clients} serviceTypes={[]} />)
+    await screen.findByLabelText('Work description')
+
+    expect(window.sessionStorage.getItem('cst.logMyDay.drafts.7')).toBeNull()
+    expect((screen.getByLabelText('Work description') as HTMLInputElement).value).toBe('')
   })
 })

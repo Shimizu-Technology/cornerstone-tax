@@ -137,8 +137,10 @@ export function linesPayload(lines: WorkLineDraft[], targetMinutes: number | nul
       period_start: hasPeriod ? line.period_start : null,
     }
     if (single) return { ...work, minutes: targetMinutes! }
-    // An untouched time goes back as its exact stored hours.
-    if (timeUnchanged(line)) return { ...work, hours: line.storedHours! }
+    // An untouched time goes back as exact_hours: the API keeps it exactly
+    // and lets only the changed lines absorb rounding and any remainder
+    // (docs/TIME_ENTRY_WORK_LINES_API.md).
+    if (timeUnchanged(line)) return { ...work, exact_hours: line.storedHours! }
     return { ...work, minutes: draftMinutes(line) ?? 0 }
   })
 }

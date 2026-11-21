@@ -784,6 +784,8 @@ export interface WorkLineInput {
   period_start?: string | null;
   minutes?: number;
   hours?: number;
+  /** An unchanged line's stored hours, kept exactly (never rescaled). */
+  exact_hours?: number;
 }
 
 export interface UnassignedTimeEntry extends TimeEntry {

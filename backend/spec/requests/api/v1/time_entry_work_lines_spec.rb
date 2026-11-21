@@ -307,7 +307,7 @@ RSpec.describe "Time entry work lines API", type: :request do
     hours_before = per_client.call(entry)
 
     lines = entry.work_lines.map do |line|
-      { client_id: line.client_id, description: line.position == 1 ? "Filed checks" : line.description, hours: line.hours.to_f }
+      { client_id: line.client_id, description: line.position == 1 ? "Filed checks" : line.description, exact_hours: line.hours.to_f }
     end
     patch "/api/v1/time_entries/#{entry.id}", params: { time_entry: { work_lines: lines } }.to_json, headers: headers_for(admin)
 

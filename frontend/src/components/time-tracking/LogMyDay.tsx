@@ -4,6 +4,7 @@ import type { ServiceType, TimeEntry } from '../../lib/api'
 import type { ClientOption } from '../../lib/timeEntryWork'
 import { formatMinutes, minutesToHoursText } from '../../lib/workDuration'
 import WorkLinesEditor from './WorkLinesEditor'
+import { readDrafts, writeDrafts, type DayDraft } from './logMyDayDrafts'
 import { checkLines, detailsRequired, draftMinutes, draftsFromEntry, linesPayload, newDraft, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
 
 const DAY_LOG = 'day-log'
@@ -23,40 +24,13 @@ function longDate(iso: string) {
   return new Date(year, month - 1, day).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
 }
 
-interface DayDraft {
-  lines: WorkLineDraft[]
-  /** updated_at of the entry when the draft started (null for a new day log). */
-  baseUpdatedAt: string | null
-  /** Short label for the "Also unsaved" list. */
-  label: string
-}
-
-const DRAFTS_STORAGE_PREFIX = 'cst.logMyDay.drafts.'
-
-function readDrafts(userId: number | null): Record<string, DayDraft> {
-  if (!userId) return {}
-  try {
-    const raw = window.sessionStorage.getItem(`${DRAFTS_STORAGE_PREFIX}${userId}`)
-    return raw ? JSON.parse(raw) as Record<string, DayDraft> : {}
-  } catch {
-    return {}
-  }
-}
-
 /** Unsaved drafts for one person, mirrored to sessionStorage (best effort). */
 function useDayDrafts(userId: number | null): [Record<string, DayDraft>, (next: Record<string, DayDraft>) => void] {
   const [state, setState] = useState<{ userId: number | null; drafts: Record<string, DayDraft> }>(() => ({ userId, drafts: readDrafts(userId) }))
   const drafts = state.userId === userId ? state.drafts : readDrafts(userId)
   const update = (next: Record<string, DayDraft>) => {
     setState({ userId, drafts: next })
-    try {
-      if (userId) {
-        if (Object.keys(next).length) window.sessionStorage.setItem(`${DRAFTS_STORAGE_PREFIX}${userId}`, JSON.stringify(next))
-        else window.sessionStorage.removeItem(`${DRAFTS_STORAGE_PREFIX}${userId}`)
-      }
-    } catch {
-      // Storage can be unavailable (private mode); drafts still live in state.
-    }
+    writeDrafts(userId, next)
   }
   return [drafts, update]
 }
@@ -132,7 +106,9 @@ export default function LogMyDay({
   const defaultTarget = draftTargetForDay ?? sessions.find((entry) => assignedMinutes(entry) < entryMinutes(entry))?.id ?? sessions[0]?.id
   const target = selection?.key === dayKey ? selection.target : String(defaultTarget ?? DAY_LOG)
   const session = sessions.find((entry) => String(entry.id) === target) ?? null
-  const editing = session ?? dayLog ?? null
+  // The record this grid saves to. A session target never falls back to the
+  // day log: if the session is gone, saving is blocked (see draftConflict).
+  const editing = target === DAY_LOG ? dayLog ?? null : session
 
   // Unsaved lines are kept per day and session (and in sessionStorage), so
   // switching dates, sessions or tabs never drops or overwrites them.
@@ -140,14 +116,38 @@ export default function LogMyDay({
   const draft = drafts[draftKey]
   const lines = draft ? draft.lines : editing ? draftsFromEntry(editing) : [newDraft()]
   const setLines = (next: WorkLineDraft[]) =>
-    setDrafts({ ...drafts, [draftKey]: { lines: next, baseUpdatedAt: draft ? draft.baseUpdatedAt : editing?.updated_at ?? null, label: draftLabel(date, session) } })
+    setDrafts({
+      ...drafts,
+      [draftKey]: {
+        lines: next,
+        baseEntryId: draft ? draft.baseEntryId ?? null : editing?.id ?? null,
+        baseUpdatedAt: draft ? draft.baseUpdatedAt : editing?.updated_at ?? null,
+        label: draftLabel(date, session),
+      },
+    })
   const discardDraft = () => {
     const rest = { ...drafts }
     delete rest[draftKey]
     setDrafts(rest)
   }
   const otherDrafts = Object.entries(drafts).filter(([key]) => key !== draftKey)
-  const changedSinceDraft = Boolean(draft && editing && draft.baseUpdatedAt && editing.updated_at !== draft.baseUpdatedAt)
+  // Saving is blocked when the record the lines were for is gone, or changed
+  // on the server since the draft started, so a draft never overwrites (or
+  // silently lands on) another record.
+  const draftConflict: 'missing' | 'changed' | null = (() => {
+    if (loading) return null
+    if (target !== DAY_LOG) {
+      if (!session) return 'missing'
+      return draft?.baseUpdatedAt && session.updated_at !== draft.baseUpdatedAt ? 'changed' : null
+    }
+    if (!draft) return null
+    if (draft.baseEntryId) {
+      if (!dayLog || dayLog.id !== draft.baseEntryId) return 'missing'
+      return dayLog.updated_at !== draft.baseUpdatedAt ? 'changed' : null
+    }
+    // A new day log was started here, but one has been saved since.
+    return dayLog ? 'changed' : null
+  })()
 
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
@@ -176,7 +176,8 @@ export default function LogMyDay({
     }
     return sum + assignedMinutes(entry)
   }, 0)
-  const dayLogMinutes = session
+  // The grid only stands in for the day log when the day log is the target.
+  const dayLogMinutes = target !== DAY_LOG
     ? (dayLog ? entryMinutes(dayLog) : 0)
     : lines.reduce((sum, line) => sum + (draftMinutes(line) ?? 0), 0)
   const manualMinutes = timedManual.filter((entry) => !entry.duration_only).reduce((sum, entry) => sum + entryMinutes(entry), 0)
@@ -198,11 +199,12 @@ export default function LogMyDay({
   }
 
   const save = async () => {
-    if (!userId || !check.canSubmit) return
+    if (!userId || !check.canSubmit || draftConflict) return
     setSaving(true)
     setMessage(null)
-    const response = session
-      ? await api.updateTimeEntry(session.id, { work_lines: linesPayload(lines, targetMinutes, false) })
+    // Each target saves only to its own record (never falls back to another).
+    const response = target !== DAY_LOG
+      ? await api.updateTimeEntry(session!.id, { work_lines: linesPayload(lines, targetMinutes, false) })
       : dayLog
         ? await api.updateTimeEntry(dayLog.id, { work_date: date, work_lines: linesPayload(lines, null) })
         : await api.createTimeEntry({ work_date: date, work_lines: linesPayload(lines, null) })
@@ -214,6 +216,24 @@ export default function LogMyDay({
     const saved = response.data?.time_entry
     setMessage({ tone: 'ok', text: saved?.approval_status === 'pending' ? 'Saved. It will show as pending until an admin approves it.' : 'Saved.' })
     discardDraft()
+    setReload((value) => value + 1)
+    onSaved?.()
+  }
+
+  // Deliberate way out of a conflict: keep the lines as their own day log.
+  const saveAsNewDayLog = async () => {
+    if (!userId || saving) return
+    setSaving(true)
+    setMessage(null)
+    const response = await api.createTimeEntry({ work_date: date, work_lines: linesPayload(lines, null) })
+    setSaving(false)
+    if (response.error) {
+      setMessage({ tone: 'error', text: response.error })
+      return
+    }
+    discardDraft()
+    setSelection({ key: dayKey, target: DAY_LOG })
+    setMessage({ tone: 'ok', text: 'Saved as a separate day log.' })
     setReload((value) => value + 1)
     onSaved?.()
   }
@@ -311,8 +331,33 @@ export default function LogMyDay({
 
         {dirty && (
           <p role="status" className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Unsaved changes{changedSinceDraft ? ' — this entry was changed elsewhere since you started; check the lines before saving.' : '. They stay here if you switch days, sessions or tabs; save or undo them.'}
+            Unsaved changes. They stay here if you switch days, sessions or tabs; save or undo them.
           </p>
+        )}
+        {draftConflict && (
+          <div role="alert" className="mb-3 space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-900">
+            <p className="font-semibold">
+              {draftConflict === 'missing'
+                ? (target === DAY_LOG ? 'The day log these lines were for no longer exists.' : 'The clock session these lines were for no longer exists.')
+                : (target === DAY_LOG && !draft?.baseEntryId ? 'A day log was saved for this day after you started these lines.' : 'This entry was changed elsewhere after you started these lines.')}
+            </p>
+            <p>
+              {draftConflict === 'missing'
+                ? 'An admin may have deleted or moved it. Nothing was saved, and these lines won’t be added to another entry on their own.'
+                : 'Saving now would overwrite that change, so it’s blocked.'}
+              {dirty ? ' You can keep your lines as a separate day log, or discard them.' : ''}
+            </p>
+            {dirty && (
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => void saveAsNewDayLog()} disabled={saving || !check.canSubmit} className="min-h-11 rounded-lg bg-primary px-4 font-semibold text-white disabled:opacity-50">
+                  Save my lines as a separate day log
+                </button>
+                <button type="button" onClick={discardDraft} disabled={saving} className="min-h-11 rounded-lg border border-red-300 bg-white px-4 font-semibold text-red-800">
+                  Discard my lines
+                </button>
+              </div>
+            )}
+          </div>
         )}
         {otherDrafts.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-amber-900" aria-label="Other unsaved work">
@@ -363,10 +408,10 @@ export default function LogMyDay({
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || !check.canSubmit || !dirty || Boolean(editing?.locked_at)}
+            disabled={saving || !check.canSubmit || !dirty || Boolean(editing?.locked_at) || Boolean(draftConflict)}
             className="min-h-11 rounded-xl bg-primary px-6 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-50"
           >
-            {saving ? 'Saving…' : session ? 'Save session' : dayLog ? 'Save day' : 'Log day'}
+            {saving ? 'Saving…' : target !== DAY_LOG ? 'Save session' : dayLog ? 'Save day' : 'Log day'}
           </button>
         </div>
       </div>
