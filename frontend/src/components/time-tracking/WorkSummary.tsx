@@ -245,31 +245,33 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
 
           <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
             <h3 className="text-base font-bold text-primary-dark">Totals by client</h3>
+            {/* Columns get real spacing; on a phone the minutes column is
+                left out (hours and h:m stay; the CSV and PDF keep all three). */}
             <table className="mt-3 w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-text-muted">
-                  <th scope="col" className="py-2">Client</th>
-                  <th scope="col" className="py-2 text-right">Minutes</th>
-                  <th scope="col" className="py-2 text-right">Hours</th>
-                  <th scope="col" className="py-2 text-right">h:m</th>
+                  <th scope="col" className="py-2 pr-3">Client</th>
+                  <th scope="col" className="hidden py-2 pl-4 text-right sm:table-cell">Minutes</th>
+                  <th scope="col" className="py-2 pl-4 text-right">Hours</th>
+                  <th scope="col" className="py-2 pl-4 text-right">h:m</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-warm/60">
                 {summary.clients.map((client) => (
                   <tr key={client.client_id ?? 'unassigned'}>
-                    <th scope="row" className="py-2 text-left font-medium text-primary-dark">{client.client_name}</th>
-                    <td className="py-2 text-right tabular-nums">{client.minutes}</td>
-                    <td className="py-2 text-right tabular-nums">{client.hours.toFixed(2)}</td>
-                    <td className="py-2 text-right tabular-nums">{client.label}</td>
+                    <th scope="row" className="break-words py-2 pr-3 text-left font-medium text-primary-dark">{client.client_name}</th>
+                    <td className="hidden whitespace-nowrap py-2 pl-4 text-right tabular-nums sm:table-cell">{client.minutes}</td>
+                    <td className="whitespace-nowrap py-2 pl-4 text-right tabular-nums">{client.hours.toFixed(2)}</td>
+                    <td className="whitespace-nowrap py-2 pl-4 text-right tabular-nums">{client.label}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-neutral-warm font-semibold text-primary-dark">
-                  <th scope="row" className="py-2 text-left">Total</th>
-                  <td className="py-2 text-right tabular-nums">{summary.total_minutes}</td>
-                  <td className="py-2 text-right tabular-nums">{summary.total_hours.toFixed(2)}</td>
-                  <td className="py-2 text-right tabular-nums">{summary.total_label}</td>
+                  <th scope="row" className="py-2 pr-3 text-left">Total</th>
+                  <td className="hidden whitespace-nowrap py-2 pl-4 text-right tabular-nums sm:table-cell">{summary.total_minutes}</td>
+                  <td className="whitespace-nowrap py-2 pl-4 text-right tabular-nums">{summary.total_hours.toFixed(2)}</td>
+                  <td className="whitespace-nowrap py-2 pl-4 text-right tabular-nums">{summary.total_label}</td>
                 </tr>
               </tfoot>
             </table>

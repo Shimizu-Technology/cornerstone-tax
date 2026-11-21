@@ -201,8 +201,11 @@ export default function TimeTracking() {
   const [modalVersionConflict, setModalVersionConflict] = useState(false)
   const [modalConflictEntry, setModalConflictEntry] = useState<TimeEntryItem | null>(null)
   
-  // View mode: 'day' or 'week'
-  const [viewMode, setViewMode] = useState<'day' | 'week'>('week')
+  // View mode: 'day' or 'week'. Phones open on Day: a seven-column week
+  // doesn't fit at phone width. Wider screens open on Week.
+  const [viewMode, setViewMode] = useState<'day' | 'week'>(() =>
+    typeof window !== 'undefined' && window.matchMedia?.('(max-width: 639px)').matches ? 'day' : 'week',
+  )
   const [currentDate, setCurrentDate] = useState(new Date())
   
   // Entries filters (for Time Entries tab)
@@ -1184,6 +1187,7 @@ export default function TimeTracking() {
             <div className="flex rounded-lg overflow-hidden border border-neutral-warm">
               <button
                 onClick={() => setViewMode('day')}
+                aria-pressed={viewMode === 'day'}
                 className={`px-3 py-2 text-sm font-medium transition-colors ${
                   viewMode === 'day'
                     ? 'bg-primary text-white'
@@ -1194,6 +1198,7 @@ export default function TimeTracking() {
               </button>
               <button
                 onClick={() => setViewMode('week')}
+                aria-pressed={viewMode === 'week'}
                 className={`px-3 py-2 text-sm font-medium transition-colors ${
                   viewMode === 'week'
                     ? 'bg-primary text-white'
@@ -1236,6 +1241,7 @@ export default function TimeTracking() {
           <div className="flex rounded-lg overflow-hidden border border-neutral-warm w-fit">
             <button
               onClick={() => setViewMode('day')}
+              aria-pressed={viewMode === 'day'}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 viewMode === 'day'
                   ? 'bg-primary text-white'
@@ -1246,6 +1252,7 @@ export default function TimeTracking() {
             </button>
             <button
               onClick={() => setViewMode('week')}
+              aria-pressed={viewMode === 'week'}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 viewMode === 'week'
                   ? 'bg-primary text-white'
@@ -1597,6 +1604,7 @@ export default function TimeTracking() {
                         disabled={!!entry.locked_at}
                         className={`p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${entry.locked_at ? 'text-gray-300 cursor-not-allowed' : 'text-primary-dark hover:text-primary hover:bg-neutral-warm'}`}
                         title={entry.locked_at ? 'This entry is locked' : 'Edit entry'}
+                        aria-label={entry.locked_at ? 'This entry is locked' : 'Edit entry'}
                       >
                         <EditIcon />
                       </button>
@@ -1605,6 +1613,7 @@ export default function TimeTracking() {
                         disabled={!canDeleteEntry(entry)}
                         className={`p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center ${!canDeleteEntry(entry) ? 'text-gray-300 cursor-not-allowed' : 'text-primary-dark hover:text-red-600 hover:bg-red-50'}`}
                         title={!canDeleteEntry(entry) ? 'This entry is locked/finalized or cannot be deleted' : 'Delete entry'}
+                        aria-label={!canDeleteEntry(entry) ? 'Delete entry (locked)' : 'Delete entry'}
                       >
                         <TrashIcon />
                       </button>
@@ -1717,7 +1726,7 @@ export default function TimeTracking() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="time-entry-modal-title"
-            className="h-[100dvh] w-full overflow-y-auto overscroll-contain bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-2xl">
+            className="h-[100dvh] w-full overflow-y-auto overscroll-contain bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-2xl xl:max-w-5xl">
             <div className="p-4 md:p-6">
               <h2 id="time-entry-modal-title" className="text-xl font-bold text-primary-dark mb-1">
                 {editingEntry ? 'Edit Time Entry' : 'Log Time'}

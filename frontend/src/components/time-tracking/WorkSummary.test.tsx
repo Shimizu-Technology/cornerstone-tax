@@ -131,4 +131,21 @@ describe('WorkSummary', () => {
       vi.useRealTimers()
     }
   })
+
+  it('keeps the totals readable on a phone: spaced columns, minutes only from the sm breakpoint', async () => {
+    render(<WorkSummary currentUserId={2} isAdmin={false} users={[]} />)
+
+    const table = await screen.findByRole('table')
+    const headers = within(table).getAllByRole('columnheader')
+    expect(headers.map((header) => header.textContent)).toEqual(['Client', 'Minutes', 'Hours', 'h:m'])
+    // CSS isn't applied in jsdom; the classes are what hides minutes below sm
+    // and spaces the numbers (checked visually at 390px and 1440px).
+    expect(headers[1]).toHaveClass('hidden', 'sm:table-cell')
+    const alphaRow = within(table).getByRole('row', { name: /Alpha Co/ })
+    const cells = within(alphaRow).getAllByRole('cell')
+    expect(cells[0]).toHaveClass('hidden', 'sm:table-cell')
+    cells.slice(1).forEach((cell) => expect(cell).toHaveClass('pl-4', 'whitespace-nowrap'))
+    expect(cells.slice(1).map((cell) => cell.textContent)).toEqual(['0.75', '45m'])
+  })
 })
+

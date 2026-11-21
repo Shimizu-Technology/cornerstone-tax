@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ServiceType } from '../../lib/api'
 import {
   INTERNAL_CLIENT_LABEL,
@@ -114,7 +114,7 @@ export default function WorkLinesEditor({
 
       {/* Column titles for the desktop table; phones show per-field labels. */}
       {!singleSession && (
-        <div aria-hidden="true" className="hidden md:grid md:grid-cols-[minmax(11rem,1.1fr)_minmax(13rem,1.6fr)_minmax(10rem,1fr)_10rem_6.5rem] md:gap-2 md:px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+        <div aria-hidden="true" className="hidden md:grid md:grid-cols-[minmax(11rem,1.1fr)_minmax(14rem,2.5fr)_minmax(9rem,1fr)_9rem_6.5rem] md:gap-2 md:px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
           <span>Client</span><span>What I did</span><span>Category</span><span>Time</span><span className="sr-only">Actions</span>
         </div>
       )}
@@ -282,7 +282,7 @@ function WorkLineRow({
   return (
     <li
       className={`rounded-xl border bg-white p-3 ${problems.length ? 'border-amber-300' : 'border-neutral-warm'} ${
-        wholeSession ? 'space-y-3' : 'space-y-3 md:grid md:grid-cols-[minmax(11rem,1.1fr)_minmax(13rem,1.6fr)_minmax(10rem,1fr)_10rem_6.5rem] md:items-start md:gap-2 md:space-y-0 md:p-2'
+        wholeSession ? 'space-y-3' : 'space-y-3 md:grid md:grid-cols-[minmax(11rem,1.1fr)_minmax(14rem,2.5fr)_minmax(9rem,1fr)_9rem_6.5rem] md:items-start md:gap-2 md:space-y-0 md:p-2'
       }`}
       aria-label={lineName}
     >
@@ -303,19 +303,18 @@ function WorkLineRow({
 
       <div>
         <label htmlFor={`${id}-description`} className={wholeSession ? labelClass : `${labelClass} md:sr-only`}>What I did</label>
-        <input
+        {/* One line of text that wraps and grows, so a long description stays
+            readable while it's edited instead of being cut off. */}
+        <GrowingTextField
           id={`${id}-description`}
-          type="text"
           value={line.description}
-          onChange={(event) => onChange({ description: event.target.value })}
+          onChange={(description) => onChange({ description })}
           placeholder="e.g. Reconciled June bank statements"
-          className={inputClass}
+          className={`${inputClass} resize-none overflow-hidden leading-snug`}
           aria-label={wholeSession ? undefined : `${lineName} description`}
           aria-required={required}
           aria-describedby={problems.length ? problemId : undefined}
           disabled={disabled}
-          enterKeyHint="next"
-          autoComplete="off"
         />
         {descriptionChips.length > 0 && !line.description && (
           <div className="mt-2 flex flex-wrap gap-2" aria-label={`Recent descriptions for ${lineName.toLowerCase()}`}>
@@ -561,5 +560,52 @@ function DurationField({
         {minutes !== null && minutes > 0 ? `= ${formatMinutes(minutes)} (${minutesToHoursText(minutes)}h)` : 'Minutes or hours, e.g. 45 or 1.5h'}
       </p>
     </div>
+  )
+}
+
+/**
+ * A single-line text field that wraps long text and grows to fit it. Enter
+ * doesn't add a line break (descriptions stay one line), and pasted line
+ * breaks become spaces.
+ */
+function GrowingTextField({
+  id,
+  value,
+  onChange,
+  className,
+  ...rest
+}: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  className: string
+  placeholder?: string
+  disabled?: boolean
+  'aria-label'?: string
+  'aria-required'?: boolean
+  'aria-describedby'?: string
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  useLayoutEffect(() => {
+    const field = ref.current
+    if (!field) return
+    field.style.height = 'auto'
+    field.style.height = `${field.scrollHeight}px`
+  }, [value])
+
+  return (
+    <textarea
+      ref={ref}
+      id={id}
+      rows={1}
+      value={value}
+      onChange={(event) => onChange(event.target.value.replace(/\s*\n\s*/g, ' '))}
+      onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }}
+      className={className}
+      enterKeyHint="next"
+      autoComplete="off"
+      {...rest}
+    />
   )
 }

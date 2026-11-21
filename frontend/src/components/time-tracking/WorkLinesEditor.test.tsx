@@ -105,4 +105,23 @@ describe('WorkLinesEditor (day grid)', () => {
     expect(screen.queryByText('Choose a task')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Period' })).toBeInTheDocument()
   })
+
+  it('wraps a long description in a one-line field instead of cutting it off', () => {
+    render(<Harness />)
+    const description = screen.getByLabelText('Work description')
+
+    expect(description.tagName).toBe('TEXTAREA')
+    expect(description).toHaveAttribute('rows', '1')
+    const long = 'Reconciled operating account and payroll clearing account for October, then emailed the variance list'
+    fireEvent.change(description, { target: { value: long } })
+    expect((description as HTMLTextAreaElement).value).toBe(long)
+
+    // Stays one line: Enter adds no line break, and pasted ones become spaces.
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    description.dispatchEvent(enter)
+    expect(enter.defaultPrevented).toBe(true)
+    fireEvent.change(description, { target: { value: 'First line\nsecond line' } })
+    expect((description as HTMLTextAreaElement).value).toBe('First line second line')
+  })
 })
+

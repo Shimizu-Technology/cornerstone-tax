@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TimeTracking from './TimeTracking'
 import { formatDateISO } from '../../lib/dateUtils'
 
@@ -449,3 +449,49 @@ describe('TimeTracking unassigned time', () => {
     expect(await screen.findByRole('heading', { name: 'Edit Time Entry' })).toBeInTheDocument()
   })
 })
+
+describe('TimeTracking calendar view on phones and wider screens', () => {
+  const stubWidth = (phone: boolean) => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: phone && query === '(max-width: 639px)', media: query, onchange: null,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    apiMocks.getTimeEntries.mockResolvedValue({ data: { time_entries: [], summary: { total_hours: 0, total_break_hours: 0, entry_count: 0 } } })
+    apiMocks.getTimeCategories.mockResolvedValue({ data: { time_categories: [] } })
+    apiMocks.getClients.mockResolvedValue({ data: { clients: [] } })
+    apiMocks.getClientOptions.mockResolvedValue({ data: { clients: [] } })
+    apiMocks.getServiceTypes.mockResolvedValue({ data: { service_types: [] } })
+    apiMocks.getUsers.mockResolvedValue({ data: { users: [] } })
+    apiMocks.getCurrentUser.mockResolvedValue({ data: { user: { id: 1, is_admin: false } } })
+    apiMocks.getPendingApprovals.mockResolvedValue({ data: { summary: null } })
+    apiMocks.getTimePeriodLockStatus.mockResolvedValue({ data: { locked: false, lock: null } })
+  })
+
+  afterEach(() => {
+    // jsdom has no matchMedia of its own.
+    delete (window as { matchMedia?: unknown }).matchMedia
+  })
+
+  it('opens on the Day view on a phone, where a week of columns does not fit', async () => {
+    stubWidth(true)
+    renderPage()
+
+    const [dayToggle] = await screen.findAllByRole('button', { name: 'Day', pressed: true })
+    expect(dayToggle).toBeInTheDocument()
+    expect(screen.queryAllByRole('button', { name: 'Week', pressed: true })).toHaveLength(0)
+    await waitFor(() => expect(apiMocks.getTimeEntries).toHaveBeenCalledWith(expect.objectContaining({ date: expect.any(String) })))
+  })
+
+  it('keeps the Week view on wider screens', async () => {
+    stubWidth(false)
+    renderPage()
+
+    expect((await screen.findAllByRole('button', { name: 'Week', pressed: true })).length).toBeGreaterThan(0)
+    expect(screen.queryAllByRole('button', { name: 'Day', pressed: true })).toHaveLength(0)
+  })
+})
+

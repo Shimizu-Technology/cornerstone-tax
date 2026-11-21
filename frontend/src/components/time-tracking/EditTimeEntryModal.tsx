@@ -339,7 +339,7 @@ export default function EditTimeEntryModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-time-entry-title"
-            className="h-[100dvh] w-full overflow-y-auto overscroll-contain bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-2xl"
+            className="h-[100dvh] w-full overflow-y-auto overscroll-contain bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-2xl xl:max-w-5xl"
           >
             <div className="p-4 md:p-6">
               <h2 id="edit-time-entry-title" className="mb-1 text-xl font-bold text-primary-dark">Edit Time Entry</h2>
