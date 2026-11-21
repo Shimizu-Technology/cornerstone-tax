@@ -38,7 +38,7 @@ interface AuditLogItem {
   id: number
   auditable_type: string
   auditable_id: number
-  action: 'created' | 'updated' | 'deleted'
+  action: 'created' | 'updated' | 'deleted' | 'archived' | 'unarchived'
   description: string
   changes_made: Record<string, { from: unknown; to: unknown }> | null
   metadata: string | null
@@ -116,18 +116,24 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   created: 'Created',
   updated: 'Updated',
   deleted: 'Deleted',
+  archived: 'Archived',
+  unarchived: 'Restored',
 }
 
 const AUDIT_ACTION_ICONS: Record<string, string> = {
   created: '➕',
   updated: '✏️',
   deleted: '🗑️',
+  archived: '📦',
+  unarchived: '↩️',
 }
 
 const AUDIT_ACTION_COLORS: Record<string, string> = {
   created: 'bg-green-100 text-green-800 border-green-200',
   updated: 'bg-amber-100 text-amber-800 border-amber-200',
   deleted: 'bg-red-100 text-red-800 border-red-200',
+  archived: 'bg-gray-100 text-gray-800 border-gray-200',
+  unarchived: 'bg-blue-100 text-blue-800 border-blue-200',
 }
 
 const AUDITABLE_TYPE_LABELS: Record<string, string> = {

@@ -6,7 +6,9 @@ class AuditLog < ApplicationRecord
 
   validates :auditable_type, presence: true
   validates :auditable_id, presence: true
-  validates :action, presence: true, inclusion: { in: %w[created updated deleted] }
+  ACTIONS = %w[created updated deleted archived unarchived].freeze
+
+  validates :action, presence: true, inclusion: { in: ACTIONS }
 
   # Scopes
   scope :recent, -> { order(created_at: :desc) }

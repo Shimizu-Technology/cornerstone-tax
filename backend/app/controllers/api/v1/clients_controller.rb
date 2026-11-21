@@ -244,14 +244,11 @@ module Api
         if client.system?
           return render json: { errors: [ "#{Client::INTERNAL_NAME} is a system client and can't be archived" ] }, status: :unprocessable_entity
         end
-        client.archive!
-
-        AuditLog.create!(
-          user: current_user,
-          action: 'archived',
-          auditable: client,
-          details: { client_name: client.full_name }
-        )
+        # One transaction: a failed audit write must not leave the client archived.
+        Client.transaction do
+          client.archive!
+          AuditLog.log(auditable: client, action: "archived", user: current_user, metadata: "Archived #{client.full_name}")
+        end
 
         render json: { client: client_detail(client.reload) }
       end
@@ -259,14 +256,10 @@ module Api
       # POST /api/v1/clients/:id/unarchive
       def unarchive
         client = Client.find(params[:id])
-        client.unarchive!
-
-        AuditLog.create!(
-          user: current_user,
-          action: 'unarchived',
-          auditable: client,
-          details: { client_name: client.full_name }
-        )
+        Client.transaction do
+          client.unarchive!
+          AuditLog.log(auditable: client, action: "unarchived", user: current_user, metadata: "Unarchived #{client.full_name}")
+        end
 
         render json: { client: client_detail(client.reload) }
       end

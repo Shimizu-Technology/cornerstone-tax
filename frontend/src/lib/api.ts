@@ -632,7 +632,7 @@ export interface AuditLog {
   id: number;
   auditable_type: string;
   auditable_id: number;
-  action: 'created' | 'updated' | 'deleted';
+  action: 'created' | 'updated' | 'deleted' | 'archived' | 'unarchived';
   description: string;
   changes_made: Record<string, { from: unknown; to: unknown }> | null;
   metadata: string | null;

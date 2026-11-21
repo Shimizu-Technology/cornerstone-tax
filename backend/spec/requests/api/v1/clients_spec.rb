@@ -172,4 +172,51 @@ RSpec.describe "Api::V1::Clients", type: :request do
       )
     end
   end
+
+  describe "POST /api/v1/clients/:id/archive and /unarchive" do
+    let(:client) { Client.create!(first_name: "Archive", last_name: "Me") }
+
+    it "archives an ordinary client and writes the audit row" do
+      post "/api/v1/clients/#{client.id}/archive", headers: auth_headers_for(staff_user)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body, symbolize_names: true)
+      expect(body[:client][:id]).to eq(client.id)
+      expect(client.reload).to be_archived
+
+      log = AuditLog.where(auditable: client).sole
+      expect(log).to have_attributes(action: "archived", user_id: staff_user.id, metadata: "Archived Archive Me")
+      expect(log.description).to eq("Archived client Archive Me")
+    end
+
+    it "unarchives the client and writes the audit row" do
+      client.archive!
+
+      post "/api/v1/clients/#{client.id}/unarchive", headers: auth_headers_for(staff_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(client.reload).not_to be_archived
+      expect(AuditLog.where(auditable: client).sole).to have_attributes(action: "unarchived", user_id: staff_user.id)
+    end
+
+    it "leaves the client active when the audit row can't be written" do
+      allow(AuditLog).to receive(:log).and_raise(ActiveRecord::RecordInvalid.new(AuditLog.new))
+
+      post "/api/v1/clients/#{client.id}/archive", headers: auth_headers_for(staff_user)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(client.reload).not_to be_archived
+      expect(AuditLog.where(auditable: client)).to be_empty
+    end
+
+    it "leaves the client archived when the unarchive audit row can't be written" do
+      client.archive!
+      allow(AuditLog).to receive(:log).and_raise(ActiveRecord::RecordInvalid.new(AuditLog.new))
+
+      post "/api/v1/clients/#{client.id}/unarchive", headers: auth_headers_for(staff_user)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(client.reload).to be_archived
+    end
+  end
 end
