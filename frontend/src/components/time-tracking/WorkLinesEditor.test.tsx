@@ -124,6 +124,48 @@ describe('WorkLinesEditor (day grid)', () => {
     expect((description as HTMLTextAreaElement).value).toBe('First line second line')
   })
 
+  describe('row alignment', () => {
+    const manyClients = Array.from({ length: 8 }, (_, index) => ({ id: 100 + index, name: `Client ${index + 1}`, client_type: 'business' }))
+
+    function ManyClients() {
+      const [lines, setLines] = useState<WorkLineDraft[]>([newDraft(), newDraft()])
+      return (
+        <WorkLinesEditor lines={lines} onChange={setLines} targetMinutes={null} clients={manyClients} serviceTypes={serviceTypes}
+          suggestions={{ ...suggestions, recentClients: [{ id: 101, name: 'Tumon Watch & Clock Repair', client_type: 'business' }] }}
+          mode="day" idPrefix="t" />
+      )
+    }
+
+    it('puts the client select first in its cell so it lines up with the other fields, with the search under it', () => {
+      render(<ManyClients />)
+      const select = screen.getByLabelText('Line 1 client')
+      const search = screen.getByLabelText('Search clients for line 1 client')
+
+      // The select precedes the search box (DOCUMENT_POSITION_FOLLOWING = 4).
+      expect(select.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(search).toHaveAttribute('aria-controls', select.id)
+    })
+
+    it('keeps every field labelled for screen readers when the table hides the visible labels', () => {
+      render(<ManyClients />)
+      for (const name of ['Line 1 client', 'Line 1 description', 'Line 1 category', 'Line 1 time']) {
+        const field = screen.getByLabelText(name)
+        const label = document.querySelector(`label[for="${field.id}"]`)
+        expect(label).not.toBeNull()
+        // Hidden visually only on wide layouts; still in the accessibility tree.
+        expect(label!.className).toContain('@4xl:sr-only')
+        expect(label!.className).not.toMatch(/(^|\s)(hidden|md:hidden)(\s|$)/)
+      }
+    })
+
+    it('shows a long recent client name in full instead of truncating it', () => {
+      render(<ManyClients />)
+      const chip = screen.getAllByRole('button', { name: 'Tumon Watch & Clock Repair' })[0]
+      expect(chip.className).not.toContain('truncate')
+      expect(chip.className).toContain('whitespace-normal')
+    })
+  })
+
   describe('when the field changes width', () => {
     afterEach(() => vi.unstubAllGlobals())
 

@@ -2163,7 +2163,7 @@ function StageForm({ formData, colorOptions, onNameChange, onFormChange, onSave,
             value={formData.slug}
             onChange={(e) => onFormChange('slug', e.target.value)}
             placeholder="e.g., in_review"
-            className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary font-mono text-sm bg-white"
+            className="w-full px-4 py-2.5 border border-neutral-warm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary font-mono text-sm leading-6 bg-white"
           />
         </div>
       </div>

@@ -193,7 +193,7 @@ export default function TaxReturns() {
                   value={search}
                   onChange={(e) => { setSearch(e.target.value); setPage(1) }}
                   placeholder="Client name..."
-                  className="w-full pl-10 pr-4 py-2.5 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
+                  className="w-full h-11 pl-10 pr-4 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
                 />
               </div>
             </div>
@@ -207,7 +207,7 @@ export default function TaxReturns() {
                 id="stage"
                 value={stageFilter}
                 onChange={(e) => { setStageFilter(e.target.value); setPage(1) }}
-                className="w-full px-4 py-2.5 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
+                className="w-full h-11 px-4 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
               >
                 <option value="">All Statuses</option>
                 {stages.map(stage => (
@@ -225,7 +225,7 @@ export default function TaxReturns() {
                 id="year"
                 value={yearFilter}
                 onChange={(e) => { setYearFilter(e.target.value ? parseInt(e.target.value) : ''); setPage(1) }}
-                className="w-full px-4 py-2.5 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
+                className="w-full h-11 px-4 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
               >
                 <option value="">All Years</option>
                 {yearOptions.map(year => (
@@ -234,15 +234,6 @@ export default function TaxReturns() {
               </select>
             </div>
 
-            {/* Clear Filters */}
-            <div className="flex items-end">
-              <button
-                onClick={() => { setSearch(''); setStageFilter(''); setYearFilter(''); setPaymentFilter(''); setFilingFilter(''); setPage(1) }}
-                className="text-sm text-gray-600 hover:text-primary transition-colors font-medium"
-              >
-                Clear Filters
-              </button>
-            </div>
             <div>
               <label htmlFor="payment" className="block text-sm font-medium text-gray-700 mb-2">
                 Payment
@@ -251,7 +242,7 @@ export default function TaxReturns() {
                 id="payment"
                 value={paymentFilter}
                 onChange={(e) => { setPaymentFilter(e.target.value); setPage(1) }}
-                className="w-full px-4 py-2.5 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
+                className="w-full h-11 px-4 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
               >
                 <option value="">All Payments</option>
                 <option value="unpaid">Unpaid</option>
@@ -268,7 +259,7 @@ export default function TaxReturns() {
                 id="filing"
                 value={filingFilter}
                 onChange={(e) => { setFilingFilter(e.target.value); setPage(1) }}
-                className="w-full px-4 py-2.5 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
+                className="w-full h-11 px-4 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-secondary/30 transition-colors"
               >
                 <option value="">All Filing</option>
                 <option value="not_filed">Not Filed</option>
@@ -279,6 +270,16 @@ export default function TaxReturns() {
                 <option value="rejected">Rejected</option>
                 <option value="paper_filed">Paper Filed</option>
               </select>
+            </div>
+
+            {/* Clear Filters: last in the row, on the controls' line */}
+            <div className="flex items-end">
+              <button
+                onClick={() => { setSearch(''); setStageFilter(''); setYearFilter(''); setPaymentFilter(''); setFilingFilter(''); setPage(1) }}
+                className="min-h-11 text-sm text-gray-600 hover:text-primary transition-colors font-medium"
+              >
+                Clear Filters
+              </button>
             </div>
           </div>
         </div>
@@ -325,28 +326,28 @@ export default function TaxReturns() {
                   <table className="min-w-full">
                     <thead className="bg-secondary/50">
                       <tr>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                           Client
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                           Tax Year
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                           Status
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                           Assigned To
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                           Payment
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                           Filing
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                           Date
                         </th>
-                        <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <th className="px-4 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                           Actions
                         </th>
                       </tr>
@@ -360,7 +361,7 @@ export default function TaxReturns() {
                           transition={{ duration: 0.3, delay: idx * 0.03, ease: [0.22, 1, 0.36, 1] }}
                           className="hover:bg-secondary/30 transition-colors"
                         >
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-4">
                             <Link 
                               to={`/admin/clients/${taxReturn.client.id}`}
                               className="group"
@@ -371,13 +372,13 @@ export default function TaxReturns() {
                               <p className="text-sm text-gray-500">{taxReturn.client.email}</p>
                             </Link>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-4">
                             <span className="font-semibold text-gray-900">{taxReturn.tax_year}</span>
                             <p className="text-xs text-gray-500">
                               {taxReturn.form_type || 'General'} • {taxReturn.return_type.replaceAll('_', ' ')}
                             </p>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-4">
                             <select
                               value={stages.find(s => s.name === taxReturn.status)?.id || ''}
                               onChange={(e) => handleStatusChange(taxReturn.id, parseInt(e.target.value))}
@@ -392,7 +393,7 @@ export default function TaxReturns() {
                               ))}
                             </select>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-4">
                             <select
                               value={taxReturn.assigned_to?.id || ''}
                               onChange={(e) => handleAssignmentChange(taxReturn.id, parseInt(e.target.value))}
@@ -405,7 +406,7 @@ export default function TaxReturns() {
                               ))}
                             </select>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-4">
                             <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                               taxReturn.payment_status === 'paid' ? 'bg-green-100 text-green-700' :
                               taxReturn.payment_status === 'partially_paid' ? 'bg-amber-100 text-amber-700' :
@@ -418,14 +419,15 @@ export default function TaxReturns() {
                               <p className="text-xs text-gray-500 mt-1">Due {formatMoney(taxReturn.balance_due_cents)}</p>
                             )}
                           </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-700 capitalize">{taxReturn.filing_status.replaceAll('_', ' ')}</span>
+                          <td className="px-4 py-4">
+                            <span className="text-sm text-gray-700 capitalize whitespace-nowrap">{taxReturn.filing_status.replaceAll('_', ' ')}</span>
                             {taxReturn.portal_visible && <p className="text-xs text-primary mt-1">Visible in portal</p>}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-500">
+                          {/* Wide enough for "Nov 21, 2026 at" on one line and the time on the next, not one word per line. */}
+                          <td className="px-4 py-4 text-sm text-gray-500 min-w-[8.75rem]">
                             {formatDateTime(taxReturn.created_at)}
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-4 py-4 text-right">
                             <Link
                               to={`/admin/returns/${taxReturn.id}`}
                               className="text-primary hover:text-primary-dark font-medium text-sm transition-colors"

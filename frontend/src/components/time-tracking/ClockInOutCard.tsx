@@ -271,9 +271,10 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
   const statusLabel = isOnBreak ? 'On Break' : isClockedIn ? 'Clocked In' : 'Not Clocked In'
 
   // Shared button styles
-  const btnPrimary = 'min-h-[48px] py-3 px-5 bg-primary hover:bg-primary-dark active:bg-primary-dark disabled:bg-neutral-warm disabled:text-text-muted text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-sm'
+  // All three carry a 1px border (transparent on the filled ones) so they're the same height side by side.
+  const btnPrimary = 'min-h-[48px] py-3 px-5 border border-transparent bg-primary hover:bg-primary-dark active:bg-primary-dark disabled:bg-neutral-warm disabled:text-text-muted text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-sm'
   const btnSecondary = 'min-h-[48px] py-3 px-5 bg-secondary-dark hover:bg-neutral-warm active:bg-neutral-warm text-primary-dark font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm border border-neutral-warm'
-  const btnBreak = 'min-h-[48px] py-3 px-5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-sm'
+  const btnBreak = 'min-h-[48px] py-3 px-5 border border-transparent bg-amber-500 hover:bg-amber-600 active:bg-amber-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-sm'
 
   return (
     <div className={`rounded-2xl border shadow-sm transition-all duration-300 hover:shadow-md overflow-hidden bg-white ${borderColor}`}>
@@ -441,7 +442,8 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
             animate={{ opacity: 1, y: 0 }}
             className="mt-4 pt-4 border-t border-neutral-warm/50"
           >
-            <div className="flex items-center gap-6 lg:gap-8">
+            {/* Bottom-aligned so the captions share a line even though the numbers differ in size. */}
+            <div className="flex items-end gap-6 lg:gap-8">
               <div className="text-center">
                 <div className={`font-mono text-3xl lg:text-4xl font-bold tabular-nums tracking-tight ${isOnBreak ? 'text-amber-600' : 'text-primary-dark'}`}>
                   {isOnBreak ? fmt(breakElapsed) : fmt(Math.max(netWorkSeconds, 0))}
@@ -450,7 +452,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
                   {isOnBreak ? 'Break time' : 'Time worked'}
                 </div>
               </div>
-              <div className="w-px h-12 bg-neutral-warm/60" />
+              <div className="w-px self-stretch bg-neutral-warm/60" />
               <div className="text-center">
                 <div className="font-mono text-xl lg:text-2xl font-semibold text-primary-dark tabular-nums">
                   {fmt(elapsedSeconds)}
@@ -459,7 +461,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
                   Total time
                 </div>
               </div>
-              <div className="w-px h-12 bg-neutral-warm/60" />
+              <div className="w-px self-stretch bg-neutral-warm/60" />
               <div className="text-center">
                 <div className="font-mono text-xl lg:text-2xl font-semibold tabular-nums text-text-muted">
                   {isOnBreak ? fmt(Math.max(netWorkSeconds, 0)) : `${status?.break_minutes || 0}m`}

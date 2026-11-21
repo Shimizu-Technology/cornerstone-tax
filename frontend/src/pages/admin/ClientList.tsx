@@ -184,7 +184,7 @@ export default function ClientList() {
               setSelectedServiceTypeId(e.target.value ? parseInt(e.target.value) : undefined)
               setPage(1)
             }}
-            className="px-4 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white text-sm"
+            className="min-h-11 px-4 py-2 border border-secondary-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white text-sm"
           >
             <option value="">All Services</option>
             {serviceTypes.map(st => (
@@ -221,18 +221,21 @@ export default function ClientList() {
             >
               Service Only
             </button>
-            <button
-              onClick={() => {
-                setShowArchived(prev => !prev)
-                setPage(1)
-              }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                showArchived ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-white text-gray-500 border-gray-200 hover:bg-secondary'
-              }`}
-            >
-              {showArchived ? 'Showing Archived' : 'Show Archived'}
-            </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowArchived(prev => !prev)
+              setPage(1)
+            }}
+            aria-pressed={showArchived}
+            className={`min-h-11 px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${
+              showArchived ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-white text-gray-500 border-secondary-dark hover:bg-secondary'
+            }`}
+          >
+            {showArchived ? 'Showing Archived' : 'Show Archived'}
+          </button>
 
           {/* Clear Filters */}
           {hasActiveFilters && (
@@ -382,7 +385,7 @@ export default function ClientList() {
                       <td className="px-6 py-4">
                         {client.tax_return ? (
                           <span
-                            className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm"
+                            className="inline-block whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm"
                             style={{ backgroundColor: client.tax_return.status_color || '#6B7280' }}
                           >
                             {client.tax_return.status || 'Unknown'}
