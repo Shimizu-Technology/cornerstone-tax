@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
 class ServiceType < ApplicationRecord
-  has_many :service_tasks, dependent: :destroy
+  # Tasks are destroyed by destroy_service_tasks, which reports a task's
+  # refusal (e.g. it has logged time) on this category instead of failing
+  # with no errors.
+  has_many :service_tasks
   has_many :client_service_types, dependent: :destroy
   has_many :clients, through: :client_service_types
   # Deactivate instead of deleting once time uses it (the app only
@@ -10,6 +13,8 @@ class ServiceType < ApplicationRecord
   has_many :time_entry_allocations, dependent: :restrict_with_error
 
   validates :name, presence: true, uniqueness: true
+
+  before_destroy :destroy_service_tasks
 
   # Starter categories for internal work, keyed by a stable system_key so
   # they are found again after a rename; staff can rename or add to them.
@@ -48,5 +53,14 @@ class ServiceType < ApplicationRecord
 
   def set_position
     self.position ||= (ServiceType.maximum(:position) || 0) + 1
+  end
+
+  def destroy_service_tasks
+    service_tasks.each do |task|
+      next if task.destroy
+
+      task.errors.full_messages.each { |message| errors.add(:base, "Task #{task.name}: #{message}") }
+    end
+    throw(:abort) if errors.any?
   end
 end
