@@ -11,9 +11,12 @@ class User < ApplicationRecord
   has_many :workflow_events, dependent: :nullify
   has_many :audit_logs, dependent: :nullify
   has_many :reviewed_intake_submissions, class_name: "IntakeSubmission", foreign_key: :reviewed_by_id, dependent: :nullify
-  has_many :time_entries, dependent: :nullify
-  has_many :approved_time_entries, class_name: "TimeEntry", foreign_key: "approved_by_id", dependent: :nullify
-  has_many :overtime_approved_time_entries, class_name: "TimeEntry", foreign_key: "overtime_approved_by_id", dependent: :nullify
+  # Users are terminated, never deleted (the legacy DELETE terminates). A
+  # hard delete must not nullify time ownership or approvals behind the
+  # entries' work_version, so it is refused while any such time exists.
+  has_many :time_entries, dependent: :restrict_with_error
+  has_many :approved_time_entries, class_name: "TimeEntry", foreign_key: "approved_by_id", dependent: :restrict_with_error
+  has_many :overtime_approved_time_entries, class_name: "TimeEntry", foreign_key: "overtime_approved_by_id", dependent: :restrict_with_error
   has_many :schedules, dependent: :nullify
   has_many :created_schedules, class_name: "Schedule", foreign_key: "created_by_id", dependent: :nullify
   has_many :uploaded_documents, class_name: "Document", foreign_key: "uploaded_by_id", dependent: :nullify

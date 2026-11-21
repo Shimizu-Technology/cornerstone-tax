@@ -3,7 +3,10 @@
 class Schedule < ApplicationRecord
   belongs_to :user, optional: true
   belongs_to :created_by, class_name: "User", optional: true
-  has_many :time_entries, dependent: :nullify
+  has_many :time_entries
+  # Deleting a schedule releases its entries through the versioned path
+  # (locked in id order, work_version bumped) instead of a bare nullify.
+  before_destroy :release_time_entries, prepend: true
 
   validates :work_date, presence: true
   validates :start_time, presence: true
@@ -40,6 +43,10 @@ class Schedule < ApplicationRecord
   end
 
   private
+
+  def release_time_entries
+    TimeEntry.versioned_update!(TimeEntry.where(schedule_id: id), schedule_id: nil)
+  end
 
   def end_time_after_start_time
     return unless start_time && end_time

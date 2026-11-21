@@ -119,6 +119,42 @@ class TimeEntry < ApplicationRecord
     self
   end
 
+  # Bulk writes to many entries go through here instead of update_all: the
+  # rows are locked in id order (the same order every multi-row lock uses),
+  # updated, and each entry's work_version is bumped, all in the caller's
+  # transaction. Returns the ids touched.
+  def self.versioned_update!(scope, attributes)
+    raise ActiveRecord::TransactionIsolationError, "versioned_update! must run inside a transaction" unless connection.transaction_open?
+
+    ids = scope.unscope(:order, :includes, :preload, :eager_load).order(:id).lock.pluck(:id)
+    return [] if ids.empty?
+
+    where(id: ids).update_all(attributes.merge(updated_at: Time.current)) if attributes.any?
+    where(id: ids).update_all("work_version = work_version + 1")
+    ids
+  end
+
+  # Moves time from one client to another (e.g. a merged intake duplicate):
+  # entry client columns and work lines alike, so attribution is kept and
+  # each line keeps matching its entry. Optionally moves the entries off one
+  # tax return onto another. Versioned and locked like versioned_update!.
+  def self.move_client!(from_client_id:, to_client_id:, tax_return_move: nil)
+    raise ActiveRecord::TransactionIsolationError, "move_client! must run inside a transaction" unless connection.transaction_open?
+
+    line_entry_ids = TimeEntryAllocation.where(client_id: from_client_id).select(:time_entry_id)
+    scope = where(client_id: from_client_id).or(where(id: line_entry_ids))
+    scope = scope.or(where(tax_return_id: tax_return_move.first)) if tax_return_move
+    ids = scope.order(:id).lock.pluck(:id)
+    return [] if ids.empty?
+
+    now = Time.current
+    where(id: ids, client_id: from_client_id).update_all(client_id: to_client_id, updated_at: now)
+    where(id: ids, tax_return_id: tax_return_move.first).update_all(tax_return_id: tax_return_move.last, updated_at: now) if tax_return_move
+    TimeEntryAllocation.where(time_entry_id: ids, client_id: from_client_id).update_all(client_id: to_client_id, updated_at: now)
+    where(id: ids).update_all("work_version = work_version + 1")
+    ids
+  end
+
   # Runs a multi-query read (reports, exports, feeds) against one snapshot,
   # so entries and their work lines come from the same moment. Inside an
   # existing transaction (e.g. tests) it just yields.

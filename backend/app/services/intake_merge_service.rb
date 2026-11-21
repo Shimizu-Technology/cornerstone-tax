@@ -174,10 +174,20 @@ class IntakeMergeService
   end
 
   def reassign_client_scoped_rows(from_return, to_return)
-    CLIENT_SCOPED_RETURN_CHILDREN.each do |model|
+    (CLIENT_SCOPED_RETURN_CHILDREN - [ TimeEntry ]).each do |model|
       model.where(tax_return_id: from_return.id)
         .update_all(tax_return_id: to_return.id, client_id: @existing_client.id)
     end
+
+    # Time moves through the versioned path: entries locked in id order, the
+    # intake client's work lines moved with them (so lines keep matching
+    # their entry), every touched entry's work_version bumped. Time the
+    # intake duplicate holds on other entries moves too, so nothing stays
+    # attributed to the archived duplicate.
+    # Entries on the return with another client keep that client (their
+    # lines say so); only the return reference moves.
+    return_move = from_return.id == to_return.id ? nil : [ from_return.id, to_return.id ]
+    TimeEntry.move_client!(from_client_id: @intake_client.id, to_client_id: @existing_client.id, tax_return_move: return_move)
   end
 
   def matching_existing_return(intake_return)

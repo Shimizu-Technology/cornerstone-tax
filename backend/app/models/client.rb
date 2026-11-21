@@ -13,8 +13,11 @@ class Client < ApplicationRecord
   has_many :tax_returns, dependent: :destroy
   has_many :intake_submissions, dependent: :destroy
   has_many :matched_intake_submissions, class_name: "IntakeSubmission", foreign_key: :matched_client_id, dependent: :nullify
-  has_many :time_entries, dependent: :nullify
-  has_many :time_entry_allocations, dependent: :nullify
+  # A client with logged time can't be hard-deleted (archive it instead):
+  # nullifying would silently drop that time's attribution and skip the
+  # entries' work_version. The app never hard-deletes clients.
+  has_many :time_entries, dependent: :restrict_with_error
+  has_many :time_entry_allocations, dependent: :restrict_with_error
   has_many :transmittals, dependent: :destroy
   has_many :notifications, dependent: :destroy
   has_one :user, dependent: :nullify

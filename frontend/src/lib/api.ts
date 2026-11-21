@@ -2276,6 +2276,9 @@ export const api = {
       };
     })()),
 
+  getTimeEntry: (id: number) =>
+    fetchApi<{ time_entry: TimeEntry }>(`/api/v1/time_entries/${id}`),
+
   deleteTimeEntry: (id: number, correctionReason?: string) =>
     fetchApi<void>(`/api/v1/time_entries/${id}`, {
       method: 'DELETE',

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { api } from '../../lib/api'
-import type { ServiceType, WorkLine } from '../../lib/api'
+import type { ServiceType, TimeEntry, WorkLine } from '../../lib/api'
 import type { ClientOption } from '../../lib/timeEntryWork'
 import TimeEntryWorkFields from './TimeEntryWorkFields'
 import WorkLinesEditor from './WorkLinesEditor'
@@ -65,6 +65,8 @@ interface EditTimeEntryModalProps {
   onSaved: () => void | Promise<void>
   onDeleted: () => void | Promise<void>
   onError?: (message: string | null) => void
+  /** Called as soon as a save hits a version conflict, so the caller can refetch. */
+  onConflict?: () => void
 }
 
 const BUSINESS_TIME_ZONE = 'Pacific/Guam'
@@ -111,6 +113,7 @@ export default function EditTimeEntryModal({
   onSaved,
   onDeleted,
   onError,
+  onConflict,
 }: EditTimeEntryModalProps) {
   const [formData, setFormData] = useState({
     work_date: '',
@@ -133,6 +136,7 @@ export default function EditTimeEntryModal({
   const [requiresCorrectionReason, setRequiresCorrectionReason] = useState(false)
   // Set when the server refused the save because the entry changed elsewhere.
   const [versionConflict, setVersionConflict] = useState(false)
+  const [conflictEntry, setConflictEntry] = useState<TimeEntry | null>(null)
   const [savingSeparately, setSavingSeparately] = useState(false)
 
   useEffect(() => {
@@ -160,6 +164,7 @@ export default function EditTimeEntryModal({
     setInitialBreakRows(rows)
     setError(null)
     setVersionConflict(false)
+    setConflictEntry(null)
     setCorrectionReason('')
     setCorrectionReferences([])
     setRequiresCorrectionReason(false)
@@ -242,7 +247,13 @@ export default function EditTimeEntryModal({
       const response = await api.updateTimeEntry(entry.id, payload, correctionReason, { expectedVersion: entry.version })
 
       if (response.status === 409) {
+        // Refetch at once so the panel (and the list behind) show what is
+        // saved now, not what this modal opened with.
         setVersionConflict(true)
+        setConflictEntry(response.current_entry ?? null)
+        onConflict?.()
+        const fresh = await api.getTimeEntry(entry.id)
+        if (fresh.data?.time_entry) setConflictEntry(fresh.data.time_entry)
         return
       }
 
@@ -564,6 +575,7 @@ export default function EditTimeEntryModal({
                     canSaveSeparately={lineCheck.problems && Object.keys(lineCheck.problems).length === 0}
                     onSaveSeparately={() => void saveSeparately()}
                     onDiscard={() => void onSaved()}
+                    current={conflictEntry}
                   />
                 ) : error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 

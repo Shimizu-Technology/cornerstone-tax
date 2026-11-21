@@ -197,6 +197,7 @@ export default function TimeTracking() {
   )
   const [unassignedRefresh, setUnassignedRefresh] = useState(0)
   const [modalVersionConflict, setModalVersionConflict] = useState(false)
+  const [modalConflictEntry, setModalConflictEntry] = useState<TimeEntryItem | null>(null)
   
   // View mode: 'day' or 'week'
   const [viewMode, setViewMode] = useState<'day' | 'week'>('week')
@@ -714,6 +715,7 @@ export default function TimeTracking() {
   const openEditEntry = (entry: TimeEntryItem) => {
     setEditingEntry(entry)
     setModalVersionConflict(false)
+    setModalConflictEntry(null)
     setCorrectionReason('')
     setCorrectionReferences([])
     setRequiresCorrectionReason(false)
@@ -775,7 +777,12 @@ export default function TimeTracking() {
         const response = await api.updateTimeEntry(editingEntry.id, editPayload, correctionReason, { expectedVersion: editingEntry.version })
         if (response.status === 409) {
           // Changed elsewhere since the modal opened: nothing was saved.
+          // Refetch at once so the panel and the list show what is saved now.
           setModalVersionConflict(true)
+          setModalConflictEntry(response.current_entry ?? null)
+          void loadEntries()
+          const fresh = await api.getTimeEntry(editingEntry.id)
+          if (fresh.data?.time_entry) setModalConflictEntry(fresh.data.time_entry)
           return
         }
         if (response.error) {
@@ -1918,6 +1925,7 @@ export default function TimeTracking() {
                     busy={saving}
                     canSaveSeparately={Object.keys(modalLineCheck.problems).length === 0}
                     onSaveSeparately={() => void saveModalLinesSeparately()}
+                    current={modalConflictEntry}
                     onDiscard={() => {
                       setModalVersionConflict(false)
                       setShowModal(false)

@@ -46,6 +46,7 @@ If the table really must go:
    DELETE FROM time_entry_allocations WHERE time_entry_id = 123 AND id <> (SELECT id FROM keep);
    COMMIT;
    ```
+   Once `time_entries.work_version` exists (#65), every raw `UPDATE time_entries` in this procedure must also set `work_version = work_version + 1`. That way an editor that's open elsewhere gets a 409 instead of overwriting the change.
 5. **Run `bin/rails db:rollback`** again. It succeeds once the query in step 3 returns nothing.
 6. **Afterwards, restore the splits** once the fixed release is deployed. Running `up` again rebuilds one line per entry from the entry columns. To put the original splits back, restore them in stages, and only for entries that haven't been edited since the export:
    ```sql

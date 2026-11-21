@@ -411,4 +411,73 @@ RSpec.describe "Time entry work lines API", type: :request do
       expect(response).to have_http_status(:created)
     end
   end
+
+  describe "break corrections and the change token" do
+    let(:tz) { ActiveSupport::TimeZone[TimeClockService::BUSINESS_TIMEZONE] }
+    let!(:with_break) do
+      entry = create(:time_entry, user: employee, work_date: work_date, approval_status: "approved", break_minutes: 15, client: client_a)
+      entry.time_entry_breaks.create!(start_time: tz.parse("#{work_date} 12:00"), end_time: tz.parse("#{work_date} 12:15"))
+      entry.reload
+    end
+
+    def move_break(to_start, to_end, expected:)
+      patch "/api/v1/time_entries/#{with_break.id}", params: {
+        expected_version: expected, time_entry: { breaks: [ { start_time: to_start, end_time: to_end } ] }
+      }.to_json, headers: headers_for(admin)
+    end
+
+    it "moves the version when a break moves but the total stays the same, so a second stale save gets 409" do
+      version = with_break.work_version
+      hours = with_break.hours
+
+      move_break("12:30", "12:45", expected: version)
+      expect(response).to have_http_status(:ok)
+      expect(json.dig(:time_entry, :version)).to be > version
+      expect(with_break.reload.hours).to eq(hours)
+
+      move_break("13:00", "13:15", expected: version)
+      expect(response).to have_http_status(:conflict)
+      expect(with_break.time_entry_breaks.reload.map { |b| b.start_time.in_time_zone(tz).strftime("%H:%M") }).to eq([ "12:30" ])
+    end
+
+    it "moves the version for any break create, change or delete" do
+      version = with_break.reload.work_version
+      with_break.time_entry_breaks.first.update!(end_time: tz.parse("#{work_date} 12:14"))
+      expect(with_break.reload.work_version).to be > version
+
+      version = with_break.work_version
+      with_break.time_entry_breaks.first.destroy!
+      expect(with_break.reload.work_version).to be > version
+    end
+  end
+
+  describe "versioned bulk writes and deletions" do
+    it "releases a deleted schedule's entries through the versioned path" do
+      schedule = Schedule.create!(user: employee, work_date: work_date, start_time: "09:00", end_time: "17:00")
+      entry = create(:time_entry, user: employee, work_date: work_date, schedule: schedule)
+      version = entry.reload.work_version
+
+      schedule.destroy!
+
+      expect(entry.reload).to have_attributes(schedule_id: nil)
+      expect(entry.work_version).to be > version
+    end
+
+    it "refuses to hard-delete a client, user or catalog item that time still uses, keeping attribution" do
+      category = ServiceType.create!(name: "Bookkeeping #{SecureRandom.hex(2)}")
+      entry = create(:time_entry, user: employee, work_date: work_date, client: client_a, service_type: category, approval_status: "approved", approved_by: admin)
+
+      expect(client_a.destroy).to be(false)
+      expect(category.destroy).to be(false)
+      expect(employee.destroy).to be(false)
+      expect(admin.destroy).to be(false)
+      expect(entry.work_lines.reload.sole).to have_attributes(client_id: client_a.id, service_type_id: category.id)
+      expect(entry.reload).to have_attributes(client_id: client_a.id, user_id: employee.id, approved_by_id: admin.id)
+    end
+
+    it "refuses versioned bulk writes outside a transaction" do
+      allow(TimeEntry.connection).to receive(:transaction_open?).and_return(false)
+      expect { TimeEntry.versioned_update!(TimeEntry.all, schedule_id: nil) }.to raise_error(ActiveRecord::TransactionIsolationError)
+    end
+  end
 end

@@ -8,6 +8,12 @@ class TimeEntryBreak < ApplicationRecord
 
   before_save :calculate_duration, if: -> { end_time.present? && end_time_changed? }
 
+  # Break changes are attendance changes: they move the parent entry's
+  # change token (work_version) in the same transaction, whatever the path
+  # (clock breaks, break corrections, auto-close).
+  after_save :bump_entry_work_version, if: :saved_changes?
+  after_destroy :bump_entry_work_version
+
   scope :active, -> { where(end_time: nil) }
   scope :completed, -> { where.not(end_time: nil) }
 
@@ -20,6 +26,10 @@ class TimeEntryBreak < ApplicationRecord
   end
 
   private
+
+  def bump_entry_work_version
+    TimeEntry.where(id: time_entry_id).update_all("work_version = work_version + 1")
+  end
 
   def calculate_duration
     self.duration_minutes = ((end_time - start_time) / 60).round

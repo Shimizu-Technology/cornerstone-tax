@@ -620,6 +620,7 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
         onSaved={handleEditSaved}
         onDeleted={handleEditSaved}
         onError={setActionError}
+        onConflict={() => void fetchPending()}
       />
     </>
   )

@@ -8,6 +8,7 @@ const apiMock = vi.hoisted(() => ({
   updateTimeEntry: vi.fn(),
   deleteTimeEntry: vi.fn(),
   getWorkLineSuggestions: vi.fn(),
+  getTimeEntry: vi.fn(),
 }))
 
 vi.mock('../../lib/api', () => ({
@@ -284,8 +285,12 @@ describe('EditTimeEntryModal', () => {
     const createTimeEntry = vi.fn().mockResolvedValue({ data: { time_entry: {} } })
     Object.assign(apiMock, { createTimeEntry })
     const onSaved = vi.fn()
+    const onConflict = vi.fn()
+    apiMock.getTimeEntry.mockResolvedValue({ data: { time_entry: { ...entry, version: 6, work_lines: [
+      { id: 1, position: 0, client: { id: 6, name: 'Jose Cruz' }, client_label: 'Jose Cruz', description: 'Saved in another tab', hours: 7.5, minutes: 450 },
+    ] } } })
     const versioned = { ...entry, hours: 7.5, version: 4, client: { id: 6, name: 'Jose Cruz' } }
-    render(<EditTimeEntryModal isOpen entry={versioned} clients={[{ id: 6, name: 'Jose Cruz' }]} canDelete onClose={vi.fn()} onSaved={onSaved} onDeleted={vi.fn()} />)
+    render(<EditTimeEntryModal isOpen entry={versioned} clients={[{ id: 6, name: 'Jose Cruz' }]} canDelete onClose={vi.fn()} onSaved={onSaved} onDeleted={vi.fn()} onConflict={onConflict} />)
 
     fireEvent.change(screen.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
     fireEvent.click(screen.getByRole('button', { name: /update/i }))
@@ -293,6 +298,10 @@ describe('EditTimeEntryModal', () => {
     expect(await screen.findByText('This entry was changed elsewhere after you opened it.')).toBeInTheDocument()
     expect(apiMock.updateTimeEntry.mock.calls[0][3]).toEqual({ expectedVersion: 4 })
     expect(onSaved).not.toHaveBeenCalled()
+    // Refetched straight away: the caller reloads and the panel shows what is saved now.
+    expect(onConflict).toHaveBeenCalled()
+    expect(apiMock.getTimeEntry).toHaveBeenCalledWith(3)
+    expect(await screen.findByLabelText('Lines saved now')).toHaveTextContent('Saved in another tab')
 
     fireEvent.click(screen.getByRole('button', { name: 'Save my lines as a separate day log' }))
     await waitFor(() => expect(createTimeEntry).toHaveBeenCalled())

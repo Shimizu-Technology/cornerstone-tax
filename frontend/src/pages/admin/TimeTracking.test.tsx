@@ -20,6 +20,7 @@ const apiMocks = vi.hoisted(() => ({
   downloadHoursReport: vi.fn(),
   getWorkLineSuggestions: vi.fn(),
   getUnassignedTime: vi.fn(),
+  getTimeEntry: vi.fn(),
 }))
 
 vi.mock('../../lib/api', () => ({ api: apiMocks }))
@@ -378,6 +379,7 @@ describe('TimeTracking log time', () => {
     }
     apiMocks.getTimeEntries.mockResolvedValue(emptyEntryResponse([entry]))
     apiMocks.updateTimeEntry.mockResolvedValueOnce({ status: 409, code: 'version_conflict', error: 'Changed elsewhere' })
+    apiMocks.getTimeEntry.mockResolvedValue({ data: { time_entry: { ...entry, version: 5, work_lines: [{ ...entry.work_lines[0], description: 'Saved in another tab' }] } } })
 
     renderPage('/admin/time')
     fireEvent.click(await screen.findByText('Jose Cruz'))
@@ -385,8 +387,13 @@ describe('TimeTracking log time', () => {
     fireEvent.change(editor.getByLabelText('What I did'), { target: { value: 'New note' } })
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
 
+    const callsBefore = apiMocks.getTimeEntries.mock.calls.length
     expect(await screen.findByText('This entry was changed elsewhere after you opened it.')).toBeInTheDocument()
     expect(apiMocks.updateTimeEntry.mock.calls[0][3]).toEqual({ expectedVersion: 3 })
+    // Refetched straight away: the entry list and the panel's "saved now" lines.
+    await waitFor(() => expect(apiMocks.getTimeEntries.mock.calls.length).toBeGreaterThan(callsBefore))
+    expect(apiMocks.getTimeEntry).toHaveBeenCalledWith(78)
+    expect(await screen.findByLabelText('Lines saved now')).toHaveTextContent('Saved in another tab')
     expect(screen.getByRole('button', { name: 'Discard my lines' })).toBeInTheDocument()
   })
 
