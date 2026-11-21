@@ -113,6 +113,7 @@ Rails.application.routes.draw do
           post :start_break
           post :end_break
           post :bulk_approve
+          get :stuck_clock_entries
           get :unscheduled_only_approvals
           post :approve_unscheduled_only
           get :current_status
@@ -125,6 +126,7 @@ Rails.application.routes.draw do
           post :approve
           post :deny
           post :approve_overtime
+          post :mark_completed
           post :deny_overtime
         end
       end

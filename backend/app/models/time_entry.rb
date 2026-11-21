@@ -41,6 +41,7 @@ class TimeEntry < ApplicationRecord
   validates :start_time, presence: true, if: -> { status == "completed" && !duration_only? }
   validates :end_time, presence: true, if: -> { status == "completed" && !duration_only? }
   validate :end_time_after_start_time
+  validate :no_end_time_while_active
   validate :service_task_matches_service_type
   validates :period_type, inclusion: { in: PERIOD_TYPES }, allow_nil: true
   validate :period_fields_consistent
@@ -71,6 +72,12 @@ class TimeEntry < ApplicationRecord
   scope :for_user, ->(user) { where(user: user) }
   scope :recent, -> { order(work_date: :desc, created_at: :desc) }
   scope :clocked_in, -> { where(status: %w[clocked_in on_break]) }
+  # Still clocked in but with an end time: the edit form could set one on an
+  # open clock entry before the edit path dropped it (April 2026). Such an
+  # entry never counts and blocks its owner's clock. Admins resolve it with
+  # "Mark completed" (TimeClockService.mark_stuck_entry_completed); the
+  # no_end_time_while_active validation stops new ones.
+  scope :stuck_clocked_in, -> { clocked_in.where.not(end_time: nil) }
   scope :pending_approval, -> { where(approval_status: "pending") }
   # Pending only because the person clocked in without a schedule: a finished
   # clock entry whose whole approval note is that reason (a corrected time or
@@ -452,6 +459,13 @@ class TimeEntry < ApplicationRecord
 
   def work_requirement_met
     TimeEntryWorkRequirement.errors_for(self).each { |message| errors.add(:base, message) }
+  end
+
+  def no_end_time_while_active
+    return unless active? && end_time.present?
+    return unless new_record? || will_save_change_to_end_time? || will_save_change_to_status?
+
+    errors.add(:end_time, "can't be set while the entry is still clocked in. Clock out, or mark the entry completed")
   end
 
   def set_zero_hours_if_clocked_in

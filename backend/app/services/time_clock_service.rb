@@ -5,6 +5,9 @@ class TimeClockService
   # The approval note on a clock-in without a schedule. Entries whose only
   # note is this one can be approved in bulk ("Approve unscheduled-only").
   UNSCHEDULED_NOTE = "Clocked in without a schedule"
+  # Approval note when an admin completes an entry left clocked in with an
+  # end time (mark_stuck_entry_completed).
+  STUCK_COMPLETED_NOTE = "Marked completed by an admin: it was left clocked in with an end time"
 
   # Optional work details staff can add when clocking out (same fields as a
   # manual entry: client, category, task, period). A key that is present
@@ -261,6 +264,54 @@ class TimeClockService
     end
 
     # ── Admin: Deny Entry ──
+    # ── Admin: Mark a stuck entry completed ──
+    # For an entry left clocked in with an end time (TimeEntry.stuck_clocked_in).
+    # Completes it with that end time (an open break is closed at it), so its
+    # hours come from its own times, and sends it to approval with a note.
+    # Entry lock first; the version bump and audit row happen in the same
+    # transaction.
+    def mark_stuck_entry_completed(entry:, by:, expected_version: nil)
+      raise AuthorizationError, "Only admins can mark entries completed" unless by&.admin?
+
+      entry.transaction do
+        entry.lock_for_work_lines!
+        if expected_version && entry.work_version != expected_version
+          raise ClockError, "This entry changed since you loaded it. Refresh and try again."
+        end
+        raise ClockError, "Only an entry still clocked in with an end time can be marked completed" unless entry.active? && entry.end_time.present?
+
+        before = { status: entry.status, approval_status: entry.approval_status, hours: entry.hours.to_f }
+        ended_at = stuck_entry_end_at(entry)
+        if (open_break = locked_active_break(entry))
+          raise ClockError, "Its open break starts after the end time; edit the entry instead" if open_break.start_time >= ended_at
+
+          open_break.close!(ended_at)
+        end
+
+        entry.status = "completed"
+        entry.clock_out_at = ended_at
+        entry.break_minutes = entry.total_break_minutes
+        entry.calculate_hours_from_times
+        entry.approval_status = "pending"
+        entry.approved_by = nil
+        entry.approved_at = nil
+        entry.approval_note = build_approval_note(entry.approval_note, STUCK_COMPLETED_NOTE)
+        entry.overtime_status = check_overtime_status(entry.user, entry)
+        entry.save!
+
+        AuditLog.log(
+          auditable: entry, action: "updated", user: by,
+          changes_made: {
+            "status" => { from: before[:status], to: "completed" },
+            "approval_status" => { from: before[:approval_status], to: "pending" },
+            "hours" => { from: before[:hours], to: entry.hours.to_f }
+          },
+          metadata: "Marked completed (was left clocked in with an end time)"
+        )
+      end
+      entry
+    end
+
     # Note: approved_by/approved_at store the acting admin for both approvals
     # and denials. The approval_status field distinguishes the action taken.
     def deny_entry(entry:, denied_by:, note: nil)
@@ -320,6 +371,18 @@ class TimeClockService
     # ── Helpers ──
 
     # The open break, row-locked. Call only after the entry is locked.
+    # end_time is a time of day; the moment it names is on the work date in
+    # Guam, or the next day when it is not after the clock-in.
+    def stuck_entry_end_at(entry)
+      tz = ActiveSupport::TimeZone[business_timezone]
+      seconds = entry.end_time.in_time_zone(tz).seconds_since_midnight
+      ended_at = tz.local(entry.work_date.year, entry.work_date.month, entry.work_date.day) + seconds
+      started_at = entry.clock_in_at || tz.local(entry.work_date.year, entry.work_date.month, entry.work_date.day) +
+                                        entry.start_time.in_time_zone(tz).seconds_since_midnight
+      ended_at += 1.day if ended_at <= started_at
+      ended_at
+    end
+
     def locked_active_break(entry)
       entry.time_entry_breaks.active.order(:id).lock.first
     end
@@ -351,7 +414,9 @@ class TimeClockService
 
     def flag_stale_entries(threshold_hours: 12)
       cutoff = threshold_hours.hours.ago
-      stale = TimeEntry.clocked_in.where("clock_in_at < ?", cutoff)
+      # An open entry that already has an end time isn't closed here: that
+      # would replace its real end time with now. Admins mark it completed.
+      stale = TimeEntry.clocked_in.where(end_time: nil).where("clock_in_at < ?", cutoff)
       count = stale.count
 
       stale.find_each do |entry|

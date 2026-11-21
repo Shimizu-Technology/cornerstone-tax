@@ -17,6 +17,7 @@ import { reportPeriodForPreset, reportPeriodFromSearchParams } from '../../lib/r
 import ClockInOutCard from '../../components/time-tracking/ClockInOutCard'
 import ApprovalQueue from '../../components/time-tracking/ApprovalQueue'
 import WhosWorking from '../../components/time-tracking/WhosWorking'
+import StuckClockEntries from '../../components/time-tracking/StuckClockEntries'
 import HoursReportWorkspace, { type HoursReportFilters, type ReportView } from '../../components/time-tracking/HoursReportWorkspace'
 import TimeEntryWorkFields, { CategoryFilterSelect, ClientPicker, PeriodPicker } from '../../components/time-tracking/TimeEntryWorkFields'
 import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, useTimeEntryWorkOptions, workFieldsFromEntry, type WorkFieldsValue } from '../../components/time-tracking/timeEntryWorkForm'
@@ -975,6 +976,14 @@ export default function TimeTracking() {
       {/* Admin live status */}
       {isAdmin && activeTab !== 'approvals' && (
         <WhosWorking />
+      )}
+
+      {/* Admin: clock entries left open with an end time */}
+      {isAdmin && (
+        <StuckClockEntries onResolved={() => {
+          void loadEntries()
+          void loadPendingApprovalSummary()
+        }} />
       )}
       
       {workOptions.error && (

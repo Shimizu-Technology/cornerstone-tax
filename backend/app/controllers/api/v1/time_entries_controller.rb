@@ -14,10 +14,10 @@ module Api
 
       before_action :authenticate_user!
       before_action :require_staff!
-      before_action :set_time_entry, only: [ :show, :update, :destroy, :approve, :deny, :approve_overtime, :deny_overtime ]
+      before_action :set_time_entry, only: [ :show, :update, :destroy, :approve, :deny, :approve_overtime, :deny_overtime, :mark_completed ]
       before_action :require_time_entry_owner_or_admin!, only: [ :update, :destroy ]
       before_action :require_admin!, only: [ :approve, :deny, :approve_overtime, :deny_overtime, :bulk_approve,
-                                             :unscheduled_only_approvals, :approve_unscheduled_only ]
+                                             :unscheduled_only_approvals, :approve_unscheduled_only, :stuck_clock_entries, :mark_completed ]
 
       # GET /api/v1/time_entries
       def index
@@ -436,6 +436,31 @@ module Api
         entry = with_export_invalidation(@time_entry, approval_change_reason("Time entry denied")) do
           TimeClockService.deny_entry(entry: @time_entry, denied_by: current_user, note: params[:note])
         end
+        render json: { time_entry: serialize_time_entry(eager_reload(entry)) }
+      rescue TimeClockService::AuthorizationError => e
+        render json: { error: e.message }, status: :forbidden
+      rescue TimeClockService::ClockError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # GET /api/v1/time_entries/stuck_clock_entries
+      # Entries left clocked in with an end time (see TimeEntry.stuck_clocked_in).
+      # They never count and the stale clock job leaves them alone, so admins
+      # see them here with a "Mark completed" action.
+      def stuck_clock_entries
+        entries = time_entry_serializer_scope.merge(TimeEntry.stuck_clocked_in).order(:work_date, :id).limit(200)
+        render json: { time_entries: entries.map { |entry| serialize_time_entry(entry) } }
+      end
+
+      # POST /api/v1/time_entries/:id/mark_completed [expected_version]
+      def mark_completed
+        if period_locked_for_date?(@time_entry.work_date)
+          return render json: { error: "This time period is locked. Unlock it to mark the entry completed." }, status: :forbidden
+        end
+        return render json: { error: "This time entry is locked and cannot be edited" }, status: :forbidden if @time_entry.locked?
+
+        expected = params[:expected_version].presence && Integer(params[:expected_version], exception: false)
+        entry = TimeClockService.mark_stuck_entry_completed(entry: @time_entry, by: current_user, expected_version: expected)
         render json: { time_entry: serialize_time_entry(eager_reload(entry)) }
       rescue TimeClockService::AuthorizationError => e
         render json: { error: e.message }, status: :forbidden
