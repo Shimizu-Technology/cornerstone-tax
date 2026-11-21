@@ -14,6 +14,7 @@ vi.mock('../../lib/api', () => ({ api: apiMocks }))
 
 const preview = {
   entry_ids: [11, 12, 13],
+  entries: [{ id: 11, version: 4 }, { id: 12, version: 2 }, { id: 13, version: 7 }],
   count: 3,
   hours: 7.5,
   oldest_work_date: '2026-11-03',
@@ -33,7 +34,7 @@ describe('ApprovalQueue: approve unscheduled-only entries', () => {
     apiMocks.getTimeCategories.mockResolvedValue({ data: { time_categories: [] } })
     apiMocks.getWorkLineSuggestions.mockResolvedValue({ data: null })
     apiMocks.getUnscheduledOnlyApprovals.mockResolvedValue({ data: preview })
-    apiMocks.approveUnscheduledOnly.mockResolvedValue({ data: { approved_count: 2, skipped_count: 1, approved_entry_ids: [11, 12] } })
+    apiMocks.approveUnscheduledOnly.mockResolvedValue({ data: { approved_count: 1, skipped_count: 2, changed_count: 1, ineligible_count: 1, approved_entry_ids: [11] } })
   })
 
   it('previews the count per person, then approves exactly the previewed entries on confirm', async () => {
@@ -51,8 +52,9 @@ describe('ApprovalQueue: approve unscheduled-only entries', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve 3 entries' }))
 
-    await waitFor(() => expect(apiMocks.approveUnscheduledOnly).toHaveBeenCalledWith([11, 12, 13]))
-    expect(await screen.findByText('Approved 2 entries. 1 changed since the preview and stayed in the queue.')).toBeInTheDocument()
+    // Each entry goes back with the version it was previewed at.
+    await waitFor(() => expect(apiMocks.approveUnscheduledOnly).toHaveBeenCalledWith([{ id: 11, version: 4 }, { id: 12, version: 2 }, { id: 13, version: 7 }]))
+    expect(await screen.findByText('Approved 1 entry. 1 changed since the preview and stayed in the queue. 1 no longer qualified (for example, its period was locked) and stayed in the queue.')).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Approve unscheduled-only entries' })).not.toBeInTheDocument()
     expect(onUpdate).toHaveBeenCalled()
   })
@@ -69,7 +71,7 @@ describe('ApprovalQueue: approve unscheduled-only entries', () => {
   })
 
   it('says so when nothing qualifies, with the confirm button off', async () => {
-    apiMocks.getUnscheduledOnlyApprovals.mockResolvedValue({ data: { ...preview, entry_ids: [], count: 0, hours: 0, by_user: [], needs_work_details_count: 0 } })
+    apiMocks.getUnscheduledOnlyApprovals.mockResolvedValue({ data: { ...preview, entry_ids: [], entries: [], count: 0, hours: 0, by_user: [], needs_work_details_count: 0 } })
     render(<ApprovalQueue />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Approve unscheduled-only entries' }))

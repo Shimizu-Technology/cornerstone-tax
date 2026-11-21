@@ -830,6 +830,8 @@ export interface UnassignedTimeEntry extends TimeEntry {
 /** Pending entries held only because the person clocked in without a schedule. */
 export interface UnscheduledOnlyPreview {
   entry_ids: number[];
+  /** Sent back on confirm; an entry whose version moved is skipped. */
+  entries: Array<{ id: number; version: number }>;
   count: number;
   hours: number;
   oldest_work_date: string | null;
@@ -2421,10 +2423,18 @@ export const api = {
   getUnscheduledOnlyApprovals: () =>
     fetchApi<UnscheduledOnlyPreview>('/api/v1/time_entries/unscheduled_only_approvals'),
 
-  approveUnscheduledOnly: (entryIds: number[]) =>
-    fetchApi<{ approved_count: number; skipped_count: number; approved_entry_ids: number[] }>('/api/v1/time_entries/approve_unscheduled_only', {
+  approveUnscheduledOnly: (entries: Array<{ id: number; version: number }>) =>
+    fetchApi<{
+      approved_count: number;
+      skipped_count: number;
+      /** Edited since the preview. */
+      changed_count: number;
+      /** No longer qualifies: a locked period, a correction, overtime or missing details. */
+      ineligible_count: number;
+      approved_entry_ids: number[];
+    }>('/api/v1/time_entries/approve_unscheduled_only', {
       method: 'POST',
-      body: JSON.stringify({ entry_ids: entryIds }),
+      body: JSON.stringify({ entries }),
     }),
 
   getPayPeriods: () => fetchApi<PayPeriods>('/api/v1/work_summary/pay_periods'),

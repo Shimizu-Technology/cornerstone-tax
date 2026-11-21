@@ -415,15 +415,16 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
     if (!unscheduledPreview || unscheduledPreview.count === 0) return
     setUnscheduledApproving(true)
     try {
-      const result = await api.approveUnscheduledOnly(unscheduledPreview.entry_ids)
+      const result = await api.approveUnscheduledOnly(unscheduledPreview.entries)
       if (result.error || !result.data) {
         setActionError(result.error || 'Could not approve the entries. Please try again.')
         return
       }
-      const { approved_count: approved, skipped_count: skipped } = result.data
+      const { approved_count: approved, changed_count: changed, ineligible_count: ineligible } = result.data
       setUnscheduledResult(
         `Approved ${approved} entr${approved === 1 ? 'y' : 'ies'}.` +
-        (skipped ? ` ${skipped} changed since the preview and stayed in the queue.` : ''),
+        (changed ? ` ${changed} changed since the preview and stayed in the queue.` : '') +
+        (ineligible ? ` ${ineligible} no longer qualified (for example, its period was locked) and stayed in the queue.` : ''),
       )
       setUnscheduledPreview(null)
       setSelectedIds(new Set())

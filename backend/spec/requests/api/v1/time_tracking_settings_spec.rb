@@ -61,14 +61,52 @@ RSpec.describe "Time tracking settings", type: :request do
       expect(entry).to have_attributes(approval_status: nil, overtime_status: "pending")
     end
 
+    it "is recorded at clock-in whatever the flag, and decided at clock-out" do
+      employee.update!(flexible_hours: true)
+      travel_to(guam.parse("2026-11-18 09:00")) { post "/api/v1/time_entries/clock_in", headers: headers_for(employee) }
+
+      expect(TimeEntry.clocked_in.find_by!(user: employee)).to have_attributes(unscheduled_clock_in: true, approval_note: nil)
+    end
+
     it "applies when it is switched on during the shift" do
       travel_to(guam.parse("2026-11-18 09:00")) { post "/api/v1/time_entries/clock_in", headers: headers_for(employee) }
-      expect(TimeEntry.clocked_in.find_by!(user: employee).approval_note).to eq("Clocked in without a schedule")
+      expect(TimeEntry.clocked_in.find_by!(user: employee).unscheduled_clock_in).to be(true)
       employee.update!(flexible_hours: true)
 
       travel_to(guam.parse("2026-11-18 10:00")) { post "/api/v1/time_entries/clock_out", headers: headers_for(employee) }
 
       expect(TimeEntry.where(user: employee).last).to have_attributes(approval_status: nil, approval_note: nil)
+    end
+
+    it "applies when it is switched off during the shift" do
+      employee.update!(flexible_hours: true)
+      travel_to(guam.parse("2026-11-18 09:00")) { post "/api/v1/time_entries/clock_in", headers: headers_for(employee) }
+      employee.update!(flexible_hours: false)
+
+      travel_to(guam.parse("2026-11-18 10:00")) { post "/api/v1/time_entries/clock_out", headers: headers_for(employee) }
+
+      expect(TimeEntry.where(user: employee).last).to have_attributes(approval_status: "pending", approval_note: "Clocked in without a schedule")
+    end
+
+    it "drops the note an older clock-in wrote when the person is now on flexible hours" do
+      employee.update!(flexible_hours: true)
+      travel_to(guam.parse("2026-11-18 09:00")) { post "/api/v1/time_entries/clock_in", headers: headers_for(employee) }
+      # As written before clock-in stopped deciding (and as the backfill marks it).
+      TimeEntry.clocked_in.find_by!(user: employee).update_columns(approval_note: "Clocked in without a schedule")
+
+      travel_to(guam.parse("2026-11-18 10:00")) { post "/api/v1/time_entries/clock_out", headers: headers_for(employee) }
+
+      expect(TimeEntry.where(user: employee).last).to have_attributes(approval_status: nil, approval_note: nil)
+    end
+
+    it "keeps an auto-closed unscheduled shift's reason when the person isn't flexible" do
+      travel_to(guam.parse("2026-11-18 09:00")) { post "/api/v1/time_entries/clock_in", headers: headers_for(employee) }
+      entry = TimeEntry.clocked_in.find_by!(user: employee)
+      entry.update_columns(clock_in_at: 20.hours.ago, start_time: 20.hours.ago)
+
+      TimeClockService.flag_stale_entries
+
+      expect(entry.reload.approval_note).to start_with("Clocked in without a schedule | Auto-closed")
     end
 
     it "is shown in the clock status" do
@@ -126,6 +164,12 @@ RSpec.describe "Time tracking settings", type: :request do
                             hours: hours }.merge(attrs))
     end
 
+    # Confirm with each entry's current version (as the preview returns it).
+    def confirm(*entries, as: admin, versions: {})
+      payload = entries.map { |entry| { id: entry.id, version: versions.fetch(entry.id) { entry.reload.work_version } } }
+      post "/api/v1/time_entries/approve_unscheduled_only", params: { entries: payload }.to_json, headers: headers_for(as)
+    end
+
     let!(:only_unscheduled) { pending_clock(employee) }
     let!(:second) { pending_clock(other, hours: 3.0, work_date: Date.new(2026, 11, 4)) }
     let!(:corrected) { pending_clock(employee, note: "Clocked in without a schedule | Employee corrected clock-out time to 05:00 PM") }
@@ -138,6 +182,8 @@ RSpec.describe "Time tracking settings", type: :request do
       get "/api/v1/time_entries/unscheduled_only_approvals", headers: headers_for(admin)
 
       expect(response).to have_http_status(:ok)
+      expect(json[:entries]).to eq([ { id: only_unscheduled.id, version: only_unscheduled.reload.work_version },
+                                     { id: second.id, version: second.reload.work_version } ])
       expect(json).to include(entry_ids: [ only_unscheduled.id, second.id ], count: 2, hours: 5.0,
                               oldest_work_date: "2026-11-03", newest_work_date: "2026-11-04", needs_work_details_count: 0)
       expect(json[:by_user]).to eq([
@@ -155,25 +201,67 @@ RSpec.describe "Time tracking settings", type: :request do
     end
 
     it "approves the previewed entries and nothing else" do
-      post "/api/v1/time_entries/approve_unscheduled_only",
-           params: { entry_ids: [ only_unscheduled.id, second.id ] }.to_json, headers: headers_for(admin)
+      confirm(only_unscheduled, second)
 
       expect(response).to have_http_status(:ok)
-      expect(json).to include(approved_count: 2, skipped_count: 0)
+      expect(json).to include(approved_count: 2, skipped_count: 0, changed_count: 0, ineligible_count: 0)
       expect(only_unscheduled.reload).to have_attributes(approval_status: "approved", approved_by_id: admin.id)
       expect(second.reload.approval_status).to eq("approved")
       [ corrected, edited, overtime, manual, locked ].each { |entry| expect(entry.reload.approval_status).to eq("pending") }
     end
 
-    it "skips entries that changed after the preview, or that never qualified" do
+    it "skips entries that no longer qualify, or never did" do
       only_unscheduled.update!(approval_note: "Clocked in without a schedule | Employee corrected clock-out time to 05:00 PM")
 
-      post "/api/v1/time_entries/approve_unscheduled_only",
-           params: { entry_ids: [ only_unscheduled.id, second.id, corrected.id ] }.to_json, headers: headers_for(admin)
+      confirm(only_unscheduled, second, corrected)
 
-      expect(json).to include(approved_count: 1, skipped_count: 2, approved_entry_ids: [ second.id ])
+      expect(json).to include(approved_count: 1, skipped_count: 2, ineligible_count: 2, approved_entry_ids: [ second.id ])
       expect(only_unscheduled.reload.approval_status).to eq("pending")
       expect(corrected.reload.approval_status).to eq("pending")
+    end
+
+    it "skips an entry edited since the preview even if it still qualifies" do
+      get "/api/v1/time_entries/unscheduled_only_approvals", headers: headers_for(admin)
+      previewed = json[:entries].to_h { |row| [ row[:id], row[:version] ] }
+      # A work-line edit that keeps the entry unscheduled-only but moves its version.
+      only_unscheduled.update!(description: "Changed in another tab")
+
+      confirm(only_unscheduled, second, versions: previewed)
+
+      expect(json).to include(approved_count: 1, changed_count: 1, skipped_count: 1, approved_entry_ids: [ second.id ])
+      expect(only_unscheduled.reload.approval_status).to eq("pending")
+    end
+
+    it "requires the version from the preview" do
+      post "/api/v1/time_entries/approve_unscheduled_only", params: { entries: [ { id: only_unscheduled.id } ] }.to_json, headers: headers_for(admin)
+      expect(response).to have_http_status(:unprocessable_entity)
+
+      post "/api/v1/time_entries/approve_unscheduled_only", params: { entry_ids: [ only_unscheduled.id ] }.to_json, headers: headers_for(admin)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(only_unscheduled.reload.approval_status).to eq("pending")
+    end
+
+    it "leaves entries in a locked time period out of the preview and the approval" do
+      get "/api/v1/time_entries/unscheduled_only_approvals", headers: headers_for(admin)
+      previewed = json[:entries].to_h { |row| [ row[:id], row[:version] ] }
+      TimePeriodLock.create!(start_date: Date.new(2026, 11, 1), end_date: Date.new(2026, 11, 3), locked_at: Time.current, locked_by: admin)
+
+      get "/api/v1/time_entries/unscheduled_only_approvals", headers: headers_for(admin)
+      expect(json[:entry_ids]).to eq([ second.id ])
+
+      confirm(only_unscheduled, second, versions: previewed)
+      expect(json).to include(approved_count: 1, ineligible_count: 1, approved_entry_ids: [ second.id ])
+      expect(only_unscheduled.reload.approval_status).to eq("pending")
+    end
+
+    it "writes an audit row for each approval" do
+      confirm(only_unscheduled, second)
+
+      logs = AuditLog.where(auditable_type: "TimeEntry", auditable_id: [ only_unscheduled.id, second.id ])
+      expect(logs.count).to eq(2)
+      expect(logs.map { |log| [ log.user_id, log.action, log.metadata, log.changes_made ] }.uniq).to eq(
+        [ [ admin.id, "updated", "Approved in bulk: unscheduled-only", { "approval_status" => [ "pending", "approved" ] } ] ]
+      )
     end
 
     it "keeps the overtime rule when approving" do
@@ -182,7 +270,7 @@ RSpec.describe "Time tracking settings", type: :request do
       create(:time_entry, user: employee, work_date: only_unscheduled.work_date, start_time: start, end_time: start + 7.hours,
                           hours: 7.0, approval_status: nil)
 
-      post "/api/v1/time_entries/approve_unscheduled_only", params: { entry_ids: [ only_unscheduled.id ] }.to_json, headers: headers_for(admin)
+      confirm(only_unscheduled)
 
       expect(only_unscheduled.reload).to have_attributes(approval_status: "approved", overtime_status: "pending")
     end
@@ -191,11 +279,11 @@ RSpec.describe "Time tracking settings", type: :request do
       get "/api/v1/time_entries/unscheduled_only_approvals", headers: headers_for(employee)
       expect(response).to have_http_status(:forbidden)
 
-      post "/api/v1/time_entries/approve_unscheduled_only", params: { entry_ids: [ only_unscheduled.id ] }.to_json, headers: headers_for(employee)
+      confirm(only_unscheduled, as: employee)
       expect(response).to have_http_status(:forbidden)
       expect(only_unscheduled.reload.approval_status).to eq("pending")
 
-      post "/api/v1/time_entries/approve_unscheduled_only", params: { entry_ids: [] }.to_json, headers: headers_for(admin)
+      post "/api/v1/time_entries/approve_unscheduled_only", params: { entries: [] }.to_json, headers: headers_for(admin)
       expect(response).to have_http_status(:unprocessable_entity)
     end
   end
@@ -274,6 +362,28 @@ RSpec.describe "Time tracking settings", type: :request do
         row = json[:time_entries].find { |item| item[:id] == entry.id }
         expect(row[:line_issues].first[:missing]).to eq([ "task" ])
         expect(json.dig(:summary, :task_required)).to be(true)
+      end
+
+      it "doesn't list or label entries from before the cutover for a missing task" do
+        before_cutover = create(:time_entry, user: employee, work_date: Date.new(2026, 10, 30), approval_status: nil, status: "completed")
+        before_cutover.work_lines.first.update_columns(client_id: client_a.id, description: "Reconciled", service_type_id: bookkeeping.id)
+        no_category = create(:time_entry, user: employee, work_date: Date.new(2026, 10, 29), approval_status: nil, status: "completed")
+        no_category.work_lines.first.update_columns(client_id: client_a.id, description: "Reconciled")
+
+        get "/api/v1/time_entries/unassigned", params: { issue: "any" }, headers: headers_for(admin)
+
+        expect(json[:time_entries].map { |item| item[:id] }).not_to include(before_cutover.id, no_category.id)
+      end
+
+      it "labels only the task-rule gaps from the cutover on" do
+        # Listed for a missing client, which applies at any date; no task label.
+        old = create(:time_entry, user: employee, work_date: Date.new(2026, 10, 30), approval_status: nil, status: "completed")
+        old.work_lines.first.update_columns(client_id: nil, description: "Reconciled")
+
+        get "/api/v1/time_entries/unassigned", params: { issue: "any" }, headers: headers_for(admin)
+
+        row = json[:time_entries].find { |item| item[:id] == old.id }
+        expect(row[:line_issues].first[:missing]).to eq([ "client" ])
       end
     end
   end

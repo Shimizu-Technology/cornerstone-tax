@@ -35,7 +35,9 @@ category without tasks (the starter internal categories have none) can't take a
 task, so those lines need only the category. The clock-out sheet, Log my day,
 both edit modals, approval and the Unassigned time list ("Anything missing")
 all follow the same rule (`TimeEntryWorkRequirement` on the server,
-`checkLines` in the app). With the setting on, the task picker sits next to
+`checkLines` in the app). Like the rest of the rule, it applies only from the
+"Required from" date; Unassigned time doesn't list or label older entries for
+a missing task. With the setting on, the task picker sits next to
 the category instead of under "Task and period".
 
 **Default: off.** Staff describe their work in free text, and the task list
@@ -70,8 +72,14 @@ schedule" note and no pending status. Everything else is unchanged:
 - overtime is still flagged for approval;
 - staff edits to attendance still go back to an admin.
 
-If it's switched on during a shift, that shift's clock-out doesn't go to
-approval either.
+**When it's decided.** Clock-in records whether there was a schedule
+(`time_entries.unscheduled_clock_in`), whatever the flag says. Clock-out, and
+the stale auto-close, decide approval with the flag as it is at that moment:
+the entry goes to pending if it was unscheduled and the person isn't on
+flexible hours. So switching the flag during a shift takes effect at
+clock-out, either way. The clock card's message follows the current flag.
+The migration backfills `unscheduled_clock_in` from the existing "Clocked in
+without a schedule" notes.
 
 Admins switch it in **Users → Team** (each change is recorded in Activity).
 Staff can't change it, including for themselves.
@@ -93,17 +101,27 @@ hours, date range and a per-person breakdown. Nothing is approved until the
 admin confirms.
 
 An entry qualifies when it is a finished clock entry, its whole approval note
-is "Clocked in without a schedule", it has no overtime to review and it isn't
-in a locked period. That excludes corrected clock-out times and staff edits,
-because both add to the note. Entries that still miss required work details are
-counted separately and stay in the queue.
+is "Clocked in without a schedule", it has no overtime to review, and neither
+the entry nor its date is locked (`TimePeriodLock`). That excludes corrected
+clock-out times and staff edits, because both add to the note. Entries that
+still miss required work details are counted separately and stay in the queue.
 
-On confirm, the server re-checks each previewed entry under a row lock and
-approves only those that still qualify. Anything that changed in the meantime
-is skipped and counted. Approval applies the usual overtime check, so an
-approval that crosses the threshold puts the entry's overtime up for review.
+The preview returns each entry's `version` (its `work_version`). On confirm,
+the server:
+
+1. takes the same advisory lock that locking a time period takes, so a period
+   locked while the approval runs either waits for it or is seen by it;
+2. locks the entries in id order and skips any whose version moved since the
+   preview (`changed_count`);
+3. re-checks the rule, including period locks, and skips any that no longer
+   qualify (`ineligible_count`);
+4. approves the rest, writing an audit row for each ("Approved in bulk:
+   unscheduled-only").
+
+Approval applies the usual overtime check, so an approval that crosses the
+threshold puts the entry's overtime up for review.
 
 Endpoints (admin only):
 - `GET /api/v1/time_entries/unscheduled_only_approvals`
-- `POST /api/v1/time_entries/approve_unscheduled_only` with `entry_ids`
-  (at most 500).
+- `POST /api/v1/time_entries/approve_unscheduled_only` with
+  `entries: [{ id, version }]` from the preview (at most 500).

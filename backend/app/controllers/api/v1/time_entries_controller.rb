@@ -550,6 +550,9 @@ module Api
 
         render json: {
           entry_ids: ready.map(&:id),
+          # Send these back on confirm: an entry whose version changed since
+          # the preview is skipped, never approved.
+          entries: ready.map { |entry| { id: entry.id, version: entry.work_version } },
           count: ready.size,
           hours: ready.sum { |entry| entry.hours.to_f }.round(2),
           oldest_work_date: ready.first&.work_date&.iso8601,
@@ -559,37 +562,49 @@ module Api
         }
       end
 
-      # POST /api/v1/time_entries/approve_unscheduled_only { entry_ids: [...] }
-      # Approves the previewed entries that still qualify (re-checked under
-      # row locks, taken in id order). Anything that changed since the
-      # preview is skipped and counted, never approved.
+      # POST /api/v1/time_entries/approve_unscheduled_only
+      #   { entries: [{ id:, version: }, ...] } from the preview
+      # Approves the previewed entries that still qualify. Under the period
+      # lock guard and row locks (id order) each entry is re-checked:
+      #   - changed_count: its version moved since the preview (or it's gone);
+      #   - ineligible_count: it no longer qualifies (a period was locked, a
+      #     correction or overtime was added, work details are missing).
+      # Skipped entries are never approved. Each approval writes an audit row.
       def approve_unscheduled_only
-        entry_ids = Array(params[:entry_ids]).filter_map { |value| value.to_i if value.to_i.positive? }.uniq
-        return render json: { error: "Nothing to approve. Refresh the preview." }, status: :unprocessable_entity if entry_ids.empty?
-        return render json: { error: "Approve at most 500 entries at a time" }, status: :unprocessable_entity if entry_ids.size > 500
+        previewed = unscheduled_preview_versions
+        return if performed?
 
         approved_ids = []
-        skipped = 0
+        changed = 0
+        ineligible = 0
         error_message = nil
         ActiveRecord::Base.transaction do
-          locked = TimeEntry.where(id: entry_ids).order(:id).lock.to_a
-          qualifying_ids = TimeEntry.unscheduled_only_pending.where(id: locked.map(&:id)).pluck(:id).to_set
-          candidates = locked.select { |entry| qualifying_ids.include?(entry.id) }
-          ready, = partition_unscheduled_only(candidates)
-          skipped = entry_ids.size - ready.size
+          # Same guard as locking a period (TimePeriodLock), taken before the
+          # period check in unscheduled_only_pending below.
+          TimePeriodLock.serialize_with_approvals!
+          locked = TimeEntry.where(id: previewed.keys).order(:id).lock.to_a
+          unchanged = locked.select { |entry| entry.work_version == previewed[entry.id] }
+          changed = previewed.size - unchanged.size
+          qualifying_ids = TimeEntry.unscheduled_only_pending.where(id: unchanged.map(&:id)).pluck(:id).to_set
+          ready, = partition_unscheduled_only(unchanged.select { |entry| qualifying_ids.include?(entry.id) })
+          ineligible = unchanged.size - ready.size
           overtime_context = build_bulk_overtime_context(ready)
 
           ready.each do |entry|
             error_message = approve_bulk_time_entry(entry, nil, overtime_context)
             raise ActiveRecord::Rollback if error_message
 
+            AuditLog.log(auditable: entry, action: "updated", user: current_user,
+                         changes_made: { "approval_status" => [ "pending", "approved" ] },
+                         metadata: "Approved in bulk: unscheduled-only")
             invalidate_exports_for_entry!(entry, "Unscheduled-only entry approved in bulk")
             approved_ids << entry.id
           end
         end
         return render json: { error: error_message }, status: :unprocessable_entity if error_message
 
-        render json: { approved_count: approved_ids.size, skipped_count: skipped, approved_entry_ids: approved_ids }
+        render json: { approved_count: approved_ids.size, skipped_count: changed + ineligible, changed_count: changed,
+                       ineligible_count: ineligible, approved_entry_ids: approved_ids }
       end
 
       # GET /api/v1/time_entries/unassigned
@@ -633,10 +648,13 @@ module Api
                                                   .offset((page - 1) * per_page).limit(per_page)
 
         task_required = TimeEntryWorkRequirement.task_required?
+        cutover = TimeEntryWorkRequirement.cutover_date
         render json: {
           time_entries: page_entries.map do |entry|
+            # Task labels only from the cutover, matching the list above.
+            entry_task_required = task_required && cutover.present? && entry.work_date >= cutover
             serialize_time_entry(entry).merge(
-              line_issues: entry.work_lines.map { |line| { id: line.id, missing: TimeEntryWorkRequirement.missing_for_line(line, task_required: task_required) } }
+              line_issues: entry.work_lines.map { |line| { id: line.id, missing: TimeEntryWorkRequirement.missing_for_line(line, task_required: entry_task_required) } }
             )
           end,
           summary: {
@@ -701,12 +719,20 @@ module Api
 
         conditions = "time_entry_allocations.client_id IS NULL OR COALESCE(TRIM(time_entry_allocations.description), '') = '' OR " \
                      "(clients.system_kind = 'internal' AND time_entry_allocations.service_type_id IS NULL)"
-        if TimeEntryWorkRequirement.task_required?
-          conditions += " OR time_entry_allocations.service_type_id IS NULL OR (time_entry_allocations.service_task_id IS NULL AND " \
-                        "EXISTS (SELECT 1 FROM service_tasks WHERE service_tasks.service_type_id = time_entry_allocations.service_type_id " \
-                        "AND service_tasks.is_active = TRUE))"
+        cutover = TimeEntryWorkRequirement.cutover_date
+        if TimeEntryWorkRequirement.task_required? && cutover
+          # The task rule, like the rest of the cutover rule's server checks,
+          # applies only from the cutover date.
+          conditions += " OR (EXISTS (SELECT 1 FROM time_entries task_cutover WHERE task_cutover.id = time_entry_allocations.time_entry_id " \
+                        "AND task_cutover.work_date >= #{connection_quote(cutover)}) AND (time_entry_allocations.service_type_id IS NULL OR " \
+                        "(time_entry_allocations.service_task_id IS NULL AND EXISTS (SELECT 1 FROM service_tasks WHERE " \
+                        "service_tasks.service_type_id = time_entry_allocations.service_type_id AND service_tasks.is_active = TRUE))))"
         end
         lines.where(conditions)
+      end
+
+      def connection_quote(value)
+        ActiveRecord::Base.connection.quote(value)
       end
 
       def with_export_invalidation(entry, reason)
@@ -824,6 +850,26 @@ module Api
           [ line.client_id, line.service_type_id, line.service_task_id, line.period_type, line.period_start&.iso8601,
             line.hours.to_f, line.description ].join("|")
         end
+      end
+
+      # { id => version } from the preview; renders 422 when it's missing or
+      # malformed (a version is required so a stale preview can't approve).
+      def unscheduled_preview_versions
+        rows = params[:entries]
+        rows = rows.to_unsafe_h.values if rows.respond_to?(:to_unsafe_h)
+        rows = Array(rows)
+        previewed = rows.each_with_object({}) do |row, memo|
+          row = row.respond_to?(:to_unsafe_h) ? row.to_unsafe_h : row.to_h
+          id = Integer(row["id"] || row[:id], exception: false)
+          version = Integer(row["version"] || row[:version], exception: false)
+          return render(json: { error: "Each entry needs its id and version from the preview. Refresh the preview." }, status: :unprocessable_entity) unless id&.positive? && version && version >= 0
+
+          memo[id] = version
+        end
+        return render(json: { error: "Nothing to approve. Refresh the preview." }, status: :unprocessable_entity) if previewed.empty?
+        return render(json: { error: "Approve at most 500 entries at a time" }, status: :unprocessable_entity) if previewed.size > 500
+
+        previewed
       end
 
       # [ready, needs_work_details]: entries that would fail the work-detail
