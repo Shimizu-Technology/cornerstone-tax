@@ -186,6 +186,7 @@ Rails.application.routes.draw do
       # Payroll reads staff hours from here (shared-secret auth, service-to-service)
       namespace :payroll do
         resource :time_summary, only: [ :show ], controller: :time_summaries
+        resource :work_hours, only: [ :show ], controller: :work_hours
       end
 
       # Admin-only routes
