@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import UnassignedTime from '../../components/time-tracking/UnassignedTime'
 import WorkLinesEditor from '../../components/time-tracking/WorkLinesEditor'
+import EntryWorkDetails from '../../components/time-tracking/EntryWorkDetails'
 import VersionConflictPanel from '../../components/time-tracking/VersionConflictPanel'
 import LogMyDay from '../../components/time-tracking/LogMyDay'
 import WorkSummary from '../../components/time-tracking/WorkSummary'
@@ -24,6 +25,7 @@ import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, useTimeEntryWorkOptions, w
 import { buildHoursReportParams, normalizeReportFilters } from '../../lib/hoursReportParams'
 import {
   categoryFilterValue,
+  isSplitEntry,
   parseCategoryFilter,
   periodLabel,
   workCategory,
@@ -1562,29 +1564,14 @@ export default function TimeTracking() {
                           </span>
                         )}
                       </div>
-                      {/* Client -> Category -> Task -> Period */}
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs sm:text-sm">
-                        <span className="font-semibold text-primary-dark">
-                          {entry.client ? entry.client.name : 'Internal'}
-                          {entry.tax_return && ` (${entry.tax_return.tax_year})`}
-                        </span>
-                        {workCategory(entry) ? (
-                          <span className="px-2 py-0.5 bg-primary/10 text-primary font-medium rounded">
-                            {workCategory(entry)?.label}
-                            {workCategory(entry)?.legacy && <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Legacy</span>}
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 bg-neutral-warm/50 text-text-muted rounded">Uncategorized</span>
-                        )}
-                        {entry.service_task && <span className="px-2 py-0.5 bg-secondary/60 text-primary-dark rounded">{entry.service_task.name}</span>}
-                        {entryPeriodLabel(entry) && <span className="px-2 py-0.5 border border-neutral-warm text-primary-dark rounded">{entryPeriodLabel(entry)}</span>}
-                      </div>
+                      {/* Client -> Category -> Task -> Period, one row per work line when split */}
+                      <EntryWorkDetails entry={entry} />
                       {/* Owner */}
                       <p className="mt-1 text-xs sm:text-sm text-primary-dark/80 truncate">
                         by {ownerLabel(entry)}
                       </p>
-                      {/* Comments */}
-                      {entry.description && (
+                      {/* Comments (a split entry shows each line's own) */}
+                      {entry.description && !isSplitEntry(entry) && (
                         <p className="mt-2 text-primary-dark text-sm">{entry.description}</p>
                       )}
                       {/* Approval info */}

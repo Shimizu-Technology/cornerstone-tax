@@ -188,7 +188,7 @@ export function workSummary(
   { includeClient = true, uncategorized = 'Uncategorized' as string | null } = {},
 ): string {
   const parts = [
-    includeClient ? entry.client?.name || 'Internal' : null,
+    includeClient ? entry.client?.name || NO_CLIENT_LABEL : null,
     workCategory(entry) ? workCategoryText(entry) : uncategorized,
     entry.service_task?.name,
     entry.period_label || periodLabel(entry.period_type, entry.period_start),
@@ -196,7 +196,15 @@ export function workSummary(
   return parts.filter(Boolean).join(' · ')
 }
 
+/**
+ * Shown where time has no client. Never "Internal": Internal – Cornerstone is
+ * a real client and shows its own name.
+ */
+export const NO_CLIENT_LABEL = 'No client'
+
 interface WorkLineLike {
+  /** null when the line has no client (the server's client_label then says "Unassigned"). */
+  client: { name: string } | null
   client_label: string
   service_type?: { id: number; name: string } | null
   service_task?: { name: string } | null
@@ -213,7 +221,7 @@ export function workLineSummary(line: WorkLineLike): string {
   // The server's category_label already marks a legacy category.
   const label = line.category_label || line.service_type?.name
   return workSummary({
-    client: { name: line.client_label },
+    client: line.client ? { name: line.client_label } : null,
     service_type: label ? { id: line.service_type?.id ?? 0, name: label } : null,
     service_task: line.service_task,
     period_label: line.period_label,
@@ -310,4 +318,22 @@ export function parseCategoryFilter(value: string): { service_type_id: string; t
   return match[1] === 'st'
     ? { service_type_id: match[2], time_category_id: '' }
     : { service_type_id: '', time_category_id: match[2] }
+}
+
+interface EntryWithLines {
+  client?: { name: string } | null
+  work_lines?: WorkLineLike[] | null
+}
+
+/** True when an entry is split across several work lines (its own work fields are then empty). */
+export function isSplitEntry(entry: EntryWithLines): boolean {
+  return (entry.work_lines?.length ?? 0) > 1
+}
+
+/** The clients an entry's time went to, in line order, without repeats. */
+export function entryClientNames(entry: EntryWithLines): string[] {
+  const names = isSplitEntry(entry)
+    ? entry.work_lines!.map((line) => (line.client ? line.client_label : NO_CLIENT_LABEL))
+    : [entry.client?.name || NO_CLIENT_LABEL]
+  return [...new Set(names)]
 }

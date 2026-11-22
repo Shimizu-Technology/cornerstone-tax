@@ -9,7 +9,8 @@ import type {
   TimeEntry,
 } from '../../lib/api'
 import { reportPeriodForPreset, type ReportPeriodPreset } from '../../lib/reportPeriods'
-import { categoryFilterValue, parseCategoryFilter, workCategoryText, workSummary, type ClientOption, type PeriodType } from '../../lib/timeEntryWork'
+import { categoryFilterValue, entryClientNames, isSplitEntry, parseCategoryFilter, workCategoryText, workLineText, workSummary, type ClientOption, type PeriodType } from '../../lib/timeEntryWork'
+import { formatMinutes } from '../../lib/workDuration'
 import ReportExportActions from './ReportExportActions'
 import { CategoryFilterSelect, ClientPicker, PeriodPicker } from './TimeEntryWorkFields'
 
@@ -470,7 +471,7 @@ export default function HoursReportWorkspace({
                 const total = group.entries.reduce((sum, entry) => sum + entry.hours, 0)
                 const breaks = group.entries.reduce((sum, entry) => sum + (entry.break_minutes || 0), 0)
                 const categories = [...new Set(group.entries.map(entry => workCategoryText(entry)))]
-                const clientsForDay = [...new Set(group.entries.map(entry => entry.client?.name || 'Internal'))]
+                const clientsForDay = [...new Set(group.entries.flatMap(entry => entryClientNames(entry)))]
                 const first = group.entries[0]
                 const last = group.entries[group.entries.length - 1]
                 return (
@@ -514,8 +515,19 @@ function EntryCard({ entry, onEdit, showFlags = false }: { entry: TimeEntry; onE
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="font-semibold text-primary-dark">{entry.formatted_start_time || entry.start_time || '—'}–{entry.formatted_end_time || entry.end_time || '—'} · {formatHours(entry.hours)}</p>
-          <p className="mt-1 text-sm text-text-muted">{entry.client?.name || 'No client assigned'} · {workSummary(entry, { includeClient: false })} · {entry.entry_method}</p>
-          <p className="mt-1 text-sm text-primary-dark">{entry.description || 'No comments'}</p>
+          {isSplitEntry(entry) ? (
+            <>
+              <p className="mt-1 text-sm text-text-muted">{entry.entry_method}</p>
+              <ul className="mt-1 space-y-0.5 text-sm text-primary-dark" aria-label="Work lines">
+                {entry.work_lines!.map(line => <li key={line.id ?? line.position}>{workLineText(line)} · <span className="tabular-nums">{formatMinutes(line.minutes)}</span></li>)}
+              </ul>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-text-muted">{workSummary(entry)} · {entry.entry_method}</p>
+              <p className="mt-1 text-sm text-primary-dark">{entry.description || 'No comments'}</p>
+            </>
+          )}
           {showFlags && entry.review_flags && <div className="mt-3 flex flex-wrap gap-1.5">{entry.review_flags.map(flag => <span key={flag} className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">{REVIEW_LABELS[flag]}</span>)}</div>}
         </div>
         <button type="button" onClick={onEdit} className="min-h-11 shrink-0 rounded-xl border border-primary/25 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">Edit entry</button>

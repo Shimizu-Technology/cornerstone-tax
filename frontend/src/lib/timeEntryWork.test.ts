@@ -3,6 +3,8 @@ import {
   categoryFilterValue,
   workLineSummary,
   workLineText,
+  entryClientNames,
+  isSplitEntry,
   parsePeriodOptionValue,
   periodOptionGroups,
   periodOptionValue,
@@ -100,7 +102,7 @@ describe('work category', () => {
       period_type: 'quarter',
       period_start: '2026-07-01',
     })).toBe('SCR · Payroll · Payroll Return Preparation · 3rd Quarter 2026')
-    expect(workSummary({ client: null, service_type: null, time_category: null })).toBe('Internal · Uncategorized')
+    expect(workSummary({ client: null, service_type: null, time_category: null })).toBe('No client · Uncategorized')
   })
 
   it('encodes category filters for current and legacy categories', () => {
@@ -114,6 +116,7 @@ describe('work category', () => {
 
 describe('workLineSummary and workLineText', () => {
   const line = {
+    client: { name: "MoSa's" } as { name: string } | null,
     client_label: "MoSa's",
     service_type: { id: 1, name: 'Bookkeeping' },
     category_label: 'Bookkeeping',
@@ -132,8 +135,32 @@ describe('workLineSummary and workLineText', () => {
   })
 
   it('leaves out a missing category and keeps a legacy label', () => {
-    expect(workLineSummary({ client_label: 'SCR', service_type: null, category_label: null })).toBe('SCR')
-    expect(workLineSummary({ client_label: 'SCR', service_type: null, category_label: 'Tax Prep (legacy)' })).toBe('SCR · Tax Prep (legacy)')
+    expect(workLineSummary({ client: { name: 'SCR' }, client_label: 'SCR', service_type: null, category_label: null })).toBe('SCR')
+    expect(workLineSummary({ client: { name: 'SCR' }, client_label: 'SCR', service_type: null, category_label: 'Tax Prep (legacy)' })).toBe('SCR · Tax Prep (legacy)')
+  })
+
+  it('says "No client" for a line without one, not the server\'s "Unassigned" or "Internal"', () => {
+    expect(workLineText({ ...line, client: null, client_label: 'Unassigned', description: 'Errands' })).toBe('No client · Bookkeeping · Bank Reconciliation · July 2026 — Errands')
+  })
+
+  it('shows Internal – Cornerstone by its own name', () => {
+    expect(workLineSummary({ ...line, client: { name: 'Internal – Cornerstone' }, client_label: 'Internal – Cornerstone' })).toMatch(/^Internal – Cornerstone · /)
+  })
+})
+
+describe('entryClientNames and isSplitEntry', () => {
+  const lineFor = (client: string | null) => ({ client: client ? { name: client } : null, client_label: client || 'Unassigned' })
+
+  it('lists each client of a split entry once, in order, with "No client" for a line without one', () => {
+    const split = { client: null, work_lines: [lineFor("MoSa's"), lineFor(null), lineFor("MoSa's"), lineFor('SCR')] }
+    expect(isSplitEntry(split)).toBe(true)
+    expect(entryClientNames(split)).toEqual(["MoSa's", 'No client', 'SCR'])
+  })
+
+  it('uses the entry client for a single-line entry', () => {
+    expect(isSplitEntry({ client: { name: 'SCR' }, work_lines: [lineFor('SCR')] })).toBe(false)
+    expect(entryClientNames({ client: { name: 'SCR' }, work_lines: [lineFor('SCR')] })).toEqual(['SCR'])
+    expect(entryClientNames({ client: null, work_lines: [] })).toEqual(['No client'])
   })
 })
 
