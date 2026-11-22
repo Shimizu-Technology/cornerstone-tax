@@ -264,9 +264,16 @@ describe('TimeTracking week view', () => {
     }]))
     renderPage('/admin/time')
 
-    const cell = await screen.findByRole('list', { name: 'Work lines' })
-    expect(within(cell).getAllByRole('listitem').map((row) => row.textContent)).toEqual(["MoSa's1h 30m", 'SCR30m'])
-    expect(cell).toHaveAttribute('title', "MoSa's · 1h 30m\nSCR · 30m")
+    const card = await screen.findByRole('button', { name: /2h.*2 work lines: MoSa's, 1h 30m; SCR, 30m\./ })
+    expect(card.tagName).toBe('BUTTON')
+    expect(card).toHaveAttribute('type', 'button')
+    expect(within(card).getAllByTestId('week-work-line').map((row) => row.textContent)).toEqual(["MoSa's, 1h 30m", 'SCR, 30m'])
+
+    // Keyboard users reach it and open it like any button.
+    card.focus()
+    expect(card).toHaveFocus()
+    fireEvent.click(card)
+    expect(await screen.findByTestId('work-lines-editor')).toBeInTheDocument()
   })
 })
 
@@ -276,21 +283,21 @@ describe('TimeTracking reports: split entries', () => {
     service_type: { id: id + 10, name: category, color: null }, service_task: null, category_label: category,
     period_type: null, period_start: null, period_label: null, total_hours: minutes / 60, regular_hours: minutes / 60, overtime_hours: 0, minutes,
   })
-  const reportEntry = (lines: ReturnType<typeof reportLine>[]) => ({
-    id: 55, work_date: '2026-09-15', start_time: '08:00', end_time: '10:00', formatted_start_time: '8:00 AM', formatted_end_time: '10:00 AM',
+  const reportEntry = (lines: ReturnType<typeof reportLine>[], id = 55) => ({
+    id, work_date: '2026-09-15', start_time: '08:00', end_time: '10:00', formatted_start_time: '8:00 AM', formatted_end_time: '10:00 AM',
     total_hours: 2, regular_hours: 2, overtime_hours: 0, break_minutes: 0, description: "MoSa's work; SCR work", entry_method: 'manual',
     approval_status: 'approved', approved_by: null, approved_at: null, overtime_status: null, overtime_approved_by: null, overtime_approved_at: null,
     locked_at: null, review_flags: [], time_category: null, client: { id: 1, name: "MoSa's" }, tax_return: null,
     service_type: { id: 11, name: 'Bookkeeping', color: null }, service_task: null, breaks: [], work_lines: lines,
   })
-  const reportWith = (lines: ReturnType<typeof reportLine>[]) => ({
+  const reportWith = (lines: ReturnType<typeof reportLine>[], extraEntries: ReturnType<typeof reportEntry>[] = []) => ({
     ...successfulReport,
     employees: [{
       id: 42, email: 'sam@example.com', first_name: 'Sam', last_name: 'Staff', display_name: 'Sam', full_name: 'Sam Staff', role: 'employee', status: 'active',
       total_hours: 2, regular_hours: 2, overtime_hours: 0, break_hours: 0, entries_count: 1, days_worked: 1, first_work_date: '2026-09-15', last_work_date: '2026-09-15',
       ready: true, issues: { pending_count: 0, denied_count: 0, pending_overtime_count: 0, denied_overtime_count: 0, open_clock_count: 0 },
       quality: successfulReport.quality, excluded_entries: [],
-      days: [{ work_date: '2026-09-15', total_hours: 2, regular_hours: 2, overtime_hours: 0, break_hours: 0, entries: [reportEntry(lines)] }],
+      days: [{ work_date: '2026-09-15', total_hours: 2, regular_hours: 2, overtime_hours: 0, break_hours: 0, entries: [reportEntry(lines), ...extraEntries] }],
       categories: [], clients: [], services: [], weeks: [],
     }],
   })
@@ -321,7 +328,7 @@ describe('TimeTracking reports: split entries', () => {
     // Filtered to SCR: the entry-level client is still MoSa's (line 1).
     apiMocks.getHoursReport.mockResolvedValue({ data: reportWith([reportLine(2, 'SCR', 'Payroll', 30)]) })
     const saved = {
-      ...reportEntry([]), hours: 2, status: 'completed', version: 'v7', user: { id: 42, email: 'sam@example.com', full_name: 'Sam Staff' },
+      ...reportEntry([]), hours: 2, status: 'completed', version: 7, user: { id: 42, email: 'sam@example.com', full_name: 'Sam Staff' },
       work_lines: [
         { ...reportLine(1, "MoSa's", 'Bookkeeping', 90), hours: 1.5 },
         { ...reportLine(2, 'SCR', 'Payroll', 30), hours: 0.5 },
@@ -342,6 +349,114 @@ describe('TimeTracking reports: split entries', () => {
     const editor = within(await screen.findByTestId('work-lines-editor'))
     expect(editor.getByLabelText('Line 1 comments')).toHaveValue("MoSa's work")
     expect(editor.getByLabelText('Line 2 comments')).toHaveValue('SCR work')
+
+    // Saving sends the saved entry's version, so a concurrent change is caught.
+    apiMocks.updateTimeEntry.mockResolvedValue({ data: { time_entry: {} } })
+    fireEvent.change(editor.getByLabelText('Line 2 comments'), { target: { value: 'SCR work, filed' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await waitFor(() => expect(apiMocks.updateTimeEntry).toHaveBeenCalled())
+    const [id, payload, , options] = apiMocks.updateTimeEntry.mock.calls[0]
+    expect(id).toBe(55)
+    expect(options).toEqual({ expectedVersion: 7 })
+    expect(payload.work_lines.map((line: { description: string }) => line.description)).toEqual(["MoSa's work", 'SCR work, filed'])
+  })
+
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((done) => { resolve = done })
+    return { promise, resolve }
+  }
+  const savedEntry = (id: number, client: string) => ({
+    ...reportEntry([], id), hours: 2, status: 'completed', version: 1, user: { id: 42, email: 'sam@example.com', full_name: 'Sam Staff' },
+    work_lines: [{ ...reportLine(1, client, 'Payroll', 120), hours: 2 }],
+  })
+  const openDaily = async (report: unknown) => {
+    apiMocks.getHoursReport.mockResolvedValue({ data: report })
+    renderPage('/admin/time?tab=reports&start_date=2026-09-01&end_date=2026-09-21&report_view=daily')
+    fireEvent.click(await screen.findByRole('button', { name: /Tue, Sep 15, 2026/ }))
+  }
+
+  it('shows "Opening…" on that entry while it loads, then opens it', async () => {
+    const pending = deferred<{ data: { time_entry: unknown } }>()
+    apiMocks.getTimeEntry.mockReturnValue(pending.promise)
+    await openDaily(reportWith([reportLine(1, "MoSa's", 'Bookkeeping', 120)]))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit entry' }))
+    const opening = screen.getByRole('button', { name: 'Opening entry' })
+    expect(opening).toBeDisabled()
+    expect(opening).toHaveTextContent('Opening…')
+
+    await act(async () => pending.resolve({ data: { time_entry: savedEntry(55, "MoSa's") } }))
+    expect(await screen.findByTestId('work-lines-editor')).toBeInTheDocument()
+    expect(screen.queryByText('Opening…')).not.toBeInTheDocument()
+  })
+
+  it('shows a failure inline on the entry, not above the page', async () => {
+    apiMocks.getTimeEntry.mockResolvedValue({ error: 'This entry was deleted.' })
+    await openDaily(reportWith([reportLine(1, "MoSa's", 'Bookkeeping', 120)]))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit entry' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('This entry was deleted.')
+    // On the card that was clicked.
+    expect(alert.parentElement).toHaveTextContent("MoSa's · Bookkeeping")
+    expect(screen.getByRole('button', { name: 'Edit entry' })).toBeEnabled()
+    expect(screen.queryByTestId('work-lines-editor')).not.toBeInTheDocument()
+
+    // A thrown request gets a message too.
+    apiMocks.getTimeEntry.mockRejectedValue(new Error('offline'))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit entry' }))
+    expect(await screen.findByText('Couldn’t open this entry. Check your connection and try again.')).toBeInTheDocument()
+  })
+
+  it('ignores a late response for an entry the user moved on from', async () => {
+    const first = deferred<{ data?: { time_entry: unknown }; error?: string }>()
+    const second = deferred<{ data?: { time_entry: unknown }; error?: string }>()
+    apiMocks.getTimeEntry.mockImplementation((id: number) => (id === 55 ? first.promise : second.promise))
+    const other = { ...reportEntry([reportLine(1, 'SCR', 'Payroll', 120)], 56), formatted_start_time: '1:00 PM', formatted_end_time: '3:00 PM' }
+    await openDaily(reportWith([reportLine(1, "MoSa's", 'Bookkeeping', 120)], [other]))
+
+    const [editA, editB] = screen.getAllByRole('button', { name: 'Edit entry' })
+    fireEvent.click(editA)
+    fireEvent.click(editB)
+    await act(async () => second.resolve({ data: { time_entry: savedEntry(56, 'SCR') } }))
+    const editor = within(await screen.findByTestId('work-lines-editor'))
+    expect(editor.getByLabelText('Work comments')).toHaveValue('SCR work')
+
+    // A's answer arrives late: it doesn't replace B, and a late failure shows no error.
+    await act(async () => first.resolve({ data: { time_entry: savedEntry(55, "MoSa's") } }))
+    expect(editor.getByLabelText('Work comments')).toHaveValue('SCR work')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('drops a pending edit when the user leaves Reports and opens Log Time', async () => {
+    const pending = deferred<{ data: { time_entry: unknown } }>()
+    apiMocks.getTimeEntry.mockReturnValue(pending.promise)
+    await openDaily(reportWith([reportLine(1, "MoSa's", 'Bookkeeping', 120)]))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit entry' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Time Entries' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
+    const editor = within(await screen.findByTestId('work-lines-editor'))
+    fireEvent.change(editor.getByLabelText('Work comments'), { target: { value: 'My new entry' } })
+
+    await act(async () => pending.resolve({ data: { time_entry: savedEntry(55, "MoSa's") } }))
+    expect(editor.getByLabelText('Work comments')).toHaveValue('My new entry')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+  })
+
+  it('shows a split entry line by line in the employee drawer', async () => {
+    apiMocks.getHoursReport.mockResolvedValue({ data: reportWith([reportLine(1, "MoSa's", 'Bookkeeping', 90), reportLine(2, 'SCR', 'Payroll', 30)]) })
+    renderPage('/admin/time?tab=reports&start_date=2026-09-01&end_date=2026-09-21&report_view=people')
+
+    fireEvent.click(await screen.findByRole('button', { name: /Sam Staff/ }))
+    const day = await screen.findByText('Tue, Sep 15')
+    fireEvent.click(day)
+    const lines = await screen.findByRole('list', { name: 'Work lines' })
+    expect(within(lines).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      "MoSa's · Bookkeeping — MoSa's work · 1h 30m",
+      'SCR · Payroll — SCR work · 30m',
+    ])
   })
 })
 

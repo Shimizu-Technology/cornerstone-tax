@@ -109,6 +109,8 @@ export default function HoursReportWorkspace({
   onExport,
   onOpenEmployee,
   onEditEntry,
+  openingEntryId = null,
+  entryError = null,
   view,
   onViewChange,
 }: {
@@ -126,6 +128,10 @@ export default function HoursReportWorkspace({
   onExport: (type: HoursReportDownloadType) => void
   onOpenEmployee: (employee: HoursReportEmployee) => void
   onEditEntry: (entry: TimeEntry) => void
+  /** The entry whose editor is loading ("Opening…"). */
+  openingEntryId?: number | null
+  /** Why an entry's editor couldn't open, shown on that entry's card. */
+  entryError?: { id: number; message: string } | null
   view: ReportView
   onViewChange: (view: ReportView) => void
 }) {
@@ -481,7 +487,7 @@ export default function HoursReportWorkspace({
                       <div className="hidden min-w-0 sm:block"><p className="truncate font-medium text-primary-dark">{group.employee}</p><p className="truncate text-xs text-text-muted">{first.formatted_start_time || '—'}–{last.formatted_end_time || '—'} · {categories.join(', ')} · {clientsForDay.join(', ')}</p></div>
                       <div className="flex items-center gap-3"><div className="text-right"><p className="font-bold tabular-nums text-primary">{formatHours(total)}</p><p className="text-xs text-text-muted">{group.entries.length} entries{breaks ? ` · ${breaks}m breaks` : ''}</p></div><ChevronIcon open={expanded} /></div>
                     </button>
-                    {expanded && <div className="space-y-2 bg-secondary/20 px-4 py-4 sm:pl-[196px]">{group.entries.map(entry => <EntryCard key={entry.id} entry={entry} onEdit={() => onEditEntry(entry)} />)}</div>}
+                    {expanded && <div className="space-y-2 bg-secondary/20 px-4 py-4 sm:pl-[196px]">{group.entries.map(entry => <EntryCard key={entry.id} entry={entry} onEdit={() => onEditEntry(entry)} opening={openingEntryId === entry.id} error={entryError?.id === entry.id ? entryError.message : null} />)}</div>}
                   </Fragment>
                 )
               })}
@@ -497,7 +503,7 @@ export default function HoursReportWorkspace({
             {issueCards.map(issue => <button key={issue.filter} type="button" onClick={() => setReviewFilter(issue.filter)} className={`rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${reviewFilter === issue.filter ? 'border-amber-400 bg-amber-50 shadow-sm' : 'border-neutral-warm bg-white hover:border-amber-300'}`}><div className="flex items-center justify-between gap-2 text-amber-800"><WarningIcon /><span className="text-2xl font-bold tabular-nums">{issue.count}</span></div><p className="mt-3 text-sm font-semibold text-primary-dark">{issue.label}</p><p className="mt-1 text-xs leading-relaxed text-text-muted">{issue.note}</p></button>)}
           </div>
 
-          {reviewFilter !== 'unresolved' && visibleFlaggedEntries.length > 0 && <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white"><div className="border-b border-amber-200 bg-amber-50 px-4 py-3"><h3 className="font-semibold text-amber-950">Approved entries with review flags</h3><p className="mt-1 text-xs text-amber-800">These hours remain included in the totals.</p></div><div className="space-y-2 p-4">{visibleFlaggedEntries.map(entry => <EntryCard key={entry.id} entry={entry} onEdit={() => onEditEntry(entry)} showFlags />)}</div></section>}
+          {reviewFilter !== 'unresolved' && visibleFlaggedEntries.length > 0 && <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white"><div className="border-b border-amber-200 bg-amber-50 px-4 py-3"><h3 className="font-semibold text-amber-950">Approved entries with review flags</h3><p className="mt-1 text-xs text-amber-800">These hours remain included in the totals.</p></div><div className="space-y-2 p-4">{visibleFlaggedEntries.map(entry => <EntryCard key={entry.id} entry={entry} onEdit={() => onEditEntry(entry)} opening={openingEntryId === entry.id} error={entryError?.id === entry.id ? entryError.message : null} showFlags />)}</div></section>}
 
           {(reviewFilter === 'all' || reviewFilter === 'unresolved') && unresolvedEntries.length > 0 && <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="border-b border-slate-200 bg-slate-50 px-4 py-3"><h3 className="font-semibold text-primary-dark">Excluded or unresolved time</h3><p className="mt-1 text-xs text-text-muted">These entries are documented but are not included in approved-hour totals.</p></div><div className="space-y-2 p-4">{unresolvedEntries.map(({ entry, employee }) => <div key={entry.id} className="rounded-xl border border-slate-200 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold text-primary-dark">{employee.full_name} · {formatWorkDate(entry.work_date)}</p><p className="mt-1 text-sm text-text-muted">{entry.formatted_start_time || '—'}–{entry.formatted_end_time || '—'} · {formatHours(entry.total_hours)}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold uppercase text-slate-700">{entry.approval_status || entry.entry_method}</span></div></div>)}</div></section>}
 
@@ -509,7 +515,7 @@ export default function HoursReportWorkspace({
   )
 }
 
-function EntryCard({ entry, onEdit, showFlags = false }: { entry: TimeEntry; onEdit: () => void; showFlags?: boolean }) {
+function EntryCard({ entry, onEdit, opening = false, error = null, showFlags = false }: { entry: TimeEntry; onEdit: () => void; opening?: boolean; error?: string | null; showFlags?: boolean }) {
   return (
     <div className="rounded-xl border border-neutral-warm bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -518,8 +524,10 @@ function EntryCard({ entry, onEdit, showFlags = false }: { entry: TimeEntry; onE
           <ReportEntryWork entry={entry} showComments />
           {showFlags && entry.review_flags && <div className="mt-3 flex flex-wrap gap-1.5">{entry.review_flags.map(flag => <span key={flag} className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">{REVIEW_LABELS[flag]}</span>)}</div>}
         </div>
-        <button type="button" onClick={onEdit} className="min-h-11 shrink-0 rounded-xl border border-primary/25 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">Edit entry</button>
+        <button type="button" onClick={onEdit} disabled={opening} aria-busy={opening || undefined} aria-label={opening ? 'Opening entry' : 'Edit entry'} className="min-h-11 shrink-0 rounded-xl border border-primary/25 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-wait disabled:opacity-60">{opening ? 'Opening…' : 'Edit entry'}</button>
       </div>
+      {/* Shown here, by the entry, so it's seen where the user clicked. */}
+      {error && <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
     </div>
   )
 }

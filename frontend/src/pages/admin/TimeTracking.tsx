@@ -248,6 +248,12 @@ export default function TimeTracking() {
   const [reportError, setReportError] = useState<string | null>(null)
   const [reportExporting, setReportExporting] = useState<HoursReportDownloadType | null>(null)
   const reportRequestId = useRef(0)
+  // Edit from the report: the latest request owns the modal. Anything that
+  // opens or closes the editor, or leaves Reports, bumps this so a slow
+  // response can't open an entry over what the user has moved on to.
+  const editFromReportRequestId = useRef(0)
+  const [openingReportEntryId, setOpeningReportEntryId] = useState<number | null>(null)
+  const [reportEntryError, setReportEntryError] = useState<{ id: number; message: string } | null>(null)
   
   // Period lock state (CST-43)
   const [currentWeekLocked, setCurrentWeekLocked] = useState(false)
@@ -679,6 +685,9 @@ export default function TimeTracking() {
 
     return () => {
       reportRequestId.current += 1
+      // Leaving Reports (or unmounting) drops a pending edit-from-report.
+      editFromReportRequestId.current += 1
+      setOpeningReportEntryId(null)
     }
   }, [activeTab, loadReport])
 
@@ -742,7 +751,18 @@ export default function TimeTracking() {
   }
 
   // Modal handlers
+  const cancelEditFromReport = () => {
+    editFromReportRequestId.current += 1
+    setOpeningReportEntryId(null)
+  }
+
+  const closeModal = () => {
+    cancelEditFromReport()
+    setShowModal(false)
+  }
+
   const openNewEntry = (date?: Date, prefillStart?: string, prefillEnd?: string, prefillNotes?: string) => {
+    cancelEditFromReport()
     if (dateIsInLockedWeek(date || currentDate)) {
       setError('This time period is locked and cannot be modified')
       return
@@ -767,6 +787,7 @@ export default function TimeTracking() {
   }
 
   const openEditEntry = (entry: TimeEntryItem) => {
+    cancelEditFromReport()
     setEditingEntry(entry)
     setModalVersionConflict(false)
     setModalConflictEntry(null)
@@ -789,12 +810,26 @@ export default function TimeTracking() {
 
   // A report row may carry only the lines that match its filters, and no
   // version; edit the entry as it is saved now, so a save can't drop lines.
+  // Only the latest request may open the editor or show an error.
   const openEditEntryFromReport = async (entry: TimeEntryItem) => {
-    const response = await api.getTimeEntry(entry.id)
-    if (response.data?.time_entry) {
-      openEditEntry(response.data.time_entry)
-    } else {
-      setReportError(response.error || 'Couldn’t open this entry. Try again.')
+    const requestId = ++editFromReportRequestId.current
+    setOpeningReportEntryId(entry.id)
+    setReportEntryError(null)
+    setReportError(null)
+    try {
+      const response = await api.getTimeEntry(entry.id)
+      if (requestId !== editFromReportRequestId.current) return
+      if (response.data?.time_entry) {
+        openEditEntry(response.data.time_entry)
+      } else {
+        setReportEntryError({ id: entry.id, message: response.error || 'Couldn’t open this entry. Try again.' })
+      }
+    } catch {
+      if (requestId === editFromReportRequestId.current) {
+        setReportEntryError({ id: entry.id, message: 'Couldn’t open this entry. Check your connection and try again.' })
+      }
+    } finally {
+      if (requestId === editFromReportRequestId.current) setOpeningReportEntryId(null)
     }
   }
 
@@ -1463,41 +1498,45 @@ export default function TimeTracking() {
                     }`}
                   >
                     {dayEntries.map(entry => (
-                      <div
+                      // A real button, so the entry opens from the keyboard too. Its
+                      // contents are spans (a button holds phrasing content only).
+                      <button
+                        type="button"
                         key={entry.id}
-                        className={`mb-1 sm:mb-2 p-1 sm:p-2 bg-white border rounded text-xs cursor-pointer hover:bg-neutral-warm/50 transition-colors shadow-sm ${entry.locked_at ? 'border-amber-300 bg-amber-50/30' : 'border-neutral-warm'}`}
+                        className={`mb-1 sm:mb-2 block w-full p-1 sm:p-2 bg-white border rounded text-left text-xs cursor-pointer hover:bg-neutral-warm/50 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${entry.locked_at ? 'border-amber-300 bg-amber-50/30' : 'border-neutral-warm'}`}
                         onClick={() => openEditEntry(entry)}
                       >
-                        <div className="font-bold text-primary-dark flex items-center gap-1">
+                        <span className="font-bold text-primary-dark flex items-center gap-1">
                           {entry.locked_at ? <LockIcon /> : <ClockIcon />}
                           {entry.hours}h
+                          {entry.locked_at && <span className="sr-only">, locked</span>}
                           {entry.approval_status === 'pending' && (
-                            <span className="ml-auto w-2 h-2 rounded-full bg-amber-500" title="Pending approval" />
+                            <span className="ml-auto w-2 h-2 rounded-full bg-amber-500" title="Pending approval"><span className="sr-only">, pending approval</span></span>
                           )}
                           {entry.approval_status === 'denied' && (
-                            <span className="ml-auto w-2 h-2 rounded-full bg-red-500" title="Denied" />
+                            <span className="ml-auto w-2 h-2 rounded-full bg-red-500" title="Denied"><span className="sr-only">, denied</span></span>
                           )}
                           {entry.overtime_status === 'pending' && (
-                            <span className="ml-auto w-2 h-2 rounded-full bg-orange-500" title="Overtime pending" />
+                            <span className="ml-auto w-2 h-2 rounded-full bg-orange-500" title="Overtime pending"><span className="sr-only">, overtime pending</span></span>
                           )}
-                        </div>
+                        </span>
                         {entry.entry_method === 'clock' && (
-                          <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">CLOCK</div>
+                          <span className="block text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">CLOCK</span>
                         )}
                         {entry.formatted_start_time && entry.formatted_end_time && (
-                          <div className="text-primary-dark/70 text-[10px]">
+                          <span className="block text-primary-dark/70 text-[10px]">
                             {entry.formatted_start_time} - {entry.formatted_end_time}
-                          </div>
+                          </span>
                         )}
                         {/* Client, category and period from the work lines; a split entry lists each line's client and time. */}
                         <EntryWorkCompact entry={entry} />
-                        <div className="text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1">{ownerLabel(entry)}</div>
+                        <span className="block text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1">{ownerLabel(entry)}</span>
                         {entry.approval_note && (
-                          <div className="text-[9px] text-text-muted italic truncate mt-0.5" title={entry.approval_note}>
+                          <span className="block text-[9px] text-text-muted italic truncate mt-0.5" title={entry.approval_note}>
                             "{entry.approval_note}"
-                          </div>
+                          </span>
                         )}
-                      </div>
+                      </button>
                     ))}
                     <button
                       onClick={() => openNewEntry(date)}
@@ -1697,6 +1736,8 @@ export default function TimeTracking() {
             onExport={(type) => void downloadReport(type)}
             onOpenEmployee={setSelectedReportEmployee}
             onEditEntry={(entry) => void openEditEntryFromReport(entry)}
+            openingEntryId={openingReportEntryId}
+            entryError={reportEntryError}
             view={reportView}
             onViewChange={setReportView}
           />
@@ -1718,7 +1759,7 @@ export default function TimeTracking() {
           transition={{ duration: 0.2 }}
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 md:items-center md:p-4"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setShowModal(false)
+            if (e.target === e.currentTarget) closeModal()
           }}
         >
           <motion.div
@@ -1995,7 +2036,7 @@ export default function TimeTracking() {
                   <div className="flex gap-3">
                     <button
                       type="button"
-                      onClick={() => setShowModal(false)}
+                      onClick={closeModal}
                       className="px-4 py-2 text-primary-dark font-medium hover:bg-neutral-warm rounded-lg transition-colors"
                     >
                       Cancel

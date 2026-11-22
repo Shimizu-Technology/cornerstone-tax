@@ -57,7 +57,8 @@ export default function EntryWorkDetails({ entry }: { entry: TimeEntry }) {
       {work.client ? (
         <span className="font-semibold text-primary-dark">
           {work.client}
-          {entry.tax_return && ` (${entry.tax_return.tax_year})`}
+          {/* The return belongs to the entry's client; a filtered line for another client doesn't get its year. */}
+          {entry.tax_return && (!line || line.client?.id === entry.client?.id) && ` (${entry.tax_return.tax_year})`}
         </span>
       ) : active ? (
         <span className="font-medium text-text-muted">No client yet</span>
@@ -99,8 +100,9 @@ function WorkLineRow({ line }: { line: WorkLine }) {
 /**
  * The work in a desktop Week view cell, which is about 9rem wide. A split
  * entry lists each line's client and time on its own row (up to three; the
- * rest as "+N more"), with every line in full in the cell's tooltip. Category
- * and period are left out there: the client and time are what a seven-column
+ * rest as "+N more"). Every line in full (category, task, period, comments)
+ * is in screen-reader text and, for mouse users, the tooltip. Category and
+ * period aren't shown there: the client and time are what a seven-column
  * week can show readably, and the Day view and the editor have the rest.
  * A single line, or an entry without lines, shows client, category / task
  * and period as before.
@@ -109,46 +111,52 @@ export function EntryWorkCompact({ entry }: { entry: TimeEntry }) {
   const lines = entryLines(entry)
   if (lines.length > 1) {
     const shown = lines.slice(0, 3)
+    const full = lines.map((line) => `${workLineText(line)}, ${formatMinutes(line.minutes)}`)
     return (
-      <ul
-        className="mt-0.5 space-y-0.5 text-[10px] sm:text-xs"
-        aria-label="Work lines"
-        title={lines.map((line) => `${workLineText(line)} · ${formatMinutes(line.minutes)}`).join('\n')}
-      >
-        {shown.map((line) => (
-          <li key={line.id ?? line.position} className="flex min-w-0 items-baseline justify-between gap-1">
-            <span className={`truncate font-medium ${line.client ? 'text-primary-dark' : 'text-amber-700'}`}>{lineClientName(line)}</span>
-            <span className="shrink-0 tabular-nums text-primary-dark/70">{formatMinutes(line.minutes)}</span>
-          </li>
-        ))}
-        {lines.length > shown.length && <li className="text-text-muted">+{lines.length - shown.length} more</li>}
-      </ul>
+      // Spans, not a list: this sits inside the Week view's entry button.
+      <span className="mt-0.5 block text-[10px] sm:text-xs" data-testid="week-work-lines" title={full.join('\n')}>
+        {/* The visible client · time rows are for sight; screen readers get
+            every line in full below (category, task, period, comments, and
+            lines past the third), so the rows are hidden from them. */}
+        <span aria-hidden="true" className="block space-y-0.5">
+          {shown.map((line) => (
+            <span key={line.id ?? line.position} className="flex min-w-0 items-baseline justify-between gap-1" data-testid="week-work-line">
+              <span className={`truncate font-medium ${line.client ? 'text-primary-dark' : 'text-amber-700'}`}>{lineClientName(line)}</span>
+              <span className="sr-only">, </span>
+              <span className="shrink-0 tabular-nums text-primary-dark/70">{formatMinutes(line.minutes)}</span>
+            </span>
+          ))}
+          {lines.length > shown.length && <span className="block text-text-muted">+{lines.length - shown.length} more</span>}
+        </span>
+        <span className="sr-only">{`${lines.length} work lines: ${full.join('; ')}.`}</span>
+      </span>
     )
   }
 
   const line = lines[0]
   const active = isActive(entry)
   const client = line ? (line.client ? lineClientName(line) : null) : entry.client?.name ?? null
-  const category = line ? lineCategory(line)?.label ?? null : workCategory(entry) ? workCategoryText(entry) : null
-  const legacy = line ? Boolean(lineCategory(line)?.legacy) : Boolean(workCategory(entry)?.legacy)
+  const lineCat = line ? lineCategory(line) : null
+  const categoryText = line
+    ? lineCat && (lineCat.legacy ? `${lineCat.label} (legacy)` : lineCat.label)
+    : workCategory(entry) ? workCategoryText(entry) : null
   const task = line ? line.service_task?.name : entry.service_task?.name
   const period = line ? linePeriod(line) : entry.period_label || periodLabel(entry.period_type, entry.period_start)
-  const categoryText = category && (legacy && line ? `${category} (legacy)` : category)
   return (
     <>
       {client ? (
-        <div className="text-primary-dark font-medium truncate text-[10px] sm:text-xs" title={client}>{client}</div>
+        <span className="block text-primary-dark font-medium truncate text-[10px] sm:text-xs" title={client}>{client}</span>
       ) : active ? (
-        <div className="text-text-muted truncate text-[10px] sm:text-xs">No client yet</div>
+        <span className="block text-text-muted truncate text-[10px] sm:text-xs">No client yet</span>
       ) : (
-        <div className="text-amber-700 font-medium truncate text-[10px] sm:text-xs">{NO_CLIENT_LABEL}</div>
+        <span className="block text-amber-700 font-medium truncate text-[10px] sm:text-xs">{NO_CLIENT_LABEL}</span>
       )}
       {categoryText && (
-        <div className="text-primary font-medium truncate text-[10px] sm:text-xs" title={[categoryText, task].filter(Boolean).join(' / ')}>
+        <span className="block text-primary font-medium truncate text-[10px] sm:text-xs" title={[categoryText, task].filter(Boolean).join(' / ')}>
           {categoryText}{task ? ` / ${task}` : ''}
-        </div>
+        </span>
       )}
-      {period && <div className="text-primary-dark/70 truncate text-[10px]">{period}</div>}
+      {period && <span className="block text-primary-dark/70 truncate text-[10px]">{period}</span>}
     </>
   )
 }

@@ -337,7 +337,7 @@ export function entryLines<T extends WorkLineLike>(entry: { work_lines?: T[] | n
   return entry.work_lines ?? []
 }
 
-/** True when an entry is split across several work lines (its own work fields are then empty). */
+/** True when an entry has more than one work line (its entry-level fields mirror line 1 only). */
 export function isSplitEntry(entry: EntryWithLines): boolean {
   return entryLines(entry).length > 1
 }

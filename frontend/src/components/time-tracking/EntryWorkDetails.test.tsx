@@ -63,9 +63,14 @@ describe('EntryWorkDetails (Time Entries card)', () => {
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
   })
 
-  it('adds the tax return year to the client', () => {
-    render(<EntryWorkDetails entry={entry({ tax_return: { id: 4, tax_year: 2025 }, work_lines: [mosas] } as Partial<TimeEntry>)} />)
+  it('adds the tax return year to the entry\'s own client only', () => {
+    const { unmount } = render(<EntryWorkDetails entry={entry({ client: { id: 2, name: "MoSa's" }, tax_return: { id: 4, tax_year: 2025 }, work_lines: [mosas] } as Partial<TimeEntry>)} />)
     expect(screen.getByText("MoSa's (2025)")).toBeInTheDocument()
+    unmount()
+    // A report filtered to SCR returns the SCR line of an entry whose return is MoSa's.
+    render(<EntryWorkDetails entry={entry({ client: { id: 2, name: "MoSa's" }, tax_return: { id: 4, tax_year: 2025 }, work_lines: [scr] } as Partial<TimeEntry>)} />)
+    expect(screen.getByText('SCR')).toBeInTheDocument()
+    expect(screen.queryByText(/2025/)).not.toBeInTheDocument()
   })
 
   it('uses the entry fields for a legacy entry without lines', () => {
@@ -92,25 +97,52 @@ describe('EntryWorkDetails (Time Entries card)', () => {
 })
 
 describe('EntryWorkCompact (desktop Week view cell)', () => {
-  it('lists each line\'s client and time for a split entry, with every line in the tooltip', () => {
+  const rowsOf = () => screen.getAllByTestId('week-work-line').map((row) => row.textContent)
+
+  it('shows each line\'s client and time, with every line in full for screen readers and the tooltip', () => {
     render(<EntryWorkCompact entry={splitEntry} />)
-    const list = screen.getByRole('list', { name: 'Work lines' })
-    expect(within(list).getAllByRole('listitem').map((row) => row.textContent)).toEqual(["MoSa's1h 30m", 'SCR30m'])
-    expect(list).toHaveAttribute('title', "MoSa's · Bookkeeping · Bank Reconciliation · July 2026 — Bank recs · 1h 30m\nSCR · Payroll · 3rd Quarter 2026 — Payroll return · 30m")
-    expect(screen.queryByText('Bookkeeping')).not.toBeInTheDocument()
+    // The visible rows have a hidden separator, so they never read as "SCR30m".
+    expect(rowsOf()).toEqual(["MoSa's, 1h 30m", 'SCR, 30m'])
+    const cell = screen.getByTestId('week-work-lines')
+    expect(cell.querySelector('[aria-hidden="true"]')).toContainElement(screen.getAllByTestId('week-work-line')[0])
+    expect(cell.querySelector('.sr-only:last-child')).toHaveTextContent(
+      "2 work lines: MoSa's · Bookkeeping · Bank Reconciliation · July 2026 — Bank recs, 1h 30m; SCR · Payroll · 3rd Quarter 2026 — Payroll return, 30m.",
+    )
+    expect(cell).toHaveAttribute('title', "MoSa's · Bookkeeping · Bank Reconciliation · July 2026 — Bank recs, 1h 30m\nSCR · Payroll · 3rd Quarter 2026 — Payroll return, 30m")
   })
 
-  it('shows three lines and "+N more" for longer splits, and "No client" in amber', () => {
-    const lines = [mosas, scr, line({ id: 3, position: 2 }), line({ id: 4, position: 3, client: { id: 3, name: 'SCR' }, client_label: 'SCR' })]
+  it('shows three lines and "+N more", and keeps the fourth for screen readers', () => {
+    const lines = [mosas, scr, line({ id: 3, position: 2 }), line({ id: 4, position: 3, client: { id: 3, name: 'SCR' }, client_label: 'SCR', description: 'Fourth' })]
     render(<EntryWorkCompact entry={entry({ work_lines: lines })} />)
-    const rows = screen.getAllByRole('listitem')
-    expect(rows.map((row) => row.textContent)).toEqual(["MoSa's1h 30m", 'SCR30m', 'No client1h', '+1 more'])
-    expect(within(rows[2]).getByText('No client')).toHaveClass('text-amber-700')
+    expect(rowsOf()).toEqual(["MoSa's, 1h 30m", 'SCR, 30m', 'No client, 1h'])
+    expect(screen.getByText('+1 more')).toBeInTheDocument()
+    expect(within(screen.getAllByTestId('week-work-line')[2]).getByText('No client')).toHaveClass('text-amber-700')
+    expect(screen.getByTestId('week-work-lines').querySelector('.sr-only:last-child')).toHaveTextContent(/SCR — Fourth, 1h\.$/)
   })
 
   it('shows a single line as client, category / task and period', () => {
     const { container } = render(<EntryWorkCompact entry={entry({ client: { id: 2, name: "MoSa's" }, work_lines: [mosas] } as Partial<TimeEntry>)} />)
     expect(Array.from(container.children).map((row) => row.textContent)).toEqual(["MoSa's", 'Bookkeeping / Bank Reconciliation', 'July 2026'])
+  })
+
+  it('marks a legacy category on an entry without lines', () => {
+    const { container } = render(<EntryWorkCompact entry={entry({ client: { id: 2, name: "MoSa's" }, time_category: { id: 9, name: 'Tax Prep' } } as Partial<TimeEntry>)} />)
+    expect(Array.from(container.children).map((row) => row.textContent)).toEqual(["MoSa's", 'Tax Prep (legacy)'])
+  })
+
+  it('marks a legacy category on a single line', () => {
+    const { container } = render(<EntryWorkCompact entry={entry({ work_lines: [line({ client: { id: 3, name: 'SCR' }, client_label: 'SCR', category_label: 'Tax Prep (legacy)' })] })} />)
+    expect(Array.from(container.children).map((row) => row.textContent)).toEqual(['SCR', 'Tax Prep (legacy)'])
+  })
+
+  it.each(['clocked_in', 'on_break'] as const)('says "No client yet" for a %s clock without a client', (status) => {
+    const { container } = render(<EntryWorkCompact entry={entry({ status, entry_method: 'clock' })} />)
+    expect(Array.from(container.children).map((row) => row.textContent)).toEqual(['No client yet'])
+  })
+
+  it('says "No client" in amber for a finished entry without one', () => {
+    render(<EntryWorkCompact entry={entry({})} />)
+    expect(screen.getByText('No client')).toHaveClass('text-amber-700')
   })
 })
 
