@@ -60,7 +60,9 @@ RSpec.describe "Work summary", type: :request do
     expect(response).to have_http_status(:ok)
     expect(response.headers["Content-Disposition"]).to include("Work_Summary_sam-staff_2026-11-16_to_2026-11-29.csv")
     rows = CSV.parse(response.body)
-    expect(rows).to include([ "2026-11-16", nil, "Alpha Co", "Prepared bank reconciliations", nil, nil, nil, "45", "0.75", "approved" ])
+    # The owner's order: client, category, task, period, then comments.
+    expect(rows[2]).to eq([ "Date", "Time", "Client", "Category", "Task", "Period", "Comments", "Minutes", "Hours", "Status" ])
+    expect(rows).to include([ "2026-11-16", nil, "Alpha Co", nil, nil, nil, "Prepared bank reconciliations", "45", "0.75", "approved" ])
     expect(rows).to include([ "Alpha Co", nil, nil, nil, nil, nil, nil, "135", "2.25", "2h 15m" ])
     expect(rows.last).to eq([ "Total", nil, nil, nil, nil, nil, nil, "185", "3.08", "3h 5m" ])
 

@@ -530,12 +530,17 @@ module Payroll
     end
 
     def quality_for(entries)
+      cutover = TimeEntryWorkRequirement.cutover_date
       flags_by_entry = entries.to_h do |entry|
         flags = []
         lines = included_lines(entry)
         flags << "uncategorized" if entry.time_category_id.blank? && lines.any? { |line| line.service_type_id.blank? }
         flags << "missing_client" if lines.any? { |line| line.client_id.blank? }
-        flags << "missing_description" if lines.any? { |line| line.description.blank? }
+        # The cutover rule's category: a line dated from the cutover without
+        # one breaks it. "uncategorized" covers older lines too.
+        if cutover && entry.work_date >= cutover && lines.any? { |line| line.service_type_id.blank? }
+          flags << "missing_category"
+        end
         flags << "long_shift" if entry.hours.to_f >= LONG_SHIFT_HOURS
         [ entry.id, flags ]
       end
@@ -544,7 +549,7 @@ module Payroll
         flags_by_entry.fetch(entry_id, []) << "overlap"
       end
 
-      counts = %w[uncategorized missing_client missing_description long_shift overlap].index_with do |flag|
+      counts = %w[uncategorized missing_client missing_category long_shift overlap].index_with do |flag|
         flags_by_entry.count { |_entry, flags| flags.include?(flag) }
       end
 
@@ -553,7 +558,7 @@ module Payroll
         flagged_entries_count: flags_by_entry.count { |_entry, flags| flags.any? },
         uncategorized_count: counts.fetch("uncategorized"),
         missing_client_count: counts.fetch("missing_client"),
-        missing_description_count: counts.fetch("missing_description"),
+        missing_category_count: counts.fetch("missing_category"),
         long_shift_count: counts.fetch("long_shift"),
         overlapping_entry_count: counts.fetch("overlap"),
         long_shift_threshold_hours: LONG_SHIFT_HOURS,
@@ -588,7 +593,7 @@ module Payroll
         flagged_entries_count
         uncategorized_count
         missing_client_count
-        missing_description_count
+        missing_category_count
         long_shift_count
         overlapping_entry_count
       ]

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   categoryFilterValue,
+  workLineSummary,
+  workLineText,
   clientOptionLabel,
   filterClientOptions,
   parseCategoryFilter,
@@ -104,5 +106,30 @@ describe('work category', () => {
     expect(parseCategoryFilter('st:3')).toEqual({ service_type_id: '3', time_category_id: '' })
     expect(parseCategoryFilter('tc:9')).toEqual({ service_type_id: '', time_category_id: '9' })
     expect(parseCategoryFilter('')).toEqual({ service_type_id: '', time_category_id: '' })
+  })
+})
+
+describe('workLineSummary and workLineText', () => {
+  const line = {
+    client_label: "MoSa's",
+    service_type: { id: 1, name: 'Bookkeeping' },
+    category_label: 'Bookkeeping',
+    service_task: { name: 'Bank Reconciliation' },
+    period_label: 'July 2026',
+    description: null as string | null,
+  }
+
+  it("reads in the owner's order: client, category, task, period", () => {
+    expect(workLineSummary(line)).toBe("MoSa's · Bookkeeping · Bank Reconciliation · July 2026")
+    expect(workLineText(line)).toBe("MoSa's · Bookkeeping · Bank Reconciliation · July 2026")
+  })
+
+  it('adds the comments after the line', () => {
+    expect(workLineText({ ...line, service_task: null, period_label: null, description: 'Filed late' })).toBe("MoSa's · Bookkeeping — Filed late")
+  })
+
+  it('leaves out a missing category and keeps a legacy label', () => {
+    expect(workLineSummary({ client_label: 'SCR', service_type: null, category_label: null })).toBe('SCR')
+    expect(workLineSummary({ client_label: 'SCR', service_type: null, category_label: 'Tax Prep (legacy)' })).toBe('SCR · Tax Prep (legacy)')
   })
 })

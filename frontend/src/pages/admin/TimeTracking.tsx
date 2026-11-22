@@ -53,7 +53,7 @@ const EMPTY_REPORT_QUALITY = {
   flagged_entries_count: 0,
   uncategorized_count: 0,
   missing_client_count: 0,
-  missing_description_count: 0,
+  missing_category_count: 0,
   long_shift_count: 0,
   overlapping_entry_count: 0,
   long_shift_threshold_hours: 12,
@@ -304,7 +304,7 @@ export default function TimeTracking() {
     ? null
     : modalTimesUntouched && editingEntry ? Math.round(editingEntry.hours * 60) : Math.round(calculatedHours * 60)
   const modalLinesRequired = detailsRequired(lineSuggestions.requiredFrom, formData.work_date)
-  const modalLineCheck = checkLines(lines, { targetMinutes: modalTargetMinutes, required: modalLinesRequired, clients, serviceTypes, taskRequired: modalLinesRequired && lineSuggestions.taskRequired })
+  const modalLineCheck = checkLines(lines, { targetMinutes: modalTargetMinutes, required: modalLinesRequired, serviceTypes, taskRequired: modalLinesRequired && lineSuggestions.taskRequired })
   const modalLinesChanged = JSON.stringify(linesPayload(lines, modalTargetMinutes)) !== JSON.stringify(linesPayload(initialLines, modalTargetMinutes))
   const modalHoursChanged = Boolean(editingEntry && !editingDayLog && Math.round(editingEntry.hours * 60) !== modalTargetMinutes)
   const modalSendsLines = !editingActiveClock && (!editingEntry || modalLinesChanged || (modalHoursChanged && lines.length > 1))
@@ -668,6 +668,10 @@ export default function TimeTracking() {
         break_minutes: null
       })
       setWorkFields({ ...EMPTY_WORK_FIELDS, description: notes })
+      // The shift's notes become the first line's comments, as in openNewEntry.
+      const fresh = [newDraft({ description: notes })]
+      setLines(fresh)
+      setInitialLines(fresh)
       setShowModal(true)
       
       // Clear the URL params

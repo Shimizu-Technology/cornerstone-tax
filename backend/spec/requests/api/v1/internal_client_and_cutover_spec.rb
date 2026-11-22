@@ -9,6 +9,7 @@ RSpec.describe "Internal client and work details cutover", type: :request do
   let(:client_a) { Client.create!(first_name: "A", last_name: "A", client_type: "business", business_name: "Alpha Co") }
   let(:person) { Client.create!(first_name: "Pat", last_name: "Person") }
   let(:office) { ServiceType.create!(name: "Office & errands", internal: true) }
+  let(:bookkeeping) { ServiceType.create!(name: "Bookkeeping") }
   let(:work_date) { Date.new(2026, 11, 16) }
 
   def headers_for(user)
@@ -53,7 +54,7 @@ RSpec.describe "Internal client and work details cutover", type: :request do
   end
 
   describe "with the cutover off (the default)" do
-    it "accepts lines without a client or description" do
+    it "accepts lines without a client, category or comments" do
       manual([ { minutes: 60 } ])
       expect(response).to have_http_status(:created)
     end
@@ -62,29 +63,36 @@ RSpec.describe "Internal client and work details cutover", type: :request do
   describe "with the cutover set" do
     before { Setting.set(TimeEntryWorkRequirement::SETTING_KEY, work_date.iso8601) }
 
-    it "requires a client and a description on every line" do
-      manual([ { client_id: client_a.id, description: "Bank recs", minutes: 30 }, { minutes: 30 } ])
+    it "requires a client and a category on every line" do
+      manual([ { client_id: client_a.id, service_type_id: bookkeeping.id, minutes: 30 }, { minutes: 30 } ])
 
       expect(response).to have_http_status(:unprocessable_entity)
-      expect(json[:error]).to include("Line 2 needs client and description")
+      expect(json[:error]).to include("Line 2 needs client and category")
     end
 
-    it "requires a category only for internal work" do
+    it "requires a category for client and internal lines alike" do
       manual([ { client_id: client_a.id, description: "Bank recs", minutes: 30 },
                { client_id: internal.id, description: "Post office run", minutes: 30 } ])
       expect(response).to have_http_status(:unprocessable_entity)
-      expect(json[:error]).to include("Line 2 needs category")
+      expect(json[:error]).to include("Line 1 needs category", "Line 2 needs category")
 
-      manual([ { client_id: client_a.id, description: "Bank recs", minutes: 30 },
-               { client_id: internal.id, description: "Post office run", service_type_id: office.id, minutes: 30 } ])
+      manual([ { client_id: client_a.id, service_type_id: bookkeeping.id, minutes: 30 },
+               { client_id: internal.id, service_type_id: office.id, minutes: 30 } ])
       expect(response).to have_http_status(:created)
     end
 
-    it "accepts an external-client line with a description and no category or task" do
-      manual([ { client_id: client_a.id, description: "Reconciled June and July cc accounts", minutes: 60 } ])
+    it "accepts a client line with a category and no comments, task or period" do
+      manual([ { client_id: client_a.id, service_type_id: bookkeeping.id, minutes: 60 } ])
 
       expect(response).to have_http_status(:created)
-      expect(json.dig(:time_entry, :work_lines, 0)).to include(service_type: nil, service_task: nil)
+      expect(json.dig(:time_entry, :work_lines, 0)).to include(description: be_blank, service_task: nil, period_type: nil)
+    end
+
+    it "rejects a client line without a category, even with comments" do
+      manual([ { client_id: client_a.id, description: "Reconciled June and July cc accounts", minutes: 60 } ])
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to eq("This entry needs category")
     end
 
     it "rejects an internal line without a category, even with a description" do
@@ -104,6 +112,18 @@ RSpec.describe "Internal client and work details cutover", type: :request do
     it "does not apply to entries dated before the cutover" do
       manual([ { minutes: 60 } ], date: work_date - 1)
       expect(response).to have_http_status(:created)
+
+      # A client line without a category, and one with a category and no comments.
+      manual([ { client_id: client_a.id, description: "Bank recs", minutes: 30 },
+               { client_id: client_a.id, service_type_id: bookkeeping.id, minutes: 30 } ], date: work_date - 1)
+      expect(response).to have_http_status(:created)
+    end
+
+    it "asks for a client and a category when an entry has hours but no lines" do
+      entry = build(:time_entry, user: employee, work_date: work_date, hours: 1.0, status: "completed")
+      allow(entry).to receive(:current_work_lines).and_return([])
+
+      expect(TimeEntryWorkRequirement.errors_for(entry)).to eq([ "Add at least one work line with a client and a category" ])
     end
 
     it "is enforced at clock-out and keeps the clock running" do
@@ -114,11 +134,18 @@ RSpec.describe "Internal client and work details cutover", type: :request do
 
       post "/api/v1/time_entries/clock_out", params: { time_entry_id: entry.id }.to_json, headers: headers_for(employee)
       expect(response).to have_http_status(:unprocessable_entity)
-      expect(json[:error]).to include("needs client and description")
+      expect(json[:error]).to include("needs client and category")
       expect(entry.reload.status).to eq("clocked_in")
 
       post "/api/v1/time_entries/clock_out", params: {
         time_entry_id: entry.id, work_lines: [ { client_id: client_a.id, description: "Payroll inputs", minutes: 60 } ]
+      }.to_json, headers: headers_for(employee)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("needs category")
+      expect(entry.reload.status).to eq("clocked_in")
+
+      post "/api/v1/time_entries/clock_out", params: {
+        time_entry_id: entry.id, work_lines: [ { client_id: client_a.id, service_type_id: bookkeeping.id, minutes: 60 } ]
       }.to_json, headers: headers_for(employee)
       expect(response).to have_http_status(:ok)
     end
@@ -131,19 +158,41 @@ RSpec.describe "Internal client and work details cutover", type: :request do
 
       post "/api/v1/time_entries/#{entry.id}/approve", headers: headers_for(admin)
       expect(response).to have_http_status(:unprocessable_entity)
-      expect(json[:error]).to include("can't be approved yet: This entry needs client and description")
+      expect(json[:error]).to include("can't be approved yet: This entry needs client and category")
 
       post "/api/v1/time_entries/bulk_approve", params: { entry_ids: [ entry.id ] }.to_json, headers: headers_for(admin)
       expect(response).to have_http_status(:unprocessable_entity)
       expect(entry.reload.approval_status).to eq("pending")
 
+      # Comments without a category still don't meet the rule.
       patch "/api/v1/time_entries/#{entry.id}", params: {
         time_entry: { work_lines: [ { client_id: client_a.id, description: "Bank recs", minutes: 480 } ] }
+      }.to_json, headers: headers_for(admin)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("needs category")
+
+      patch "/api/v1/time_entries/#{entry.id}", params: {
+        time_entry: { work_lines: [ { client_id: client_a.id, service_type_id: bookkeeping.id, minutes: 480 } ] }
       }.to_json, headers: headers_for(admin)
       expect(response).to have_http_status(:ok)
 
       post "/api/v1/time_entries/#{entry.id}/approve", headers: headers_for(admin)
       expect(response).to have_http_status(:ok)
+    end
+
+    it "is enforced on bulk approval once the lines have a client but no category" do
+      entry = create(:time_entry, user: employee, work_date: work_date, approval_status: "pending")
+      entry.work_lines.first.update_columns(client_id: client_a.id, description: "Bank recs", service_type_id: nil)
+
+      post "/api/v1/time_entries/bulk_approve", params: { entry_ids: [ entry.id ] }.to_json, headers: headers_for(admin)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to include("needs category")
+      expect(entry.reload.approval_status).to eq("pending")
+
+      entry.work_lines.first.update_columns(service_type_id: bookkeeping.id, description: nil)
+      post "/api/v1/time_entries/bulk_approve", params: { entry_ids: [ entry.id ] }.to_json, headers: headers_for(admin)
+      expect(response).to have_http_status(:ok)
+      expect(entry.reload.approval_status).to eq("approved")
     end
 
     it "does not block the stale-clock auto-close job" do
@@ -209,10 +258,40 @@ RSpec.describe "Internal client and work details cutover", type: :request do
       expect(json[:time_entries].map { |row| row[:id] }).to eq([ split.id ])
     end
 
-    it "can include lines missing a description" do
-      assigned.update!(description: nil)
+    it "never lists a line for missing comments" do
+      assigned.work_lines.first.update_columns(description: nil, service_type_id: bookkeeping.id)
+      Setting.set(TimeEntryWorkRequirement::SETTING_KEY, work_date.iso8601)
+
       get "/api/v1/time_entries/unassigned", params: { issue: "any" }, headers: headers_for(admin)
-      expect(json[:time_entries].map { |row| row[:id] }).to include(assigned.id)
+      expect(json[:time_entries].map { |row| row[:id] }).not_to include(assigned.id)
+    end
+
+    it "flags a missing category only from the cutover" do
+      assigned.work_lines.first.update_columns(service_type_id: nil)
+      old = create(:time_entry, user: employee, work_date: work_date - 5, approval_status: "approved", client: client_a)
+      old.work_lines.first.update_columns(service_type_id: nil)
+
+      # No cutover: a missing category isn't listed.
+      get "/api/v1/time_entries/unassigned", params: { issue: "any" }, headers: headers_for(admin)
+      expect(json[:time_entries].map { |row| row[:id] }).not_to include(assigned.id, old.id)
+
+      Setting.set(TimeEntryWorkRequirement::SETTING_KEY, work_date.iso8601)
+      get "/api/v1/time_entries/unassigned", params: { issue: "any" }, headers: headers_for(admin)
+      ids = json[:time_entries].map { |row| row[:id] }
+      expect(ids).to include(assigned.id)
+      expect(ids).not_to include(old.id)
+      row = json[:time_entries].find { |item| item[:id] == assigned.id }
+      expect(row[:line_issues].first[:missing]).to eq([ "category" ])
+
+      # A line with neither, from the cutover, names both; before it, only the client.
+      split_row = json[:time_entries].find { |item| item[:id] == split.id }
+      expect(split_row[:line_issues].map { |issue| issue[:missing] }).to eq([ [ "category" ], [ "client", "category" ] ])
+      unassigned_row = json[:time_entries].find { |item| item[:id] == unassigned.id }
+      expect(unassigned_row[:line_issues].first[:missing]).to include("client")
+
+      # The default view still lists only lines without a client.
+      get "/api/v1/time_entries/unassigned", headers: headers_for(admin)
+      expect(json[:time_entries].map { |row| row[:id] }).to contain_exactly(unassigned.id, split.id)
     end
 
     it "is admin-only" do

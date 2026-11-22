@@ -15,10 +15,13 @@ hours, which is set per person in **Users**.
 
 ## Required from
 
-**What it does.** From this work date, every work line needs a client and a
-description of what was done. Lines on Internal – Cornerstone also need a
-category. Time that misses this can't be saved (clock-out, Log my day, the
-edit modals) or approved. Background jobs, such as the stale clock
+**What it does.** Staff record each work line in the owner's order: Client →
+Category → Task → Period → Comments. From this work date, every work line
+needs a client and a category, for real clients and Internal – Cornerstone
+alike (internal lines choose from the internal categories). The period and
+comments are optional, and so is the task unless the next setting is on. Time
+that misses this can't be saved (clock-out, Log my day, the edit modals) or
+approved. Background jobs, such as the stale clock
 auto-close, aren't blocked; their entries are caught at approval and in
 Unassigned time.
 
@@ -29,19 +32,18 @@ The key name is unchanged from milestone 2.
 
 ## Require a task on every work line
 
-**What it does.** With "Required from" set, every line, client or internal,
-also needs a category, plus a task when that category has active tasks. A
-category without tasks (the starter internal categories have none) can't take a
-task, so those lines need only the category. The clock-out sheet, Log my day,
+**What it does.** With "Required from" set, every line also needs a task when
+its category has active tasks. A category without tasks (the starter internal
+categories have none) can't take a task, so those lines need only the
+category. The clock-out sheet, Log my day,
 both edit modals, approval and the Unassigned time list ("Anything missing")
 all follow the same rule (`TimeEntryWorkRequirement` on the server,
 `checkLines` in the app). Like the rest of the rule, it applies only from the
 "Required from" date; Unassigned time doesn't list or label older entries for
-a missing task. With the setting on, the task picker sits next to
-the category instead of under "Task and period".
+a missing category or task. The task and period pickers always sit inline,
+after the category.
 
-**Default: off.** Staff describe their work in free text, and the task list
-doesn't yet cover all of it. Turn it on once the categories and tasks match
+**Default: off.** The task list doesn't yet cover all of the work. Turn it on once the categories and tasks match
 the work.
 
 ## Pay schedule

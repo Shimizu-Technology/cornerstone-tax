@@ -197,7 +197,7 @@ export default function EditTimeEntryModal({
     ? null
     : timesUntouched && entry?.hours !== undefined ? Math.round(entry.hours * 60) : Math.round(calculatedHours * 60)
   const linesRequired = detailsRequired(suggestions.requiredFrom, formData.work_date)
-  const lineCheck = checkLines(lines, { targetMinutes, required: linesRequired, clients, serviceTypes, taskRequired: linesRequired && suggestions.taskRequired })
+  const lineCheck = checkLines(lines, { targetMinutes, required: linesRequired, serviceTypes, taskRequired: linesRequired && suggestions.taskRequired })
   const linesChanged = JSON.stringify(linesPayload(lines, targetMinutes)) !== JSON.stringify(linesPayload(initialLines, targetMinutes))
   const hoursChanged = !isDayLog && entry?.hours !== undefined && Math.round(entry.hours * 60) !== targetMinutes
 

@@ -58,7 +58,7 @@ const entry: TimeEntry = {
   locked_at: null,
   created_at: '',
   updated_at: '',
-  review_flags: ['uncategorized', 'missing_client', 'missing_description', 'long_shift'],
+  review_flags: ['uncategorized', 'missing_client', 'missing_category', 'long_shift'],
 }
 
 const reportEntry = {
@@ -95,7 +95,7 @@ const quality = {
   flagged_entries_count: 1,
   uncategorized_count: 1,
   missing_client_count: 1,
-  missing_description_count: 1,
+  missing_category_count: 1,
   long_shift_count: 1,
   overlapping_entry_count: 0,
   long_shift_threshold_hours: 12,

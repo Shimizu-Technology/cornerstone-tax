@@ -1,4 +1,5 @@
 import type { TimeEntry } from '../../lib/api'
+import { workLineText } from '../../lib/timeEntryWork'
 import { formatMinutes } from '../../lib/workDuration'
 
 /**
@@ -33,7 +34,7 @@ export default function VersionConflictPanel({
           <ul className="ml-4 list-disc" aria-label="Lines saved now">
             {current.work_lines.map((line) => (
               <li key={line.id ?? line.position}>
-                {line.client_label}{line.description ? ` — ${line.description}` : ''} · {formatMinutes(line.minutes)}
+                {workLineText(line)} · {formatMinutes(line.minutes)}
               </li>
             ))}
           </ul>

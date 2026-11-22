@@ -227,7 +227,7 @@ describe('EditTimeEntryModal', () => {
 
     // Six 0.02h lines show as 1+1+2+1+1+1 = 7 minutes: nothing is left over.
     expect(screen.getByTestId('work-lines-remaining')).toHaveTextContent('All time is assigned')
-    fireEvent.change(screen.getByLabelText('Line 2 description'), { target: { value: 'Filed checks' } })
+    fireEvent.change(screen.getByLabelText('Line 2 comments'), { target: { value: 'Filed checks' } })
     const update = screen.getByRole('button', { name: /update/i })
     expect(update).toBeEnabled()
     fireEvent.click(update)
@@ -256,7 +256,7 @@ describe('EditTimeEntryModal', () => {
     }
     render(<EditTimeEntryModal isOpen entry={clockEntry} clients={[{ id: 6, name: 'C6' }]} canDelete onClose={vi.fn()} onSaved={vi.fn()} onDeleted={vi.fn()} />)
 
-    fireEvent.change(screen.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
+    fireEvent.change(screen.getByLabelText('Work comments'), { target: { value: 'Payroll run' } })
     fireEvent.click(screen.getByRole('button', { name: /update/i }))
 
     await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
@@ -292,7 +292,7 @@ describe('EditTimeEntryModal', () => {
     const versioned = { ...entry, hours: 7.5, version: 4, client: { id: 6, name: 'Jose Cruz' } }
     render(<EditTimeEntryModal isOpen entry={versioned} clients={[{ id: 6, name: 'Jose Cruz' }]} canDelete onClose={vi.fn()} onSaved={onSaved} onDeleted={vi.fn()} onConflict={onConflict} />)
 
-    fireEvent.change(screen.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
+    fireEvent.change(screen.getByLabelText('Work comments'), { target: { value: 'Payroll run' } })
     fireEvent.click(screen.getByRole('button', { name: /update/i }))
 
     expect(await screen.findByText('This entry was changed elsewhere after you opened it.')).toBeInTheDocument()

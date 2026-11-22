@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
 # One work line of a time entry: what part of the entry's hours went to which
-# client and what was done. Lines never change attendance or pay; their hours
-# always add up exactly to the entry's hours (enforced on TimeEntry).
+# client, category, task and period, with optional comments. Lines never
+# change attendance or pay; their hours always add up exactly to the entry's
+# hours (enforced on TimeEntry).
 #
 # Lines are separate rows on purpose so a later change can link a line to an
 # assigned task (e.g. an operation task) without touching attendance data.

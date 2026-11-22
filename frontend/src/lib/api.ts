@@ -824,7 +824,7 @@ export interface WorkSummaryResponse {
 }
 
 export interface UnassignedTimeEntry extends TimeEntry {
-  line_issues: Array<{ id: number; missing: Array<'client' | 'description' | 'category'> }>;
+  line_issues: Array<{ id: number; missing: Array<'client' | 'category' | 'task'> }>;
 }
 
 /** Pending entries held only because the person clocked in without a schedule. */
@@ -920,7 +920,7 @@ export interface ClockStatus {
     hours: number;
   } | null;
   can_clock_in: boolean;
-  /** ISO date from which every work line needs a client and description; null when off. */
+  /** ISO date from which every work line needs a client and a category; null when off. */
   work_details_required_from?: string | null;
   /** Settings > "Require a task on every work line". */
   work_task_required?: boolean;
@@ -1095,14 +1095,15 @@ export interface HoursReportWorkBreakdownRow {
   entries_count: number;
 }
 
-export type HoursReportReviewFlag = 'uncategorized' | 'missing_client' | 'missing_description' | 'long_shift' | 'overlap';
+export type HoursReportReviewFlag = 'uncategorized' | 'missing_client' | 'missing_category' | 'long_shift' | 'overlap';
 
 export interface HoursReportQuality {
   status: 'clear' | 'needs_review';
   flagged_entries_count: number;
   uncategorized_count: number;
   missing_client_count: number;
-  missing_description_count: number;
+  /** Lines dated from the work-details cutover without a category. */
+  missing_category_count: number;
   long_shift_count: number;
   overlapping_entry_count: number;
   long_shift_threshold_hours: number;

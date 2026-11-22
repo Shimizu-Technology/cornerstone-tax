@@ -211,6 +211,18 @@ RSpec.describe "Time tracking settings", type: :request do
       expect(json).to include(count: 0, entry_ids: [], needs_work_details_count: 2)
     end
 
+    it "previews entries with a client and a category, with or without comments" do
+      Setting.set("time_work_details_required_from", "2026-11-01")
+      client = Client.create!(first_name: "A", last_name: "A", client_type: "business", business_name: "Alpha Co")
+      bookkeeping = ServiceType.create!(name: "Bookkeeping")
+      only_unscheduled.work_lines.first.update_columns(client_id: client.id, service_type_id: bookkeeping.id, description: nil)
+      second.work_lines.first.update_columns(client_id: client.id, service_type_id: nil, description: "Bank recs")
+
+      get "/api/v1/time_entries/unscheduled_only_approvals", headers: headers_for(admin)
+
+      expect(json).to include(entry_ids: [ only_unscheduled.id ], count: 1, needs_work_details_count: 1)
+    end
+
     it "approves the previewed entries and nothing else" do
       confirm(only_unscheduled, second)
 
@@ -348,8 +360,8 @@ RSpec.describe "Time tracking settings", type: :request do
       }.to_json, headers: headers_for(employee)
     end
 
-    it "is off by default: a client line needs no category or task" do
-      manual([ { client_id: client_a.id, description: "Reconciled", minutes: 60 } ])
+    it "is off by default: a client line needs a category but no task" do
+      manual([ { client_id: client_a.id, service_type_id: bookkeeping.id, minutes: 60 } ])
 
       expect(response).to have_http_status(:created)
     end
@@ -357,11 +369,11 @@ RSpec.describe "Time tracking settings", type: :request do
     context "when on" do
       before { Setting.set("time_work_task_required", "true") }
 
-      it "asks a client line for a category and a task" do
+      it "asks a client line for its category first" do
         manual([ { client_id: client_a.id, description: "Reconciled", minutes: 60 } ])
 
         expect(response).to have_http_status(:unprocessable_entity)
-        expect(json[:error]).to include("This entry needs category and task")
+        expect(json[:error]).to eq("This entry needs category")
       end
 
       it "asks for the task when the category has tasks" do

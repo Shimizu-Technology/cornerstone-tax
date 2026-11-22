@@ -253,15 +253,17 @@ describe('TimeTracking log time', () => {
     apiMocks.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: null } })
   })
 
-  it('asks for the client, what was done, then the category, with task and period optional', async () => {
+  it('asks for the client, category, task, period and then comments, in the owner\'s order', async () => {
     renderPage('/admin/time')
     fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
 
     const editor = within(await screen.findByTestId('work-lines-editor'))
     const labels = [
       editor.getByLabelText('Client', { selector: 'select' }),
-      editor.getByLabelText('What I did'),
       editor.getByLabelText(/^Category/),
+      editor.getByLabelText(/^Task/),
+      editor.getByLabelText('Period type'),
+      editor.getByLabelText('Work comments'),
     ]
     labels.slice(1).forEach((element, index) => {
       expect(labels[index].compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -270,7 +272,7 @@ describe('TimeTracking log time', () => {
     // Legacy time categories are not offered for new entries.
     expect(editor.queryByRole('option', { name: /Tax Prep/ })).not.toBeInTheDocument()
     // Inputs are 16px on phones so iOS does not zoom.
-    expect(editor.getByLabelText('What I did').className).toContain('text-base')
+    expect(editor.getByLabelText('Work comments').className).toContain('text-base')
   })
 
   it('lists businesses before individuals in the client picker', async () => {
@@ -291,13 +293,12 @@ describe('TimeTracking log time', () => {
 
     await waitFor(() => expect(editor.getAllByRole('option', { name: "MoSa's" }).length).toBeGreaterThan(0))
     fireEvent.change(editor.getByLabelText('Client', { selector: 'select' }), { target: { value: '5' } })
-    fireEvent.change(editor.getByLabelText('What I did'), { target: { value: 'July bank rec' } })
     fireEvent.change(editor.getByLabelText(/^Category/), { target: { value: '1' } })
-    fireEvent.click(editor.getByRole('button', { name: 'Task and period' }))
     fireEvent.change(editor.getByLabelText(/^Task/), { target: { value: '11' } })
     fireEvent.change(editor.getByLabelText('Period type'), { target: { value: 'month' } })
     fireEvent.change(editor.getByLabelText('Period month'), { target: { value: '7' } })
     fireEvent.change(editor.getByLabelText('Period year'), { target: { value: '2026' } })
+    fireEvent.change(editor.getByLabelText('Work comments'), { target: { value: 'July bank rec' } })
     expect(editor.getByText('July 2026')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -308,6 +309,13 @@ describe('TimeTracking log time', () => {
       period_type: 'month', period_start: '2026-07-01', minutes: 540,
     }])
     expect(payload).not.toHaveProperty('time_category_id')
+  })
+
+  it('puts a scheduled shift\'s notes into the first line\'s comments', async () => {
+    renderPage('/admin/time?prefill=true&date=2026-11-20&start_time=08:00&end_time=12:00&notes=Payroll%20for%20SCR')
+
+    const editor = within(await screen.findByTestId('work-lines-editor'))
+    expect((editor.getByLabelText('Work comments') as HTMLTextAreaElement).value).toBe('Payroll for SCR')
   })
 
   it('shows and keeps the legacy category when editing an old entry', async () => {
@@ -349,7 +357,7 @@ describe('TimeTracking log time', () => {
     const editor = within(await screen.findByTestId('work-lines-editor'))
     expect(screen.getByText(/Legacy category:/)).toBeInTheDocument()
     expect((editor.getByLabelText('Client', { selector: 'select' }) as HTMLSelectElement).value).toBe('6')
-    expect((editor.getByLabelText('What I did') as HTMLInputElement).value).toBe('Old work')
+    expect((editor.getByLabelText('Work comments') as HTMLInputElement).value).toBe('Old work')
 
     // Nothing changed: the modal closes without sending anything, so neither
     // the legacy category nor the clock times can be rewritten.
@@ -360,7 +368,7 @@ describe('TimeTracking log time', () => {
     // A description-only edit sends just the work lines, no attendance fields.
     fireEvent.click(screen.getByText('Jose Cruz'))
     const reopened = within(await screen.findByTestId('work-lines-editor'))
-    fireEvent.change(reopened.getByLabelText('What I did'), { target: { value: 'Old work, filed' } })
+    fireEvent.change(reopened.getByLabelText('Work comments'), { target: { value: 'Old work, filed' } })
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
     await waitFor(() => expect(apiMocks.updateTimeEntry).toHaveBeenCalled())
     const payload = apiMocks.updateTimeEntry.mock.calls[0][1]
@@ -385,7 +393,7 @@ describe('TimeTracking log time', () => {
     renderPage('/admin/time')
     fireEvent.click(await screen.findByText('Jose Cruz'))
     const editor = within(await screen.findByTestId('work-lines-editor'))
-    fireEvent.change(editor.getByLabelText('What I did'), { target: { value: 'New note' } })
+    fireEvent.change(editor.getByLabelText('Work comments'), { target: { value: 'New note' } })
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
 
     const callsBefore = apiMocks.getTimeEntries.mock.calls.length

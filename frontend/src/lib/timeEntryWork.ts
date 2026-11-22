@@ -114,15 +114,51 @@ interface WorkSummaryEntry extends CategorizedEntry {
   period_start?: string | null
 }
 
-/** "MoSa's · Bookkeeping · Bank Reconciliation · July 2026" */
-export function workSummary(entry: WorkSummaryEntry, { includeClient = true } = {}): string {
+/**
+ * "MoSa's · Bookkeeping · Bank Reconciliation · July 2026". `uncategorized`
+ * is shown when there is no category; null leaves it out.
+ */
+export function workSummary(
+  entry: WorkSummaryEntry,
+  { includeClient = true, uncategorized = 'Uncategorized' as string | null } = {},
+): string {
   const parts = [
     includeClient ? entry.client?.name || 'Internal' : null,
-    workCategoryText(entry),
+    workCategory(entry) ? workCategoryText(entry) : uncategorized,
     entry.service_task?.name,
     entry.period_label || periodLabel(entry.period_type, entry.period_start),
   ]
   return parts.filter(Boolean).join(' · ')
+}
+
+interface WorkLineLike {
+  client_label: string
+  service_type?: { id: number; name: string } | null
+  service_task?: { name: string } | null
+  category_label?: string | null
+  period_label?: string | null
+  description?: string | null
+}
+
+/**
+ * A work line in the owner's order: "MoSa's · Bookkeeping · Bank
+ * Reconciliation · July 2026" (a missing category is left out).
+ */
+export function workLineSummary(line: WorkLineLike): string {
+  // The server's category_label already marks a legacy category.
+  const label = line.category_label || line.service_type?.name
+  return workSummary({
+    client: { name: line.client_label },
+    service_type: label ? { id: line.service_type?.id ?? 0, name: label } : null,
+    service_task: line.service_task,
+    period_label: line.period_label,
+  }, { uncategorized: null })
+}
+
+/** The line summary, then its comments if any: "MoSa's · Bookkeeping — Filed late". */
+export function workLineText(line: WorkLineLike): string {
+  const comments = line.description?.trim()
+  return comments ? `${workLineSummary(line)} — ${comments}` : workLineSummary(line)
 }
 
 export interface ClientOption {

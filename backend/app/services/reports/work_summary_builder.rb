@@ -95,10 +95,11 @@ module Reports
           client_id: line.client_id,
           client_name: line.client_label,
           system_kind: line.client&.system_kind,
-          description: line.description,
           category: line.category_label,
           task: line.service_task&.name,
           period: line.period_label,
+          # The line's comments (optional).
+          description: line.description,
           minutes: line_minutes[index],
           hours: line.hours.to_f,
           approval_state: approval_state(entry)

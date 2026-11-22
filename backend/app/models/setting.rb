@@ -15,10 +15,10 @@ class Setting < ApplicationRecord
     "overtime_weekly_threshold_hours" => "40",
     "early_clock_in_buffer_minutes" => "5",
     # ISO date. From this work date on, every work line needs a client and a
-    # description (and a category for internal work). Blank means off.
+    # category (period and comments are optional). Blank means off.
     "time_work_details_required_from" => "",
-    # "true" or "false". With the cutover on, every line also needs a category
-    # and, when that category has tasks, a task. See TimeEntryWorkRequirement.
+    # "true" or "false". With the cutover on, every line also needs a task
+    # when its category has tasks. See TimeEntryWorkRequirement.
     "time_work_task_required" => "false",
     # Pay periods for presets in the work summary: semi_monthly (1st-15th and
     # 16th-end of month), biweekly or weekly. Biweekly and weekly count from

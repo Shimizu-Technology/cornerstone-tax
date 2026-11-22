@@ -97,15 +97,40 @@ RSpec.describe "Api::V1::Admin::HoursReports", type: :request do
       expect(json.dig(:quality, :flagged_entries_count)).to eq(2)
       expect(json.dig(:quality, :uncategorized_count)).to eq(1)
       expect(json.dig(:quality, :missing_client_count)).to eq(1)
-      expect(json.dig(:quality, :missing_description_count)).to eq(1)
+      # No work-details cutover is set, so a missing category isn't a rule breach.
+      expect(json.dig(:quality, :missing_category_count)).to eq(0)
       expect(json.dig(:quality, :long_shift_count)).to eq(1)
       expect(json.dig(:quality, :overlapping_entry_count)).to eq(2)
 
       serialized_entries = json.dig(:employees, 0, :days).flat_map { |day| day[:entries] }
       expect(serialized_entries.find { |entry| entry[:id] == long_entry.id }[:review_flags]).to contain_exactly(
-        "uncategorized", "missing_client", "missing_description", "long_shift", "overlap"
+        "uncategorized", "missing_client", "long_shift", "overlap"
       )
       expect(serialized_entries.find { |entry| entry[:id] == overlapping_entry.id }[:review_flags]).to eq([ "overlap" ])
+    end
+
+    it "flags lines without a category from the work-details cutover, not comments" do
+      flagged_date = work_date + 1.day
+      Setting.set(TimeEntryWorkRequirement::SETTING_KEY, flagged_date.iso8601)
+      no_category = create_entry(user: employee, work_date: flagged_date, start_time: "08:00", end_time: "09:00",
+                                 time_category: nil, client: client, description: "Filed")
+      bookkeeping = ServiceType.create!(name: "Bookkeeping")
+      no_comments = create_entry(user: employee, work_date: flagged_date, start_time: "09:00", end_time: "10:00",
+                                 time_category: nil, client: client, description: nil)
+      no_comments.work_lines.first.update_columns(service_type_id: bookkeeping.id)
+
+      get "/api/v1/admin/hours_report",
+          params: { start_date: work_date.iso8601, end_date: flagged_date.iso8601, user_id: employee.id },
+          headers: auth_headers_for[admin]
+
+      expect(response).to have_http_status(:ok)
+      # The two work_date entries (before the cutover) have no category either; only the later one counts.
+      expect(json.dig(:quality, :missing_category_count)).to eq(1)
+      serialized_entries = json.dig(:employees, 0, :days).flat_map { |day| day[:entries] }
+      expect(serialized_entries.find { |entry| entry[:id] == no_category.id }[:review_flags]).to include("missing_category")
+      expect(serialized_entries.find { |entry| entry[:id] == no_comments.id }[:review_flags]).to eq([])
+      expect(serialized_entries.select { |entry| entry[:work_date] == work_date.iso8601 }.flat_map { |entry| entry[:review_flags] })
+        .not_to include("missing_category")
     end
 
     it "detects overlaps that cross midnight into the next work date" do

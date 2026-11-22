@@ -4,12 +4,15 @@
 
 ## Each line
 
+Staff record a line in the owner's order: Client → Category → Task → Period → Comments (for example, MoSa's / Bookkeeping / Bank Reconciliation / July 2026). The fields below follow that order.
+
 | Field | Notes |
 |---|---|
-| `client_id` | Optional unless the cutover rule applies (see below). `null` means Unassigned. |
-| `description` | Free text: what was done. |
-| `service_type_id`, `service_task_id` | Optional category and task. A task needs its category. |
+| `client_id` | Required once the cutover rule applies (see below). `null` means Unassigned. |
+| `service_type_id` | The category. Required once the cutover rule applies. |
+| `service_task_id` | The task. Optional unless "Require a task" is on and the category has tasks. A task needs its category. |
 | `period_type`, `period_start` | Optional period: `month`/`quarter`/`year` and the first day of it. |
+| `description` | Optional free text, shown in the app as **Comments**. The field keeps its name. |
 | **time**: exactly one of the fields below | |
 | `exact_hours` | An **unchanged** line's stored hours (up to 2 decimals). It is kept exactly as sent and is never rescaled. |
 | `minutes` | A changed or new line's time, in minutes. |
@@ -33,7 +36,7 @@ Untouched lines are **never** altered to make a request fit.
 
 ## Clients
 
-Send `exact_hours` for every line whose time the person didn't edit, using the value the API returned in `work_lines[].hours`. Send `minutes` for lines they edited or added. If `exact_hours` aren't sent, a description-only edit can move 0.01h between lines, because rounded display minutes are not the stored hours.
+Send `exact_hours` for every line whose time the person didn't edit, using the value the API returned in `work_lines[].hours`. Send `minutes` for lines they edited or added. If `exact_hours` aren't sent, a comments-only edit can move 0.01h between lines, because rounded display minutes are not the stored hours.
 
 Example: stored hours [0.08, 0.08, 0.14, 0.05, 0.17, 0.19] (an entry of 0.71h) are shown as minutes [5, 5, 8, 3, 10, 12]. The person changes the first two to 4 and 6:
 
@@ -57,6 +60,8 @@ Every time entry has a `version` (an integer, serialized exactly). It goes up on
 
 ## Cutover rule
 
-From Settings → Time tracking → "Required from" (`time_work_details_required_from`): every line needs a client and a description; internal lines (Internal – Cornerstone) also need a category; the task is optional.
+From Settings → Time tracking → "Required from" (`time_work_details_required_from`), on completed entries dated on or after it, every line needs a client and a category, whether the client is a real client or Internal – Cornerstone (which takes the internal categories). The task, period and comments are optional. Before that date nothing is required. With no lines at all, the error is "Add at least one work line with a client and a category"; otherwise it names the line and what it misses, e.g. "Line 2 needs client and category".
 
-With "Require a task on every work line" on (`time_work_task_required`), from the same date every line, client or internal, also needs a category, plus a task when that category has active tasks. A category with no tasks can't take one, so it needs none. The editors read this as `work_task_required` from `GET /api/v1/time_entries/work_line_suggestions` and `current_status`. See `docs/TIME_TRACKING_SETTINGS.md`.
+With "Require a task on every work line" on (`time_work_task_required`), from the same date a line also needs a task when its category has active tasks. A category with no tasks can't take one, so it needs none.
+
+The admin Unassigned time list (`GET /api/v1/time_entries/unassigned`) flags a line with no client on any date. With `issue=any` it also flags a missing category, and a missing task under the task rule, but only on entries dated from the cutover, so older lines without a category don't fill the list. Each entry's `line_issues[].missing` lists `"client"`, `"category"` and `"task"`. The editors read this as `work_task_required` from `GET /api/v1/time_entries/work_line_suggestions` and `current_status`. See `docs/TIME_TRACKING_SETTINGS.md`.

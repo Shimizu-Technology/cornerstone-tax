@@ -33,7 +33,7 @@ describe('LogMyDay', () => {
     render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
 
     fireEvent.change(await screen.findByLabelText('Work client'), { target: { value: '2' } })
-    fireEvent.change(screen.getByLabelText('Work description'), { target: { value: 'Bank recs' } })
+    fireEvent.change(screen.getByLabelText('Work comments'), { target: { value: 'Bank recs' } })
     fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '45' } })
     fireEvent.keyDown(screen.getByLabelText('Work time'), { key: 'Enter' })
     fireEvent.change(screen.getByLabelText('Line 2 client'), { target: { value: '3' } })
@@ -73,7 +73,7 @@ describe('LogMyDay', () => {
     render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
 
     fireEvent.change(await screen.findByLabelText('Work client'), { target: { value: '2' } })
-    fireEvent.change(screen.getByLabelText('Work description'), { target: { value: 'Bank recs' } })
+    fireEvent.change(screen.getByLabelText('Work comments'), { target: { value: 'Bank recs' } })
     fireEvent.change(screen.getByLabelText('Work time'), { target: { value: '45' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous day' }))
@@ -83,7 +83,7 @@ describe('LogMyDay', () => {
 
     fireEvent.click(within(unsaved).getByRole('button'))
     await waitFor(() => expect((screen.getByLabelText('Work client') as HTMLSelectElement).value).toBe('2'))
-    expect((screen.getByLabelText('Work description') as HTMLInputElement).value).toBe('Bank recs')
+    expect((screen.getByLabelText('Work comments') as HTMLInputElement).value).toBe('Bank recs')
     expect(screen.getByText(/Unsaved changes/)).toBeInTheDocument()
   })
 
@@ -212,15 +212,15 @@ describe('LogMyDay', () => {
   it('wipes another person’s stored drafts when a different user opens Log my day', async () => {
     apiMock.getTimeEntries.mockResolvedValue({ data: { time_entries: [] } })
     const { unmount } = render(<LogMyDay userId={7} clients={clients} serviceTypes={[]} />)
-    fireEvent.change(await screen.findByLabelText('Work description'), { target: { value: 'Private client note' } })
+    fireEvent.change(await screen.findByLabelText('Work comments'), { target: { value: 'Private client note' } })
     expect(window.sessionStorage.getItem('cst.logMyDay.drafts.7')).toContain('Private client note')
     unmount()
 
     render(<LogMyDay userId={8} clients={clients} serviceTypes={[]} />)
-    await screen.findByLabelText('Work description')
+    await screen.findByLabelText('Work comments')
 
     expect(window.sessionStorage.getItem('cst.logMyDay.drafts.7')).toBeNull()
-    expect((screen.getByLabelText('Work description') as HTMLInputElement).value).toBe('')
+    expect((screen.getByLabelText('Work comments') as HTMLInputElement).value).toBe('')
   })
 
   describe('409 version conflicts', () => {

@@ -60,34 +60,54 @@ describe('attendanceChanges', () => {
   })
 })
 
-describe('checkLines with "Require a task" on', () => {
-  const clients = [
-    { id: 1, name: 'Internal – Cornerstone', client_type: 'business', system_kind: 'internal' },
-    { id: 2, name: 'Alpha Co', client_type: 'business' },
-  ]
+describe('checkLines: the work-details rule (client, category, then task)', () => {
   const serviceTypes = [
     { id: 10, name: 'Bookkeeping', description: null, color: null, tasks: [{ id: 100, name: 'Bank reconciliation', description: null }] },
     { id: 20, name: 'Office & errands', description: null, color: null, internal: true, tasks: [] },
   ]
-  const check = (patch: Parameters<typeof newDraft>[0], taskRequired = true) => {
-    const line = newDraft({ client_id: '2', description: 'Work', durationText: '30', ...patch })
-    return checkLines([line], { targetMinutes: null, required: true, clients, serviceTypes, taskRequired }).problems[line.key] ?? []
+  const check = (patch: Parameters<typeof newDraft>[0], { taskRequired = false, required = true } = {}) => {
+    const line = newDraft({ client_id: '2', durationText: '30', ...patch })
+    return checkLines([line], { targetMinutes: null, required, serviceTypes, taskRequired }).problems[line.key] ?? []
   }
 
-  it('asks every line for a category, and for a task when the category has tasks', () => {
-    expect(check({})).toEqual(['Choose a category and a task'])
-    expect(check({ service_type_id: '10' })).toEqual(['Choose a task'])
-    expect(check({ service_type_id: '10', service_task_id: '100' })).toEqual([])
+  it('accepts a client line with a category and no comments', () => {
+    expect(check({ service_type_id: '10' })).toEqual([])
+  })
+
+  it('asks for a category on every line, client or internal', () => {
+    expect(check({})).toEqual(['Choose a category'])
+    expect(check({ client_id: '1' })).toEqual(['Choose a category'])
     expect(check({ client_id: '1', service_type_id: '20' })).toEqual([])
   })
 
-  it('keeps the task optional when off', () => {
-    expect(check({}, false)).toEqual([])
-    expect(check({ service_type_id: '10' }, false)).toEqual([])
+  it('lists the problems in field order: client, category, then time', () => {
+    expect(check({ client_id: '', durationText: '' })).toEqual(['Choose a client', 'Choose a category', 'Add the time'])
   })
 
-  it('describes the rule in one sentence', () => {
-    expect(requirementHint(true)).toContain('plus a task when the category has tasks')
-    expect(requirementHint(false)).toContain('the task is optional')
+  it('never asks for comments or a period', () => {
+    expect(check({ service_type_id: '10', description: '', period_type: '' })).toEqual([])
+  })
+
+  it('requires nothing but the time before the cutover', () => {
+    expect(check({ client_id: '' }, { required: false })).toEqual([])
+    expect(check({}, { required: false, taskRequired: true })).toEqual([])
+  })
+
+  it('with "Require a task" on, asks for a task when the category has tasks', () => {
+    expect(check({}, { taskRequired: true })).toEqual(['Choose a category'])
+    expect(check({ service_type_id: '10' }, { taskRequired: true })).toEqual(['Choose a task'])
+    expect(check({ service_type_id: '10', service_task_id: '100' }, { taskRequired: true })).toEqual([])
+    expect(check({ client_id: '1', service_type_id: '20' }, { taskRequired: true })).toEqual([])
+  })
+
+  it('keeps the task optional when "Require a task" is off', () => {
+    expect(check({ service_type_id: '10' })).toEqual([])
+  })
+})
+
+describe('requirementHint', () => {
+  it('names the required fields in the owner\'s order', () => {
+    expect(requirementHint(false)).toBe('Pick the client and category for each line. Task, period and comments are optional.')
+    expect(requirementHint(true)).toBe('Pick the client, category and task for each line. Period and comments are optional.')
   })
 })

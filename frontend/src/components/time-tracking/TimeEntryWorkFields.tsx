@@ -116,6 +116,7 @@ export function PeriodPicker({
   className = inputClass,
   labelClassName = labelClass,
   stacked = false,
+  columnsClassName,
 }: {
   idPrefix?: string
   label?: string
@@ -129,6 +130,8 @@ export function PeriodPicker({
   labelClassName?: string
   /** Narrow columns (filter bars): put the month/quarter and year under the type. */
   stacked?: boolean
+  /** Grid column classes for the parts, replacing the layout `stacked` picks. */
+  columnsClassName?: string
 }) {
   const generatedId = useId()
   const prefix = idPrefix || generatedId
@@ -161,7 +164,7 @@ export function PeriodPicker({
       <legend className={labelClassName}>
         {label}{hint && <span className="font-normal text-text-muted"> {hint}</span>}
       </legend>
-      <div className={`grid gap-2 ${stacked ? (type === 'month' || type === 'quarter' ? 'grid-cols-2 [&>*:first-child]:col-span-2' : 'grid-cols-1') : type === 'month' || type === 'quarter' ? 'grid-cols-1 sm:grid-cols-[1fr_1.2fr_1fr]' : type === 'year' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+      <div className={`grid gap-2 ${columnsClassName ?? (stacked ? (type === 'month' || type === 'quarter' ? 'grid-cols-2 [&>*:first-child]:col-span-2' : 'grid-cols-1') : type === 'month' || type === 'quarter' ? 'grid-cols-1 sm:grid-cols-[1fr_1.2fr_1fr]' : type === 'year' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1')}`}>
         <select id={`${prefix}-period-type`} aria-label={`${label} type`} value={type} onChange={(event) => changeType(event.target.value)} className={className}>
           <option value="">{emptyLabel}</option>
           {PERIOD_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}

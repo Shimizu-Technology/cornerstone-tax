@@ -81,7 +81,7 @@ describe('ClockInOutCard clock-out', () => {
 
     fireEvent.change(sheet.getByLabelText('Client', { selector: 'select' }), { target: { value: '' } })
     fireEvent.change(sheet.getByLabelText(/^Category/), { target: { value: '2' } })
-    fireEvent.change(sheet.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
+    fireEvent.change(sheet.getByLabelText('Work comments'), { target: { value: 'Payroll run' } })
     submitClockOut()
 
     await waitFor(() => expect(apiMock.clockOut).toHaveBeenCalled())
@@ -95,8 +95,9 @@ describe('ClockInOutCard clock-out', () => {
   it('prefills a month period from the Guam work date, not the UTC date', async () => {
     const sheet = await openClockOut()
 
-    // The saved task keeps "Task and period" open.
-    expect(sheet.getByRole('button', { name: 'Hide task and period' })).toHaveAttribute('aria-expanded', 'true')
+    // Task and period sit inline under the category, with no toggle.
+    expect(sheet.queryByRole('button', { name: /task and period/i })).not.toBeInTheDocument()
+    expect((sheet.getByLabelText(/^Task/) as HTMLSelectElement).value).toBe('11')
     fireEvent.change(sheet.getByLabelText('Period type'), { target: { value: 'month' } })
 
     expect(sheet.getByText('December 2026')).toBeInTheDocument()
@@ -137,13 +138,13 @@ describe('ClockInOutCard clock-out', () => {
     const sheet = await openClockOut()
 
     fireEvent.change(sheet.getByLabelText(/^Category/), { target: { value: '2' } })
-    fireEvent.change(sheet.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
+    fireEvent.change(sheet.getByLabelText('Work comments'), { target: { value: 'Payroll run' } })
     submitClockOut()
     expect((await screen.findAllByText('Network error')).length).toBeGreaterThan(0)
 
     fireEvent.click(screen.getAllByRole('button', { name: /Clock Out/ })[0])
     const reopened = within(await screen.findByRole('dialog', { name: 'Clock out' }))
-    expect((reopened.getByLabelText('What I did') as HTMLInputElement).value).toBe('Payroll run')
+    expect((reopened.getByLabelText('Work comments') as HTMLInputElement).value).toBe('Payroll run')
     submitClockOut()
 
     await waitFor(() => expect(apiMock.clockOut).toHaveBeenCalledTimes(2))
@@ -152,7 +153,7 @@ describe('ClockInOutCard clock-out', () => {
 
   it('keeps focus in the field while typing several characters', async () => {
     const sheet = await openClockOut()
-    const field = sheet.getByLabelText('What I did') as HTMLInputElement
+    const field = sheet.getByLabelText('Work comments') as HTMLInputElement
 
     field.focus()
     for (const text of ['B', 'Ba', 'Ban', 'Bank', 'Bank r', 'Bank rec']) {
@@ -176,7 +177,7 @@ describe('ClockInOutCard task rule freshness', () => {
 
     const sheet = await openClockOut()
 
-    expect(await sheet.findByText(/plus a task when the category has tasks/)).toBeInTheDocument()
+    expect(await sheet.findByText(/Pick the client, category and task for each line\. Period and comments are optional\./)).toBeInTheDocument()
   })
 
   it('drops the task rule when the newer settings turned it off', async () => {
@@ -185,8 +186,29 @@ describe('ClockInOutCard task rule freshness', () => {
 
     const sheet = await openClockOut()
 
-    expect(await sheet.findByText(/the task is optional/)).toBeInTheDocument()
-    expect(sheet.queryByText(/plus a task when the category has tasks/)).not.toBeInTheDocument()
+    expect(await sheet.findByText(/Pick the client and category for each line\. Task, period and comments are optional\./)).toBeInTheDocument()
+    expect(sheet.queryByText(/Pick the client, category and task/)).not.toBeInTheDocument()
+  })
+
+  it('from the cutover, needs a category but not comments to clock out', async () => {
+    apiMock.getClockStatus.mockResolvedValue({ data: { ...clockedIn, work_details_required_from: '2026-11-01', work_task_required: false } })
+    apiMock.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: '2026-11-01', work_task_required: false } })
+    apiMock.clockOut.mockResolvedValue({ data: { time_entry: {} } })
+
+    const sheet = await openClockOut()
+    await sheet.findByText(/Pick the client and category for each line/)
+    fireEvent.change(sheet.getByLabelText(/^Category/), { target: { value: '' } })
+    expect(sheet.getByText('Choose a category')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /^Clock Out/ }).at(-1)).toBeDisabled()
+
+    fireEvent.change(sheet.getByLabelText(/^Category/), { target: { value: '1' } })
+    expect((sheet.getByLabelText('Work comments') as HTMLTextAreaElement).value).toBe('')
+    submitClockOut()
+
+    await waitFor(() => expect(apiMock.clockOut).toHaveBeenCalled())
+    expect(apiMock.clockOut.mock.calls[0][4]).toEqual([
+      expect.objectContaining({ client_id: 5, service_type_id: 1, description: '', minutes: 120 }),
+    ])
   })
 })
 
