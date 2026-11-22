@@ -5,7 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import UnassignedTime from '../../components/time-tracking/UnassignedTime'
 import WorkLinesEditor from '../../components/time-tracking/WorkLinesEditor'
-import EntryWorkDetails from '../../components/time-tracking/EntryWorkDetails'
+import EntryWorkDetails, { EntryWorkCompact, ReportEntryWork } from '../../components/time-tracking/EntryWorkDetails'
 import VersionConflictPanel from '../../components/time-tracking/VersionConflictPanel'
 import LogMyDay from '../../components/time-tracking/LogMyDay'
 import WorkSummary from '../../components/time-tracking/WorkSummary'
@@ -25,12 +25,8 @@ import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, useTimeEntryWorkOptions, w
 import { buildHoursReportParams, normalizeReportFilters } from '../../lib/hoursReportParams'
 import {
   categoryFilterValue,
-  isSplitEntry,
+  entryComments,
   parseCategoryFilter,
-  periodLabel,
-  workCategory,
-  workCategoryText,
-  workSummary,
 } from '../../lib/timeEntryWork'
 
 // Local types to avoid Vite caching issues
@@ -176,10 +172,6 @@ function isSameDay(date1: Date, date2: Date): boolean {
 
 function formatBadgeCount(count: number): string {
   return count > 99 ? '99+' : String(count)
-}
-
-function entryPeriodLabel(entry: TimeEntryItem): string | null {
-  return entry.period_label || periodLabel(entry.period_type, entry.period_start)
 }
 
 export default function TimeTracking() {
@@ -595,6 +587,22 @@ export default function TimeTracking() {
               created_at: '',
               updated_at: '',
               review_flags: entry.review_flags,
+              // The report's lines carry report hours; as WorkLines for the views.
+              work_lines: (entry.work_lines ?? []).map(line => ({
+                id: line.id,
+                position: line.position,
+                client: line.client,
+                client_label: line.client_label,
+                description: line.description,
+                service_type: line.service_type,
+                service_task: line.service_task,
+                category_label: line.category_label,
+                period_type: line.period_type,
+                period_start: line.period_start,
+                period_label: line.period_label,
+                hours: line.total_hours,
+                minutes: line.minutes,
+              })),
             }))
           )
         )
@@ -777,6 +785,17 @@ export default function TimeTracking() {
     setLines(drafts)
     setInitialLines(drafts)
     setShowModal(true)
+  }
+
+  // A report row may carry only the lines that match its filters, and no
+  // version; edit the entry as it is saved now, so a save can't drop lines.
+  const openEditEntryFromReport = async (entry: TimeEntryItem) => {
+    const response = await api.getTimeEntry(entry.id)
+    if (response.data?.time_entry) {
+      openEditEntry(response.data.time_entry)
+    } else {
+      setReportError(response.error || 'Couldn’t open this entry. Try again.')
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1470,17 +1489,8 @@ export default function TimeTracking() {
                             {entry.formatted_start_time} - {entry.formatted_end_time}
                           </div>
                         )}
-                        {entry.client && (
-                          <div className="text-primary-dark font-medium truncate text-[10px] sm:text-xs" title={entry.client.name}>{entry.client.name}</div>
-                        )}
-                        {workCategory(entry) && (
-                          <div className="text-primary font-medium truncate text-[10px] sm:text-xs" title={[workCategoryText(entry), entry.service_task?.name].filter(Boolean).join(' / ')}>
-                            {workCategoryText(entry)}{entry.service_task ? ` / ${entry.service_task.name}` : ''}
-                          </div>
-                        )}
-                        {entryPeriodLabel(entry) && (
-                          <div className="text-primary-dark/70 truncate text-[10px]">{entryPeriodLabel(entry)}</div>
-                        )}
+                        {/* Client, category and period from the work lines; a split entry lists each line's client and time. */}
+                        <EntryWorkCompact entry={entry} />
                         <div className="text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1">{ownerLabel(entry)}</div>
                         {entry.approval_note && (
                           <div className="text-[9px] text-text-muted italic truncate mt-0.5" title={entry.approval_note}>
@@ -1525,10 +1535,13 @@ export default function TimeTracking() {
             <div className="divide-y divide-neutral-warm">
               {visibleEntries.map(entry => (
                 <div key={entry.id} className={`p-3 sm:p-4 ${entry.locked_at ? 'bg-amber-50/30' : ''}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
+                  {/* Top row: time and badges, with the actions beside them. The
+                      work details below use the card's full width on phones
+                      (on wider screens they keep the left column, as before).
+                      DOM order stays content first, then actions. */}
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2">
                       {/* Hours + Time + Category Row */}
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex min-w-0 items-center gap-2 flex-wrap self-center">
                         <span className={`inline-flex items-center gap-1 px-2 sm:px-3 py-1 font-bold rounded-full text-sm ${entry.locked_at ? 'bg-amber-100 text-amber-700' : 'bg-primary/20 text-primary'}`}>
                           {entry.locked_at ? <LockIcon /> : <ClockIcon />}
                           {entry.hours}h
@@ -1564,6 +1577,7 @@ export default function TimeTracking() {
                           </span>
                         )}
                       </div>
+                    <div className="col-span-2 col-start-1 min-w-0 sm:col-span-1">
                       {/* Client -> Category -> Task -> Period, one row per work line when split */}
                       <EntryWorkDetails entry={entry} />
                       {/* Owner */}
@@ -1571,8 +1585,8 @@ export default function TimeTracking() {
                         by {ownerLabel(entry)}
                       </p>
                       {/* Comments (a split entry shows each line's own) */}
-                      {entry.description && !isSplitEntry(entry) && (
-                        <p className="mt-2 text-primary-dark text-sm">{entry.description}</p>
+                      {entryComments(entry) && (
+                        <p className="mt-2 text-primary-dark text-sm">{entryComments(entry)}</p>
                       )}
                       {/* Approval info */}
                       {entry.approved_by && (
@@ -1587,7 +1601,7 @@ export default function TimeTracking() {
                       )}
                     </div>
                     {/* Actions */}
-                    <div className="flex items-center gap-1">
+                    <div className="col-start-2 row-start-1 flex items-center gap-1 sm:row-end-3">
                       <button
                         onClick={() => openEditEntry(entry)}
                         disabled={!!entry.locked_at}
@@ -1682,7 +1696,7 @@ export default function TimeTracking() {
             exporting={reportExporting}
             onExport={(type) => void downloadReport(type)}
             onOpenEmployee={setSelectedReportEmployee}
-            onEditEntry={openEditEntry}
+            onEditEntry={(entry) => void openEditEntryFromReport(entry)}
             view={reportView}
             onViewChange={setReportView}
           />
@@ -2164,9 +2178,7 @@ function EmployeeReportDrawer({
                           <span className="font-medium text-primary-dark">{entry.formatted_start_time || entry.start_time || '—'} – {entry.formatted_end_time || entry.end_time || '—'}</span>
                           <span className="font-semibold text-primary">{entry.total_hours.toFixed(2)}h</span>
                         </div>
-                        <div className="mt-1 text-xs text-text-muted">
-                          {workSummary(entry)} · {entry.entry_method}
-                        </div>
+                        <ReportEntryWork entry={entry} size="xs" />
                         {entry.overtime_hours > 0 && <p className="mt-2 text-xs font-semibold text-orange-800">{entry.overtime_hours.toFixed(2)}h of this entry is overtime.</p>}
                         {entry.breaks.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1">

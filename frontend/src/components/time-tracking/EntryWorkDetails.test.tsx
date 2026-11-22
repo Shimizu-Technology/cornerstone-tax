@@ -1,7 +1,8 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { TimeEntry, WorkLine } from '../../lib/api'
-import EntryWorkDetails from './EntryWorkDetails'
+import type { HoursReportEntry, TimeEntry, WorkLine } from '../../lib/api'
+import { entryComments } from '../../lib/timeEntryWork'
+import EntryWorkDetails, { EntryWorkCompact, ReportEntryWork } from './EntryWorkDetails'
 
 const line = (patch: Partial<WorkLine>): WorkLine => ({
   id: 1, position: 0, client: null, client_label: 'Unassigned', description: null, service_type: null, service_task: null,
@@ -10,19 +11,18 @@ const line = (patch: Partial<WorkLine>): WorkLine => ({
 
 const entry = (patch: Partial<TimeEntry>): TimeEntry => ({
   id: 7, work_date: '2026-11-20', status: 'completed', entry_method: 'manual', hours: 2, client: null, service_type: null,
-  service_task: null, time_category: null, period_type: null, period_start: null, period_label: null, description: null,
+  service_task: null, time_category: null, tax_return: null, period_type: null, period_start: null, period_label: null, description: null,
   work_lines: [], ...patch,
 } as unknown as TimeEntry)
 
+const mosas = line({ id: 1, client: { id: 2, name: "MoSa's" }, client_label: "MoSa's", service_type: { id: 12, name: 'Bookkeeping', color: null }, category_label: 'Bookkeeping', service_task: { id: 5, name: 'Bank Reconciliation' }, period_type: 'month', period_start: '2026-07-01', period_label: 'July 2026', description: 'Bank recs', minutes: 90 })
+const scr = line({ id: 2, position: 1, client: { id: 3, name: 'SCR' }, client_label: 'SCR', service_type: { id: 13, name: 'Payroll', color: null }, category_label: 'Payroll', period_type: 'quarter', period_start: '2026-07-01', period_label: '3rd Quarter 2026', description: 'Payroll return', minutes: 30 })
+// The entry-level fields mirror line 1 (MoSa's).
+const splitEntry = entry({ client: { id: 2, name: "MoSa's" }, description: 'Bank recs; Payroll return', work_lines: [mosas, scr] } as Partial<TimeEntry>)
+
 describe('EntryWorkDetails (Time Entries card)', () => {
   it('shows a split entry as one row per line, never "Internal · Uncategorized"', () => {
-    render(<EntryWorkDetails entry={entry({
-      description: 'Bank recs; Payroll return',
-      work_lines: [
-        line({ id: 1, client: { id: 2, name: "MoSa's" }, client_label: "MoSa's", service_type: { id: 12, name: 'Bookkeeping', color: null }, category_label: 'Bookkeeping', service_task: { id: 5, name: 'Bank Reconciliation' }, period_label: 'July 2026', description: 'Bank recs', minutes: 90 }),
-        line({ id: 2, position: 1, client: { id: 3, name: 'SCR' }, client_label: 'SCR', service_type: { id: 13, name: 'Payroll', color: null }, category_label: 'Payroll', period_label: '3rd Quarter 2026', description: 'Payroll return', minutes: 30 }),
-      ],
-    })} />)
+    render(<EntryWorkDetails entry={splitEntry} />)
 
     const rows = within(screen.getByRole('list', { name: 'Work lines' })).getAllByRole('listitem')
     expect(rows).toHaveLength(2)
@@ -30,29 +30,47 @@ describe('EntryWorkDetails (Time Entries card)', () => {
     expect(rows[0]).toHaveAttribute('title', "MoSa's · Bookkeeping · Bank Reconciliation · July 2026")
     expect(rows[1]).toHaveTextContent('SCRPayroll3rd Quarter 202630mPayroll return')
     expect(screen.queryByText(/Internal/)).not.toBeInTheDocument()
-    expect(screen.queryByText('Uncategorized')).not.toBeInTheDocument()
+    expect(entryComments(splitEntry)).toBeNull()
   })
 
-  it('says "No client" on a split line without a client', () => {
-    render(<EntryWorkDetails entry={entry({
-      work_lines: [
-        line({ id: 1, client: { id: 2, name: "MoSa's" }, client_label: "MoSa's", minutes: 60 }),
-        line({ id: 2, position: 1, description: 'Errands', minutes: 60 }),
-      ],
-    })} />)
+  it('says "No client" on a split line without one, and shows no chip for a missing category', () => {
+    render(<EntryWorkDetails entry={entry({ work_lines: [mosas, line({ id: 2, position: 1, description: 'Errands', minutes: 60 })] })} />)
     const rows = screen.getAllByRole('listitem')
     expect(within(rows[1]).getByText('No client')).toHaveClass('text-amber-700')
+    expect(rows[1]).toHaveTextContent(/^No client1hErrands$/)
+    expect(screen.queryByText('Uncategorized')).not.toBeInTheDocument()
     expect(screen.queryByText('Unassigned')).not.toBeInTheDocument()
   })
 
+  it('shows a split line with a legacy category as the category, marked Legacy', () => {
+    render(<EntryWorkDetails entry={entry({ work_lines: [mosas, line({ id: 2, position: 1, client: { id: 3, name: 'SCR' }, client_label: 'SCR', category_label: 'Tax Prep (legacy)' })] })} />)
+    expect(screen.getAllByRole('listitem')[1]).toHaveTextContent(/^SCRTax PrepLegacy1h$/)
+  })
+
+  it('renders one line of a split entry from the line, not the entry (a client-filtered report)', () => {
+    // Filtered to SCR: the entry-level client is still MoSa's (line 1).
+    const slice = entry({ client: { id: 2, name: "MoSa's" }, service_type: { id: 12, name: 'Bookkeeping' }, description: 'Bank recs; Payroll return', work_lines: [scr] } as Partial<TimeEntry>)
+    render(<EntryWorkDetails entry={slice} />)
+    expect(screen.getByTestId('entry-work')).toHaveTextContent(/^SCRPayroll3rd Quarter 2026$/)
+    expect(entryComments(slice)).toBe('Payroll return')
+  })
+
   it('keeps the single-line look: client, category, task and period chips', () => {
-    render(<EntryWorkDetails entry={entry({
-      client: { id: 1, name: 'Internal – Cornerstone' }, service_type: { id: 8, name: 'Office & errands' }, period_label: 'November 2026',
-      work_lines: [line({ client: { id: 1, name: 'Internal – Cornerstone' }, client_label: 'Internal – Cornerstone' })],
-    } as Partial<TimeEntry>)} />)
-    const work = screen.getByTestId('entry-work')
-    expect(work).toHaveTextContent('Internal – CornerstoneOffice & errandsNovember 2026')
+    const internal = line({ client: { id: 1, name: 'Internal – Cornerstone' }, client_label: 'Internal – Cornerstone', service_type: { id: 8, name: 'Office & errands', color: null }, category_label: 'Office & errands', period_type: 'month', period_start: '2026-11-01' })
+    render(<EntryWorkDetails entry={entry({ client: { id: 1, name: 'Internal – Cornerstone' }, work_lines: [internal] } as Partial<TimeEntry>)} />)
+    // The period falls back to the type and start when there's no label.
+    expect(screen.getByTestId('entry-work')).toHaveTextContent(/^Internal – CornerstoneOffice & errandsNovember 2026$/)
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
+  })
+
+  it('adds the tax return year to the client', () => {
+    render(<EntryWorkDetails entry={entry({ tax_return: { id: 4, tax_year: 2025 }, work_lines: [mosas] } as Partial<TimeEntry>)} />)
+    expect(screen.getByText("MoSa's (2025)")).toBeInTheDocument()
+  })
+
+  it('uses the entry fields for a legacy entry without lines', () => {
+    render(<EntryWorkDetails entry={entry({ client: { id: 2, name: "MoSa's" }, time_category: { id: 9, name: 'Tax Prep' }, work_lines: [] } as Partial<TimeEntry>)} />)
+    expect(screen.getByTestId('entry-work')).toHaveTextContent(/^MoSa'sTax PrepLegacy$/)
   })
 
   it('says "No client" for a finished entry without one', () => {
@@ -62,13 +80,59 @@ describe('EntryWorkDetails (Time Entries card)', () => {
     expect(screen.queryByText(/Internal/)).not.toBeInTheDocument()
   })
 
-  it('says "No client yet" for a running clock with no client, and no "Uncategorized"', () => {
-    render(<EntryWorkDetails entry={entry({ status: 'clocked_in', entry_method: 'clock', work_lines: [] })} />)
+  it.each(['clocked_in', 'on_break'] as const)('says "No client yet" for a %s clock with no client, and no "Uncategorized"', (status) => {
+    render(<EntryWorkDetails entry={entry({ status, entry_method: 'clock', work_lines: [] })} />)
     expect(screen.getByTestId('entry-work')).toHaveTextContent(/^No client yet$/)
   })
 
   it('shows a running clock\'s client when it is known', () => {
     render(<EntryWorkDetails entry={entry({ status: 'clocked_in', entry_method: 'clock', client: { id: 2, name: "MoSa's" } })} />)
     expect(screen.getByTestId('entry-work')).toHaveTextContent(/^MoSa's$/)
+  })
+})
+
+describe('EntryWorkCompact (desktop Week view cell)', () => {
+  it('lists each line\'s client and time for a split entry, with every line in the tooltip', () => {
+    render(<EntryWorkCompact entry={splitEntry} />)
+    const list = screen.getByRole('list', { name: 'Work lines' })
+    expect(within(list).getAllByRole('listitem').map((row) => row.textContent)).toEqual(["MoSa's1h 30m", 'SCR30m'])
+    expect(list).toHaveAttribute('title', "MoSa's · Bookkeeping · Bank Reconciliation · July 2026 — Bank recs · 1h 30m\nSCR · Payroll · 3rd Quarter 2026 — Payroll return · 30m")
+    expect(screen.queryByText('Bookkeeping')).not.toBeInTheDocument()
+  })
+
+  it('shows three lines and "+N more" for longer splits, and "No client" in amber', () => {
+    const lines = [mosas, scr, line({ id: 3, position: 2 }), line({ id: 4, position: 3, client: { id: 3, name: 'SCR' }, client_label: 'SCR' })]
+    render(<EntryWorkCompact entry={entry({ work_lines: lines })} />)
+    const rows = screen.getAllByRole('listitem')
+    expect(rows.map((row) => row.textContent)).toEqual(["MoSa's1h 30m", 'SCR30m', 'No client1h', '+1 more'])
+    expect(within(rows[2]).getByText('No client')).toHaveClass('text-amber-700')
+  })
+
+  it('shows a single line as client, category / task and period', () => {
+    const { container } = render(<EntryWorkCompact entry={entry({ client: { id: 2, name: "MoSa's" }, work_lines: [mosas] } as Partial<TimeEntry>)} />)
+    expect(Array.from(container.children).map((row) => row.textContent)).toEqual(["MoSa's", 'Bookkeeping / Bank Reconciliation', 'July 2026'])
+  })
+})
+
+describe('ReportEntryWork (hours report)', () => {
+  const reportLine = (source: WorkLine) => {
+    const { hours, ...rest } = source
+    return { ...rest, total_hours: hours, regular_hours: hours, overtime_hours: 0 }
+  }
+  const reportEntry = (patch: Partial<HoursReportEntry>) => ({ ...splitEntry, entry_method: 'manual', ...patch } as unknown as HoursReportEntry)
+
+  it('lists the lines of a split entry', () => {
+    render(<ReportEntryWork entry={reportEntry({ work_lines: [reportLine(mosas), reportLine(scr)] })} showComments />)
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      "MoSa's · Bookkeeping · Bank Reconciliation · July 2026 — Bank recs · 1h 30m",
+      'SCR · Payroll · 3rd Quarter 2026 — Payroll return · 30m',
+    ])
+  })
+
+  it('shows a client-filtered slice by its own line, not the entry-level client', () => {
+    render(<ReportEntryWork entry={reportEntry({ work_lines: [reportLine(scr)] })} showComments />)
+    expect(screen.getByText('SCR · Payroll · 3rd Quarter 2026 · manual')).toBeInTheDocument()
+    expect(screen.getByText('Payroll return')).toBeInTheDocument()
+    expect(screen.queryByText(/MoSa's/)).not.toBeInTheDocument()
   })
 })

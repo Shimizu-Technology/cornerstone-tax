@@ -237,6 +237,114 @@ function emptyEntryResponse(entries: unknown[] = []) {
   return { data: { time_entries: entries, summary: { total_hours: 0, total_break_hours: 0, entry_count: entries.length } } }
 }
 
+describe('TimeTracking week view', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    apiMocks.getTimeCategories.mockResolvedValue({ data: { time_categories: [] } })
+    apiMocks.getClients.mockResolvedValue({ data: { clients: [] } })
+    apiMocks.getClientOptions.mockResolvedValue({ data: { clients: [] } })
+    apiMocks.getServiceTypes.mockResolvedValue({ data: { service_types: [] } })
+    apiMocks.getUsers.mockResolvedValue({ data: { users: [] } })
+    apiMocks.getCurrentUser.mockResolvedValue({ data: { user: { id: 1, is_admin: true } } })
+    apiMocks.getPendingApprovals.mockResolvedValue({ data: { summary: null } })
+    apiMocks.getTimePeriodLockStatus.mockResolvedValue({ data: { locked: false, lock: null } })
+    apiMocks.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: null } })
+  })
+
+  it('lists each line\'s client and time for a split entry, not "Internal" or the first line only', async () => {
+    const line = (id: number, client: string, minutes: number) => ({
+      id, position: id - 1, client: { id, name: client }, client_label: client, description: null, service_type: null, service_task: null,
+      category_label: null, period_type: null, period_start: null, period_label: null, hours: minutes / 60, minutes,
+    })
+    apiMocks.getTimeEntries.mockResolvedValue(emptyEntryResponse([{
+      id: 90, work_date: formatDateISO(new Date()), start_time: '08:00', end_time: '10:00', formatted_start_time: '8:00 AM', formatted_end_time: '10:00 AM',
+      hours: 2, break_minutes: null, description: null, entry_method: 'manual', status: 'completed', approval_status: null, overtime_status: 'none',
+      user: { id: 1, email: 'me@example.com', full_name: 'Me' }, client: { id: 1, name: "MoSa's" }, service_type: null, service_task: null,
+      time_category: null, tax_return: null, breaks: [], locked_at: null, work_lines: [line(1, "MoSa's", 90), line(2, 'SCR', 30)],
+    }]))
+    renderPage('/admin/time')
+
+    const cell = await screen.findByRole('list', { name: 'Work lines' })
+    expect(within(cell).getAllByRole('listitem').map((row) => row.textContent)).toEqual(["MoSa's1h 30m", 'SCR30m'])
+    expect(cell).toHaveAttribute('title', "MoSa's · 1h 30m\nSCR · 30m")
+  })
+})
+
+describe('TimeTracking reports: split entries', () => {
+  const reportLine = (id: number, client: string, category: string, minutes: number) => ({
+    id, position: id - 1, client: { id, name: client }, client_label: client, description: `${client} work`,
+    service_type: { id: id + 10, name: category, color: null }, service_task: null, category_label: category,
+    period_type: null, period_start: null, period_label: null, total_hours: minutes / 60, regular_hours: minutes / 60, overtime_hours: 0, minutes,
+  })
+  const reportEntry = (lines: ReturnType<typeof reportLine>[]) => ({
+    id: 55, work_date: '2026-09-15', start_time: '08:00', end_time: '10:00', formatted_start_time: '8:00 AM', formatted_end_time: '10:00 AM',
+    total_hours: 2, regular_hours: 2, overtime_hours: 0, break_minutes: 0, description: "MoSa's work; SCR work", entry_method: 'manual',
+    approval_status: 'approved', approved_by: null, approved_at: null, overtime_status: null, overtime_approved_by: null, overtime_approved_at: null,
+    locked_at: null, review_flags: [], time_category: null, client: { id: 1, name: "MoSa's" }, tax_return: null,
+    service_type: { id: 11, name: 'Bookkeeping', color: null }, service_task: null, breaks: [], work_lines: lines,
+  })
+  const reportWith = (lines: ReturnType<typeof reportLine>[]) => ({
+    ...successfulReport,
+    employees: [{
+      id: 42, email: 'sam@example.com', first_name: 'Sam', last_name: 'Staff', display_name: 'Sam', full_name: 'Sam Staff', role: 'employee', status: 'active',
+      total_hours: 2, regular_hours: 2, overtime_hours: 0, break_hours: 0, entries_count: 1, days_worked: 1, first_work_date: '2026-09-15', last_work_date: '2026-09-15',
+      ready: true, issues: { pending_count: 0, denied_count: 0, pending_overtime_count: 0, denied_overtime_count: 0, open_clock_count: 0 },
+      quality: successfulReport.quality, excluded_entries: [],
+      days: [{ work_date: '2026-09-15', total_hours: 2, regular_hours: 2, overtime_hours: 0, break_hours: 0, entries: [reportEntry(lines)] }],
+      categories: [], clients: [], services: [], weeks: [],
+    }],
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    apiMocks.getTimeEntries.mockResolvedValue({ data: { time_entries: [], summary: { total_hours: 0, total_break_hours: 0, entry_count: 0 } } })
+    apiMocks.getTimeCategories.mockResolvedValue({ data: { time_categories: [] } })
+    apiMocks.getClients.mockResolvedValue({ data: { clients: [] } })
+    apiMocks.getClientOptions.mockResolvedValue({ data: { clients: [] } })
+    apiMocks.getServiceTypes.mockResolvedValue({ data: { service_types: [] } })
+    apiMocks.getUsers.mockResolvedValue({ data: { users: [] } })
+    apiMocks.getCurrentUser.mockResolvedValue({ data: { user: { id: 1, is_admin: true } } })
+    apiMocks.getPendingApprovals.mockResolvedValue({ data: { summary: null } })
+    apiMocks.getTimePeriodLockStatus.mockResolvedValue({ data: { locked: false, lock: null } })
+    apiMocks.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: null } })
+  })
+
+  it('forwards the report\'s work lines to the daily detail', async () => {
+    apiMocks.getHoursReport.mockResolvedValue({ data: reportWith([reportLine(1, "MoSa's", 'Bookkeeping', 90), reportLine(2, 'SCR', 'Payroll', 30)]) })
+    renderPage('/admin/time?tab=reports&start_date=2026-09-01&end_date=2026-09-21&report_view=daily')
+
+    fireEvent.click(await screen.findByRole('button', { name: /Tue, Sep 15, 2026/ }))
+    expect(screen.getByRole('list', { name: 'Work lines' })).toHaveTextContent("MoSa's · Bookkeeping — MoSa's work · 1h 30mSCR · Payroll — SCR work · 30m")
+  })
+
+  it('shows a client-filtered slice by its own line, and edits the whole saved entry', async () => {
+    // Filtered to SCR: the entry-level client is still MoSa's (line 1).
+    apiMocks.getHoursReport.mockResolvedValue({ data: reportWith([reportLine(2, 'SCR', 'Payroll', 30)]) })
+    const saved = {
+      ...reportEntry([]), hours: 2, status: 'completed', version: 'v7', user: { id: 42, email: 'sam@example.com', full_name: 'Sam Staff' },
+      work_lines: [
+        { ...reportLine(1, "MoSa's", 'Bookkeeping', 90), hours: 1.5 },
+        { ...reportLine(2, 'SCR', 'Payroll', 30), hours: 0.5 },
+      ],
+    }
+    apiMocks.getTimeEntry.mockResolvedValue({ data: { time_entry: saved } })
+    renderPage('/admin/time?tab=reports&start_date=2026-09-01&end_date=2026-09-21&report_view=daily')
+
+    const group = await screen.findByRole('button', { name: /Tue, Sep 15, 2026/ })
+    expect(group).toHaveTextContent('Payroll · SCR')
+    fireEvent.click(group)
+    expect(screen.getByText('SCR · Payroll · manual')).toBeInTheDocument()
+    expect(screen.getByText('SCR work')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit entry' }))
+    await waitFor(() => expect(apiMocks.getTimeEntry).toHaveBeenCalledWith(55))
+    // The editor holds both saved lines, not the report's one-line slice.
+    const editor = within(await screen.findByTestId('work-lines-editor'))
+    expect(editor.getByLabelText('Line 1 comments')).toHaveValue("MoSa's work")
+    expect(editor.getByLabelText('Line 2 comments')).toHaveValue('SCR work')
+  })
+})
+
 describe('TimeTracking log time', () => {
   beforeEach(() => {
     vi.clearAllMocks()
