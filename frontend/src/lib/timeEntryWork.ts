@@ -188,7 +188,7 @@ export function workSummary(
   { includeClient = true, uncategorized = 'Uncategorized' as string | null } = {},
 ): string {
   const parts = [
-    includeClient ? entry.client?.name || 'Internal' : null,
+    includeClient ? entry.client?.name || NO_CLIENT_LABEL : null,
     workCategory(entry) ? workCategoryText(entry) : uncategorized,
     entry.service_task?.name,
     entry.period_label || periodLabel(entry.period_type, entry.period_start),
@@ -196,11 +196,21 @@ export function workSummary(
   return parts.filter(Boolean).join(' · ')
 }
 
+/**
+ * Shown where time has no client. Never "Internal": Internal – Cornerstone is
+ * a real client and shows its own name.
+ */
+export const NO_CLIENT_LABEL = 'No client'
+
 interface WorkLineLike {
+  /** null when the line has no client (the server's client_label then says "Unassigned"). */
+  client: { name: string } | null
   client_label: string
   service_type?: { id: number; name: string } | null
   service_task?: { name: string } | null
   category_label?: string | null
+  period_type?: string | null
+  period_start?: string | null
   period_label?: string | null
   description?: string | null
 }
@@ -209,15 +219,15 @@ interface WorkLineLike {
  * A work line in the owner's order: "MoSa's · Bookkeeping · Bank
  * Reconciliation · July 2026" (a missing category is left out).
  */
-export function workLineSummary(line: WorkLineLike): string {
+export function workLineSummary(line: WorkLineLike, { uncategorized = null as string | null } = {}): string {
   // The server's category_label already marks a legacy category.
   const label = line.category_label || line.service_type?.name
   return workSummary({
-    client: { name: line.client_label },
+    client: line.client ? { name: lineClientName(line) } : null,
     service_type: label ? { id: line.service_type?.id ?? 0, name: label } : null,
     service_task: line.service_task,
-    period_label: line.period_label,
-  }, { uncategorized: null })
+    period_label: line.period_label || periodLabel(line.period_type, line.period_start),
+  }, { uncategorized })
 }
 
 /** The line summary, then its comments if any: "MoSa's · Bookkeeping — Filed late". */
@@ -310,4 +320,55 @@ export function parseCategoryFilter(value: string): { service_type_id: string; t
   return match[1] === 'st'
     ? { service_type_id: match[2], time_category_id: '' }
     : { service_type_id: '', time_category_id: match[2] }
+}
+
+interface EntryWithLines {
+  client?: { name: string } | null
+  work_lines?: WorkLineLike[] | null
+}
+
+/**
+ * The lines to show for an entry, or [] for an entry without lines (legacy).
+ * Render from these whenever there are any: the entry-level fields mirror
+ * line 1 only, and a filtered report can return a single line of a split
+ * entry whose entry-level client is another line's.
+ */
+export function entryLines<T extends WorkLineLike>(entry: { work_lines?: T[] | null }): T[] {
+  return entry.work_lines ?? []
+}
+
+/** True when an entry has more than one work line (its entry-level fields mirror line 1 only). */
+export function isSplitEntry(entry: EntryWithLines): boolean {
+  return entryLines(entry).length > 1
+}
+
+/** A line's client name, or "No client". */
+export function lineClientName(line: WorkLineLike): string {
+  return line.client ? line.client_label || line.client.name : NO_CLIENT_LABEL
+}
+
+/** A line's category name (legacy ones as the server labels them), or null. */
+export function lineCategoryName(line: Pick<WorkLineLike, 'category_label' | 'service_type'>): string | null {
+  return line.category_label || line.service_type?.name || null
+}
+
+/** The clients an entry's time went to, in line order, without repeats. */
+export function entryClientNames(entry: EntryWithLines): string[] {
+  const lines = entryLines(entry)
+  const names = lines.length ? lines.map(lineClientName) : [entry.client?.name || NO_CLIENT_LABEL]
+  return [...new Set(names)]
+}
+
+/** The categories an entry's time went to, in line order, without repeats ("Uncategorized" when none). */
+export function entryCategoryNames(entry: EntryWithLines & CategorizedEntry): string[] {
+  const lines = entryLines(entry)
+  const names = lines.length ? lines.map((line) => lineCategoryName(line) || 'Uncategorized') : [workCategoryText(entry)]
+  return [...new Set(names)]
+}
+
+/** The comments to show under an entry: a single line's own, none for a split entry (each line shows its own). */
+export function entryComments(entry: { description?: string | null; work_lines?: WorkLineLike[] | null }): string | null {
+  const lines = entryLines(entry)
+  if (lines.length > 1) return null
+  return (lines.length ? lines[0].description : entry.description) || null
 }

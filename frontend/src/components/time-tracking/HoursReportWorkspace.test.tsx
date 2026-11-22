@@ -156,13 +156,13 @@ const report: HoursReportResponse = {
   employees: [employee],
 }
 
-function renderWorkspace(view: 'overview' | 'people' | 'daily' | 'review', onEditEntry = vi.fn()) {
+function renderWorkspace(view: 'overview' | 'people' | 'daily' | 'review', onEditEntry = vi.fn(), entries: TimeEntry[] = [entry]) {
   return render(
     <HoursReportWorkspace
       filters={filters}
       onFiltersChange={vi.fn()}
       report={report}
-      entries={[entry]}
+      entries={entries}
       loading={false}
       error={null}
       users={[{ id: 42, email: 'daena@example.com', display_name: 'Daena', employment_status: 'terminated' }]}
@@ -203,6 +203,28 @@ describe('HoursReportWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: /Mon, Sep 21, 2026/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Edit entry' }))
     expect(onEdit).toHaveBeenCalledWith(entry)
+  })
+
+  it('shows a split entry by its work lines in the daily detail, never "Internal"', () => {
+    const workLine = (id: number, client: string | null, category: string | null, minutes: number, description: string | null) => ({
+      id, position: id - 1, client: client ? { id, name: client } : null, client_label: client || 'Unassigned', description,
+      service_type: category ? { id, name: category, color: null } : null, service_task: null, category_label: category,
+      period_type: null, period_start: null, period_label: null, hours: minutes / 60, minutes,
+    })
+    // Entry-level fields mirror line 1; the lines say where the time went.
+    const split: TimeEntry = {
+      ...entry, client: { id: 1, name: "MoSa's" }, service_type: { id: 1, name: 'Bookkeeping', color: null },
+      work_lines: [workLine(1, "MoSa's", 'Bookkeeping', 540, 'Bank recs'), workLine(2, 'SCR', 'Payroll', 120, null), workLine(3, null, null, 60, 'Errands')],
+    }
+    renderWorkspace('daily', vi.fn(), [split])
+
+    const group = screen.getByRole('button', { name: /Mon, Sep 21, 2026/ })
+    expect(group).toHaveTextContent("Bookkeeping, Payroll, Uncategorized · MoSa's, SCR, No client")
+    fireEvent.click(group)
+    expect(screen.getByRole('list', { name: 'Work lines' })).toHaveTextContent(
+      "MoSa's · Bookkeeping — Bank recs · 9hSCR · Payroll · 2hNo client — Errands · 1h",
+    )
+    expect(screen.queryByText(/Internal/)).not.toBeInTheDocument()
   })
 
   it('explains quality flags without excluding approved time', () => {

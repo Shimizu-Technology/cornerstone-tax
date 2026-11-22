@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import UnassignedTime from '../../components/time-tracking/UnassignedTime'
 import WorkLinesEditor from '../../components/time-tracking/WorkLinesEditor'
+import EntryWorkDetails, { EntryWorkCompact, ReportEntryWork } from '../../components/time-tracking/EntryWorkDetails'
 import VersionConflictPanel from '../../components/time-tracking/VersionConflictPanel'
 import LogMyDay from '../../components/time-tracking/LogMyDay'
 import WorkSummary from '../../components/time-tracking/WorkSummary'
@@ -24,11 +25,8 @@ import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, useTimeEntryWorkOptions, w
 import { buildHoursReportParams, normalizeReportFilters } from '../../lib/hoursReportParams'
 import {
   categoryFilterValue,
+  entryComments,
   parseCategoryFilter,
-  periodLabel,
-  workCategory,
-  workCategoryText,
-  workSummary,
 } from '../../lib/timeEntryWork'
 
 // Local types to avoid Vite caching issues
@@ -176,10 +174,6 @@ function formatBadgeCount(count: number): string {
   return count > 99 ? '99+' : String(count)
 }
 
-function entryPeriodLabel(entry: TimeEntryItem): string | null {
-  return entry.period_label || periodLabel(entry.period_type, entry.period_start)
-}
-
 export default function TimeTracking() {
   useEffect(() => { document.title = 'Time Tracking | Cornerstone Admin' }, [])
 
@@ -254,6 +248,12 @@ export default function TimeTracking() {
   const [reportError, setReportError] = useState<string | null>(null)
   const [reportExporting, setReportExporting] = useState<HoursReportDownloadType | null>(null)
   const reportRequestId = useRef(0)
+  // Edit from the report: the latest request owns the modal. Anything that
+  // opens or closes the editor, or leaves Reports, bumps this so a slow
+  // response can't open an entry over what the user has moved on to.
+  const editFromReportRequestId = useRef(0)
+  const [openingReportEntryId, setOpeningReportEntryId] = useState<number | null>(null)
+  const [reportEntryError, setReportEntryError] = useState<{ id: number; message: string } | null>(null)
   
   // Period lock state (CST-43)
   const [currentWeekLocked, setCurrentWeekLocked] = useState(false)
@@ -593,6 +593,22 @@ export default function TimeTracking() {
               created_at: '',
               updated_at: '',
               review_flags: entry.review_flags,
+              // The report's lines carry report hours; as WorkLines for the views.
+              work_lines: (entry.work_lines ?? []).map(line => ({
+                id: line.id,
+                position: line.position,
+                client: line.client,
+                client_label: line.client_label,
+                description: line.description,
+                service_type: line.service_type,
+                service_task: line.service_task,
+                category_label: line.category_label,
+                period_type: line.period_type,
+                period_start: line.period_start,
+                period_label: line.period_label,
+                hours: line.total_hours,
+                minutes: line.minutes,
+              })),
             }))
           )
         )
@@ -669,6 +685,9 @@ export default function TimeTracking() {
 
     return () => {
       reportRequestId.current += 1
+      // Leaving Reports (or unmounting) drops a pending edit-from-report.
+      editFromReportRequestId.current += 1
+      setOpeningReportEntryId(null)
     }
   }, [activeTab, loadReport])
 
@@ -732,7 +751,18 @@ export default function TimeTracking() {
   }
 
   // Modal handlers
+  const cancelEditFromReport = () => {
+    editFromReportRequestId.current += 1
+    setOpeningReportEntryId(null)
+  }
+
+  const closeModal = () => {
+    cancelEditFromReport()
+    setShowModal(false)
+  }
+
   const openNewEntry = (date?: Date, prefillStart?: string, prefillEnd?: string, prefillNotes?: string) => {
+    cancelEditFromReport()
     if (dateIsInLockedWeek(date || currentDate)) {
       setError('This time period is locked and cannot be modified')
       return
@@ -757,6 +787,7 @@ export default function TimeTracking() {
   }
 
   const openEditEntry = (entry: TimeEntryItem) => {
+    cancelEditFromReport()
     setEditingEntry(entry)
     setModalVersionConflict(false)
     setModalConflictEntry(null)
@@ -775,6 +806,31 @@ export default function TimeTracking() {
     setLines(drafts)
     setInitialLines(drafts)
     setShowModal(true)
+  }
+
+  // A report row may carry only the lines that match its filters, and no
+  // version; edit the entry as it is saved now, so a save can't drop lines.
+  // Only the latest request may open the editor or show an error.
+  const openEditEntryFromReport = async (entry: TimeEntryItem) => {
+    const requestId = ++editFromReportRequestId.current
+    setOpeningReportEntryId(entry.id)
+    setReportEntryError(null)
+    setReportError(null)
+    try {
+      const response = await api.getTimeEntry(entry.id)
+      if (requestId !== editFromReportRequestId.current) return
+      if (response.data?.time_entry) {
+        openEditEntry(response.data.time_entry)
+      } else {
+        setReportEntryError({ id: entry.id, message: response.error || 'Couldn’t open this entry. Try again.' })
+      }
+    } catch {
+      if (requestId === editFromReportRequestId.current) {
+        setReportEntryError({ id: entry.id, message: 'Couldn’t open this entry. Check your connection and try again.' })
+      }
+    } finally {
+      if (requestId === editFromReportRequestId.current) setOpeningReportEntryId(null)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1442,50 +1498,45 @@ export default function TimeTracking() {
                     }`}
                   >
                     {dayEntries.map(entry => (
-                      <div
+                      // A real button, so the entry opens from the keyboard too. Its
+                      // contents are spans (a button holds phrasing content only).
+                      <button
+                        type="button"
                         key={entry.id}
-                        className={`mb-1 sm:mb-2 p-1 sm:p-2 bg-white border rounded text-xs cursor-pointer hover:bg-neutral-warm/50 transition-colors shadow-sm ${entry.locked_at ? 'border-amber-300 bg-amber-50/30' : 'border-neutral-warm'}`}
+                        className={`mb-1 sm:mb-2 block w-full p-1 sm:p-2 bg-white border rounded text-left text-xs cursor-pointer hover:bg-neutral-warm/50 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${entry.locked_at ? 'border-amber-300 bg-amber-50/30' : 'border-neutral-warm'}`}
                         onClick={() => openEditEntry(entry)}
                       >
-                        <div className="font-bold text-primary-dark flex items-center gap-1">
+                        <span className="font-bold text-primary-dark flex items-center gap-1">
                           {entry.locked_at ? <LockIcon /> : <ClockIcon />}
                           {entry.hours}h
+                          {entry.locked_at && <span className="sr-only">, locked</span>}
                           {entry.approval_status === 'pending' && (
-                            <span className="ml-auto w-2 h-2 rounded-full bg-amber-500" title="Pending approval" />
+                            <span className="ml-auto w-2 h-2 rounded-full bg-amber-500" title="Pending approval"><span className="sr-only">, pending approval</span></span>
                           )}
                           {entry.approval_status === 'denied' && (
-                            <span className="ml-auto w-2 h-2 rounded-full bg-red-500" title="Denied" />
+                            <span className="ml-auto w-2 h-2 rounded-full bg-red-500" title="Denied"><span className="sr-only">, denied</span></span>
                           )}
                           {entry.overtime_status === 'pending' && (
-                            <span className="ml-auto w-2 h-2 rounded-full bg-orange-500" title="Overtime pending" />
+                            <span className="ml-auto w-2 h-2 rounded-full bg-orange-500" title="Overtime pending"><span className="sr-only">, overtime pending</span></span>
                           )}
-                        </div>
+                        </span>
                         {entry.entry_method === 'clock' && (
-                          <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">CLOCK</div>
+                          <span className="block text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">CLOCK</span>
                         )}
                         {entry.formatted_start_time && entry.formatted_end_time && (
-                          <div className="text-primary-dark/70 text-[10px]">
+                          <span className="block text-primary-dark/70 text-[10px]">
                             {entry.formatted_start_time} - {entry.formatted_end_time}
-                          </div>
+                          </span>
                         )}
-                        {entry.client && (
-                          <div className="text-primary-dark font-medium truncate text-[10px] sm:text-xs" title={entry.client.name}>{entry.client.name}</div>
-                        )}
-                        {workCategory(entry) && (
-                          <div className="text-primary font-medium truncate text-[10px] sm:text-xs" title={[workCategoryText(entry), entry.service_task?.name].filter(Boolean).join(' / ')}>
-                            {workCategoryText(entry)}{entry.service_task ? ` / ${entry.service_task.name}` : ''}
-                          </div>
-                        )}
-                        {entryPeriodLabel(entry) && (
-                          <div className="text-primary-dark/70 truncate text-[10px]">{entryPeriodLabel(entry)}</div>
-                        )}
-                        <div className="text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1">{ownerLabel(entry)}</div>
+                        {/* Client, category and period from the work lines; a split entry lists each line's client and time. */}
+                        <EntryWorkCompact entry={entry} />
+                        <span className="block text-primary-dark/70 truncate text-[10px] mt-0.5 sm:mt-1">{ownerLabel(entry)}</span>
                         {entry.approval_note && (
-                          <div className="text-[9px] text-text-muted italic truncate mt-0.5" title={entry.approval_note}>
+                          <span className="block text-[9px] text-text-muted italic truncate mt-0.5" title={entry.approval_note}>
                             "{entry.approval_note}"
-                          </div>
+                          </span>
                         )}
-                      </div>
+                      </button>
                     ))}
                     <button
                       onClick={() => openNewEntry(date)}
@@ -1523,10 +1574,13 @@ export default function TimeTracking() {
             <div className="divide-y divide-neutral-warm">
               {visibleEntries.map(entry => (
                 <div key={entry.id} className={`p-3 sm:p-4 ${entry.locked_at ? 'bg-amber-50/30' : ''}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
+                  {/* Top row: time and badges, with the actions beside them. The
+                      work details below use the card's full width on phones
+                      (on wider screens they keep the left column, as before).
+                      DOM order stays content first, then actions. */}
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2">
                       {/* Hours + Time + Category Row */}
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex min-w-0 items-center gap-2 flex-wrap self-center">
                         <span className={`inline-flex items-center gap-1 px-2 sm:px-3 py-1 font-bold rounded-full text-sm ${entry.locked_at ? 'bg-amber-100 text-amber-700' : 'bg-primary/20 text-primary'}`}>
                           {entry.locked_at ? <LockIcon /> : <ClockIcon />}
                           {entry.hours}h
@@ -1562,30 +1616,16 @@ export default function TimeTracking() {
                           </span>
                         )}
                       </div>
-                      {/* Client -> Category -> Task -> Period */}
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs sm:text-sm">
-                        <span className="font-semibold text-primary-dark">
-                          {entry.client ? entry.client.name : 'Internal'}
-                          {entry.tax_return && ` (${entry.tax_return.tax_year})`}
-                        </span>
-                        {workCategory(entry) ? (
-                          <span className="px-2 py-0.5 bg-primary/10 text-primary font-medium rounded">
-                            {workCategory(entry)?.label}
-                            {workCategory(entry)?.legacy && <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Legacy</span>}
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 bg-neutral-warm/50 text-text-muted rounded">Uncategorized</span>
-                        )}
-                        {entry.service_task && <span className="px-2 py-0.5 bg-secondary/60 text-primary-dark rounded">{entry.service_task.name}</span>}
-                        {entryPeriodLabel(entry) && <span className="px-2 py-0.5 border border-neutral-warm text-primary-dark rounded">{entryPeriodLabel(entry)}</span>}
-                      </div>
+                    <div className="col-span-2 col-start-1 min-w-0 sm:col-span-1">
+                      {/* Client -> Category -> Task -> Period, one row per work line when split */}
+                      <EntryWorkDetails entry={entry} />
                       {/* Owner */}
                       <p className="mt-1 text-xs sm:text-sm text-primary-dark/80 truncate">
                         by {ownerLabel(entry)}
                       </p>
-                      {/* Comments */}
-                      {entry.description && (
-                        <p className="mt-2 text-primary-dark text-sm">{entry.description}</p>
+                      {/* Comments (a split entry shows each line's own) */}
+                      {entryComments(entry) && (
+                        <p className="mt-2 text-primary-dark text-sm">{entryComments(entry)}</p>
                       )}
                       {/* Approval info */}
                       {entry.approved_by && (
@@ -1600,7 +1640,7 @@ export default function TimeTracking() {
                       )}
                     </div>
                     {/* Actions */}
-                    <div className="flex items-center gap-1">
+                    <div className="col-start-2 row-start-1 flex items-center gap-1 sm:row-end-3">
                       <button
                         onClick={() => openEditEntry(entry)}
                         disabled={!!entry.locked_at}
@@ -1695,7 +1735,9 @@ export default function TimeTracking() {
             exporting={reportExporting}
             onExport={(type) => void downloadReport(type)}
             onOpenEmployee={setSelectedReportEmployee}
-            onEditEntry={openEditEntry}
+            onEditEntry={(entry) => void openEditEntryFromReport(entry)}
+            openingEntryId={openingReportEntryId}
+            entryError={reportEntryError}
             view={reportView}
             onViewChange={setReportView}
           />
@@ -1717,7 +1759,7 @@ export default function TimeTracking() {
           transition={{ duration: 0.2 }}
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 md:items-center md:p-4"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setShowModal(false)
+            if (e.target === e.currentTarget) closeModal()
           }}
         >
           <motion.div
@@ -1994,7 +2036,7 @@ export default function TimeTracking() {
                   <div className="flex gap-3">
                     <button
                       type="button"
-                      onClick={() => setShowModal(false)}
+                      onClick={closeModal}
                       className="px-4 py-2 text-primary-dark font-medium hover:bg-neutral-warm rounded-lg transition-colors"
                     >
                       Cancel
@@ -2177,9 +2219,7 @@ function EmployeeReportDrawer({
                           <span className="font-medium text-primary-dark">{entry.formatted_start_time || entry.start_time || '—'} – {entry.formatted_end_time || entry.end_time || '—'}</span>
                           <span className="font-semibold text-primary">{entry.total_hours.toFixed(2)}h</span>
                         </div>
-                        <div className="mt-1 text-xs text-text-muted">
-                          {workSummary(entry)} · {entry.entry_method}
-                        </div>
+                        <ReportEntryWork entry={entry} size="xs" />
                         {entry.overtime_hours > 0 && <p className="mt-2 text-xs font-semibold text-orange-800">{entry.overtime_hours.toFixed(2)}h of this entry is overtime.</p>}
                         {entry.breaks.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1">

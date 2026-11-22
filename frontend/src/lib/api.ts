@@ -1074,7 +1074,20 @@ export interface HoursReportEntry {
   period_start?: string | null;
   period_label?: string | null;
   breaks: Array<{ id: number; start_time: string | null; end_time: string | null; duration_minutes: number | null }>;
+  /**
+   * The entry's work lines within the report's filters (a client filter
+   * returns only that client's lines). The entry-level fields mirror line 1,
+   * so render from these when present.
+   */
+  work_lines?: HoursReportWorkLine[];
 }
+
+/** A work line in the hours report: a WorkLine with report hours instead of `hours`. */
+export type HoursReportWorkLine = Omit<WorkLine, 'hours'> & {
+  total_hours: number;
+  regular_hours: number;
+  overtime_hours: number;
+};
 
 /** Hours grouped by client -> category -> task -> period. */
 export interface HoursReportWorkBreakdownRow {
