@@ -6,25 +6,35 @@ import {
   clientGroupLabel,
   clientOptionLabel,
   filterClientOptions,
-  isInternalClient,
+  parsePeriodOptionValue,
+  periodOptionGroups,
+  periodOptionValue,
   sortClientOptions,
   type ClientOption,
+  type WorkPeriod,
 } from '../../lib/timeEntryWork'
 import { formatMinutes, minutesToHoursText, type DurationUnit } from '../../lib/workDuration'
-import { PeriodPicker } from './TimeEntryWorkFields'
 import { checkLines, draftMinutes, duplicateDraft, newDraft, type WorkLineDraft, type WorkLineSuggestions } from './workLinesModel'
 
 // 16px text on phones so iOS never zooms; 44px minimum tap targets.
 const inputClass = 'min-h-11 w-full rounded-lg border border-neutral-warm bg-white px-3 py-2 text-base md:text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-neutral-warm/30'
 const labelClass = 'mb-1 block text-sm font-medium text-primary-dark'
+// Required fields get an asterisk (repo convention: "Date *"). It's hidden
+// from screen readers, which hear aria-required instead.
+const requiredMark = <span aria-hidden="true"> *</span>
+const optionalMark = <span className="font-normal text-text-muted"> (optional)</span>
 // Chips wrap instead of truncating, so a long client name stays readable in a narrow column.
 const chipClass = 'min-h-11 max-w-full whitespace-normal break-words rounded-[1.375rem] border border-neutral-warm bg-white px-3 py-1.5 text-left text-sm leading-snug text-primary-dark hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary'
 // The table layout is driven by the editor's own width (a container query),
 // not the viewport: the same editor sits in a full-width card, a modal and a
 // sheet, and a viewport breakpoint squeezed it into an overflowing grid in the
 // narrower ones. Below this width each line stacks with visible labels.
-// Minimums (51rem plus gaps and the line's padding) fit inside the 56rem threshold.
-const gridColumns = '@4xl:grid-cols-[minmax(14rem,1.3fr)_minmax(11rem,2fr)_minmax(10rem,1.2fr)_10.5rem_6rem]'
+// Each line is two grid rows in the owner's order: Client | Category | Task |
+// Period | Time, then Comments across the first four columns with the line's
+// actions under Time. Period gets 10rem so "3rd Quarter 2026" fits in its
+// one dropdown. Minimums: 52.5rem of columns + 2rem of gaps + 1rem of
+// line padding + the 1px borders = about 55.6rem, inside the 56rem threshold.
+const gridColumns = '@4xl:grid-cols-[minmax(12rem,1.4fr)_minmax(10rem,1.1fr)_minmax(10rem,1.1fr)_minmax(10rem,1fr)_10.5rem]'
 
 export interface WorkLinesEditorProps {
   lines: WorkLineDraft[]
@@ -37,7 +47,7 @@ export interface WorkLinesEditorProps {
   clients: ClientOption[]
   serviceTypes: ServiceType[]
   suggestions?: WorkLineSuggestions
-  /** Client and description required (the cutover applies). */
+  /** Client and category required (the cutover applies). */
   required?: boolean
   /**
    * Settings > "Require a task on every work line" (applies with `required`).
@@ -74,7 +84,7 @@ export default function WorkLinesEditor({
   // Line whose client field should get focus after the next render.
   const pendingFocus = useRef<string | null>(null)
   const taskRequired = required && (taskRequiredProp ?? suggestions?.taskRequired ?? false)
-  const check = checkLines(lines, { targetMinutes, required, clients, serviceTypes, taskRequired, singleCoversTarget: mode === 'session' })
+  const check = checkLines(lines, { targetMinutes, required, serviceTypes, taskRequired, singleCoversTarget: mode === 'session' })
   const singleSession = mode === 'session' && lines.length === 1 && targetMinutes !== null
 
   // Move focus to the client field of a line that was just added.
@@ -123,7 +133,7 @@ export default function WorkLinesEditor({
       {!singleSession && (
         // Same border and padding as a line, so each title sits over its column.
         <div aria-hidden="true" className={`hidden @4xl:grid ${gridColumns} @4xl:gap-x-2 border border-transparent px-2 text-xs font-semibold uppercase tracking-wide text-text-muted`}>
-          <span>Client</span><span>What I did</span><span>Category</span><span>Time</span><span className="sr-only">Actions</span>
+          <span>Client{required && ' *'}</span><span>Category{required && ' *'}</span><span>Task{taskRequired && ' *'}</span><span>Period</span><span>Time</span>
         </div>
       )}
 
@@ -225,7 +235,7 @@ function WorkLineRow({
   serviceTypes: ServiceType[]
   suggestions?: WorkLineSuggestions
   required: boolean
-  /** A category, and a task when the category has tasks, are required. */
+  /** A task is required when the category has tasks (applies with `required`). */
   taskRequired: boolean
   referenceDate?: string
   wholeSession: boolean
@@ -241,7 +251,6 @@ function WorkLineRow({
 }) {
   const id = `${prefix}-${line.key}`
   const lineName = count > 1 ? `Line ${index + 1}` : 'Work'
-  const [showMore, setShowMore] = useState(Boolean(line.service_task_id || line.period_type))
   const client = clients.find((option) => String(option.id) === line.client_id) ?? null
   const categories = useMemo(
     () => [...categoriesForClient(serviceTypes, client)].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name)),
@@ -249,37 +258,25 @@ function WorkLineRow({
   )
   const category = serviceTypes.find((type) => String(type.id) === line.service_type_id)
   const tasks = [...(category?.tasks || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name))
-  const categoryNeeded = taskRequired || (required && isInternalClient(client))
+  // From the cutover every line needs a category; the task only with
+  // "Require a task" on and when the category has tasks.
+  const categoryNeeded = required
   const taskNeeded = taskRequired && (!line.service_type_id || tasks.length > 0)
-  const descriptionChips = (suggestions?.descriptionsByClient[line.client_id || ''] || []).slice(0, 4)
+  const commentChips = (suggestions?.descriptionsByClient[line.client_id || ''] || []).slice(0, 4)
   const minutes = wholeSession ? wholeSessionMinutes : draftMinutes(line)
   const problemId = `${id}-problems`
   // The category and task pickers point at the line's message when it is
   // about them, and say they're invalid.
-  const categoryInvalid = problems.some((problem) => problem.startsWith('Choose a category'))
-  const taskInvalid = problems.some((problem) => problem === 'Choose a task' || problem === 'Choose a category and a task')
-  // With "Require a task" on, the task sits next to the category; otherwise
-  // it is tucked away with the period.
-  const taskField = (
-    <div>
-      <label htmlFor={`${id}-task`} className={labelClass}>
-        Task{!taskNeeded && <span className="font-normal text-text-muted"> (optional)</span>}
-      </label>
-      <select
-        id={`${id}-task`}
-        value={line.service_task_id}
-        onChange={(event) => onChange({ service_task_id: event.target.value })}
-        className={inputClass}
-        aria-required={taskNeeded}
-        aria-invalid={taskInvalid || undefined}
-        aria-describedby={taskInvalid ? problemId : undefined}
-        disabled={disabled || !line.service_type_id || tasks.length === 0}
-      >
-        <option value="">{line.service_type_id ? (tasks.length ? (taskNeeded ? 'Choose task…' : 'No task') : 'No tasks for this category') : 'Choose a category first'}</option>
-        {tasks.map((task) => <option key={task.id} value={task.id}>{task.name}</option>)}
-      </select>
-    </div>
-  )
+  // Each field points at the line's message and says it's invalid only when
+  // the message is about that field.
+  const clientInvalid = problems.includes('Choose a client')
+  const categoryInvalid = problems.includes('Choose a category')
+  const taskInvalid = problems.includes('Choose a task')
+  const timeInvalid = problems.some((problem) => problem === 'Add the time' || problem.startsWith('Time must'))
+  // In the table the column titles name the fields, so the labels are only
+  // for screen readers there; a stacked line shows them.
+  const fieldLabelClass = wholeSession ? labelClass : `${labelClass} @4xl:sr-only`
+  const lineAriaLabel = (field: string) => (wholeSession ? undefined : `${lineName} ${field}`)
 
   const changeClient = (clientId: string) => {
     const nextClient = clients.find((option) => String(option.id) === clientId) ?? null
@@ -287,6 +284,9 @@ function WorkLineRow({
     onChange({ client_id: clientId, ...(stillValid ? {} : { service_type_id: '', service_task_id: '' }) })
   }
 
+  // DOM order is the visual order at every width (Client, Category, Task,
+  // Period, Time, Comments, actions), so focus moves through the line the
+  // way it reads.
   return (
     <li
       className={`rounded-xl border bg-white p-3 ${problems.length ? 'border-amber-300' : 'border-neutral-warm'} ${
@@ -306,45 +306,21 @@ function WorkLineRow({
         recentClients={suggestions?.recentClients || []}
         required={required}
         disabled={disabled}
-        describedBy={problems.length ? problemId : undefined}
+        invalid={clientInvalid}
+        describedBy={clientInvalid ? problemId : undefined}
       />
 
-      <div>
-        <label htmlFor={`${id}-description`} className={wholeSession ? labelClass : `${labelClass} @4xl:sr-only`}>What I did</label>
-        {/* One line of text that wraps and grows, so a long description stays
-            readable while it's edited instead of being cut off. */}
-        <GrowingTextField
-          id={`${id}-description`}
-          value={line.description}
-          onChange={(description) => onChange({ description })}
-          placeholder="e.g. Reconciled June bank statements"
-          className={`${inputClass} resize-none overflow-hidden leading-snug`}
-          aria-label={wholeSession ? undefined : `${lineName} description`}
-          aria-required={required}
-          aria-describedby={problems.length ? problemId : undefined}
-          disabled={disabled}
-        />
-        {descriptionChips.length > 0 && !line.description && (
-          <div className="mt-2 flex flex-wrap gap-2" aria-label={`Recent descriptions for ${lineName.toLowerCase()}`}>
-            {descriptionChips.map((text) => (
-              <button key={text} type="button" className={chipClass} onClick={() => onChange({ description: text })} disabled={disabled}>
-                {text}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <label htmlFor={`${id}-category`} className={wholeSession ? labelClass : `${labelClass} @4xl:sr-only`}>
-          Category{!categoryNeeded && <span className="font-normal text-text-muted"> (optional)</span>}
+      {/* min-w-0 on each cell keeps long option text inside its grid column. */}
+      <div className="min-w-0">
+        <label htmlFor={`${id}-category`} className={fieldLabelClass}>
+          Category{categoryNeeded ? requiredMark : optionalMark}
         </label>
         <select
           id={`${id}-category`}
           value={line.service_type_id}
           onChange={(event) => onChange({ service_type_id: event.target.value, service_task_id: '' })}
           className={inputClass}
-          aria-label={wholeSession ? undefined : `${lineName} category`}
+          aria-label={lineAriaLabel('category')}
           aria-required={categoryNeeded}
           aria-invalid={categoryInvalid || undefined}
           aria-describedby={categoryInvalid ? problemId : undefined}
@@ -354,38 +330,39 @@ function WorkLineRow({
           {categories.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
           {category && !categories.includes(category) && <option value={category.id}>{category.name}</option>}
         </select>
-        {taskRequired && taskField}
-        <button
-          type="button"
-          onClick={() => setShowMore(!showMore)}
-          aria-expanded={showMore}
-          aria-controls={`${id}-more`}
-          className="min-h-11 text-sm font-medium text-primary underline-offset-2 hover:underline"
-        >
-          {taskRequired ? (showMore ? 'Hide period' : 'Period') : (showMore ? 'Hide task and period' : 'Task and period')}
-        </button>
       </div>
 
-      {/* Task and period open across the whole line (their own row in the
-          table) instead of squeezing into the category column. */}
-      {showMore && (
-        <div
-          id={`${id}-more`}
-          className={`space-y-2 rounded-lg bg-secondary/30 p-2 @4xl:col-span-full @4xl:row-start-2 ${
-            taskRequired ? '' : '@xl:grid @xl:grid-cols-2 @xl:items-start @xl:gap-3 @xl:space-y-0'
-          }`}
+      <div className="min-w-0">
+        <label htmlFor={`${id}-task`} className={fieldLabelClass}>
+          Task{taskNeeded ? requiredMark : optionalMark}
+        </label>
+        <select
+          id={`${id}-task`}
+          value={line.service_task_id}
+          onChange={(event) => onChange({ service_task_id: event.target.value })}
+          className={inputClass}
+          aria-label={lineAriaLabel('task')}
+          aria-required={taskNeeded}
+          aria-invalid={taskInvalid || undefined}
+          aria-describedby={taskInvalid ? problemId : undefined}
+          disabled={disabled || !line.service_type_id || tasks.length === 0}
         >
-          {!taskRequired && taskField}
-          <PeriodPicker
-            idPrefix={`${id}-period`}
-            value={{ period_type: line.period_type, period_start: line.period_start }}
-            onChange={(period) => onChange({ period_type: period.period_type, period_start: period.period_start })}
-            referenceDate={referenceDate}
-            className={inputClass}
-            stacked
-          />
-        </div>
-      )}
+          <option value="">{line.service_type_id ? (tasks.length ? (taskNeeded ? 'Choose task…' : 'No task') : 'No tasks') : 'Category first'}</option>
+          {tasks.map((task) => <option key={task.id} value={task.id}>{task.name}</option>)}
+        </select>
+      </div>
+
+      <div className="min-w-0">
+        <label htmlFor={`${id}-period`} className={fieldLabelClass}>Period{optionalMark}</label>
+        <PeriodSelect
+          id={`${id}-period`}
+          value={{ period_type: line.period_type, period_start: line.period_start }}
+          onChange={(period) => onChange(period)}
+          referenceDate={referenceDate}
+          ariaLabel={lineAriaLabel('period')}
+          disabled={disabled}
+        />
+      </div>
 
       {wholeSession ? (
         <p className="rounded-lg bg-secondary/40 px-3 py-2 text-sm text-primary-dark">
@@ -401,12 +378,40 @@ function WorkLineRow({
           onChange={onChange}
           onEnter={onEnterOnTime}
           disabled={disabled}
-          describedBy={problems.length ? problemId : undefined}
+          invalid={timeInvalid}
+          describedBy={timeInvalid ? problemId : undefined}
         />
       )}
 
+      {/* Comments: the line's own row under Client to Period in the table. */}
+      <div className="min-w-0 @4xl:col-span-4">
+        <label htmlFor={`${id}-comments`} className={wholeSession ? labelClass : `${labelClass} @4xl:mb-0.5 @4xl:text-xs @4xl:font-semibold @4xl:text-text-muted`}>
+          Comments <span className="font-normal text-text-muted">(optional)</span>
+        </label>
+        {/* One line of text that wraps and grows, so a long comment stays
+            readable while it's edited instead of being cut off. */}
+        <GrowingTextField
+          id={`${id}-comments`}
+          value={line.description}
+          onChange={(description) => onChange({ description })}
+          placeholder="e.g. Reconciled June bank statements"
+          className={`${inputClass} resize-none overflow-hidden leading-snug`}
+          aria-label={`${lineName} comments`}
+          disabled={disabled}
+        />
+        {commentChips.length > 0 && !line.description && (
+          <div className="mt-2 flex flex-wrap gap-2" aria-label={`Recent comments for ${lineName.toLowerCase()}`}>
+            {commentChips.map((text) => (
+              <button key={text} type="button" className={chipClass} onClick={() => onChange({ description: text })} disabled={disabled}>
+                {text}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {!wholeSession && (
-        <div className="flex flex-wrap gap-1 @4xl:flex-col @4xl:items-stretch">
+        <div className="flex flex-wrap gap-1 @4xl:justify-end @4xl:self-end">
           {remainingMinutes !== null && remainingMinutes !== 0 && (minutes ?? 0) + remainingMinutes > 0 && (
             <button type="button" onClick={onAbsorbRemaining} disabled={disabled} className="min-h-11 rounded-lg px-2 text-xs font-semibold text-primary hover:bg-primary/5"
               aria-label={`${remainingMinutes > 0 ? 'Add' : 'Take'} ${formatMinutes(Math.abs(remainingMinutes))} ${remainingMinutes > 0 ? 'to' : 'from'} ${lineName.toLowerCase()}`}>
@@ -439,6 +444,7 @@ function WorkLineClientField({
   recentClients,
   required,
   disabled,
+  invalid = false,
   describedBy,
 }: {
   id: string
@@ -450,6 +456,7 @@ function WorkLineClientField({
   recentClients: ClientOption[]
   required: boolean
   disabled: boolean
+  invalid?: boolean
   describedBy?: string
 }) {
   const [query, setQuery] = useState('')
@@ -464,8 +471,10 @@ function WorkLineClientField({
   const recentInList = query ? [] : recent
 
   return (
-    <div>
-      <label htmlFor={id} className={visibleLabel ? labelClass : `${labelClass} @4xl:sr-only`}>{visibleLabel || 'Client'}</label>
+    <div className="min-w-0">
+      <label htmlFor={id} className={visibleLabel ? labelClass : `${labelClass} @4xl:sr-only`}>
+        {visibleLabel || 'Client'}{required ? requiredMark : optionalMark}
+      </label>
       <select
         id={id}
         value={value}
@@ -473,6 +482,7 @@ function WorkLineClientField({
         className={inputClass}
         aria-label={visibleLabel ? undefined : label}
         aria-required={required}
+        aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
         disabled={disabled}
       >
@@ -516,6 +526,48 @@ function WorkLineClientField({
   )
 }
 
+/**
+ * The line's period as one dropdown: no period, then months, quarters and
+ * years around the entry's date, newest first. One control keeps a line with
+ * a period as tall as the rest of its row; the 3-part PeriodPicker stays for
+ * report filters and the old single-entry fields.
+ */
+function PeriodSelect({
+  id,
+  value,
+  onChange,
+  referenceDate,
+  ariaLabel,
+  disabled,
+}: {
+  id: string
+  value: WorkPeriod
+  onChange: (period: WorkPeriod) => void
+  referenceDate?: string
+  ariaLabel?: string
+  disabled: boolean
+}) {
+  // About two dozen options; cheap enough to build on each render.
+  const groups = periodOptionGroups(referenceDate, value)
+  return (
+    <select
+      id={id}
+      value={periodOptionValue(value.period_type, value.period_start)}
+      onChange={(event) => onChange(parsePeriodOptionValue(event.target.value))}
+      className={inputClass}
+      aria-label={ariaLabel}
+      disabled={disabled}
+    >
+      <option value="">No period</option>
+      {groups.map((group) => (
+        <optgroup key={group.label} label={group.label}>
+          {group.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </optgroup>
+      ))}
+    </select>
+  )
+}
+
 function DurationField({
   id,
   label,
@@ -524,6 +576,7 @@ function DurationField({
   onChange,
   onEnter,
   disabled,
+  invalid = false,
   describedBy,
 }: {
   id: string
@@ -533,11 +586,12 @@ function DurationField({
   onChange: (patch: Partial<WorkLineDraft>) => void
   onEnter?: () => void
   disabled: boolean
+  invalid?: boolean
   describedBy?: string
 }) {
   const hintId = `${id}-hint`
   return (
-    <div>
+    <div className="min-w-0">
       <label htmlFor={id} className={`${labelClass} @4xl:sr-only`}>Time</label>
       <div className="flex items-start gap-1">
         <input
@@ -556,6 +610,7 @@ function DurationField({
           className={`${inputClass} min-w-0 tabular-nums`}
           aria-label={label}
           aria-describedby={[hintId, describedBy].filter(Boolean).join(' ')}
+          aria-invalid={invalid || undefined}
           disabled={disabled}
           enterKeyHint={onEnter ? 'enter' : 'done'}
           autoComplete="off"
@@ -586,7 +641,7 @@ function DurationField({
 
 /**
  * A single-line text field that wraps long text and grows to fit it. Enter
- * doesn't add a line break (descriptions stay one line), and pasted line
+ * doesn't add a line break (comments stay one line), and pasted line
  * breaks become spaces.
  */
 function GrowingTextField({

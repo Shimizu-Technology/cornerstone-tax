@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { TimeEntry, UnassignedTimeEntry, UnassignedTimeResponse } from '../../lib/api'
+import { workLineSummary } from '../../lib/timeEntryWork'
 import { formatMinutes } from '../../lib/workDuration'
 import { requirementHint } from './workLinesModel'
 
@@ -10,7 +11,6 @@ const fieldClass = 'min-h-11 w-full rounded-lg border border-neutral-warm bg-whi
 
 const MISSING_LABEL: Record<string, string> = {
   client: 'no client',
-  description: 'no description',
   category: 'no category',
   task: 'no task',
 }
@@ -77,7 +77,7 @@ export default function UnassignedTime({
       <div className="rounded-2xl border border-neutral-warm bg-white p-4 shadow-sm">
         <h2 id="unassigned-heading" className="text-lg font-bold text-primary-dark">Unassigned time</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Hours that aren't attributed to a client. Open an entry to add the client and what was done; changing only the work
+          Hours that aren't attributed to a client. Open an entry to add the client and category; changing only the work
           lines keeps an approved entry approved.
           {summary?.cutover_date && <> From {formatDate(summary.cutover_date)}: {requirementHint(Boolean(summary.task_required))}</>}
         </p>
@@ -168,7 +168,7 @@ export default function UnassignedTime({
                     return (
                       <li key={line.id ?? line.position} className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg bg-secondary/40 px-3 py-2">
                         <span className="min-w-0">
-                          <span className="font-medium text-primary-dark">{line.client_label}</span>
+                          <span className="font-medium text-primary-dark">{workLineSummary(line)}</span>
                           {line.description ? <span className="text-text-muted"> — {line.description}</span> : null}
                           {missing.length > 0 && (
                             <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">

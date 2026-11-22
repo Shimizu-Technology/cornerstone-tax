@@ -48,7 +48,7 @@ class TimeEntry < ApplicationRecord
   validate :selected_work_records_exist
   validate :work_lines_match_hours
   # Set by user-facing flows (clock-out, manual create/edit) so the
-  # client/description cutover is enforced there; see TimeEntryWorkRequirement.
+  # work-details cutover (client and category) is enforced there; see TimeEntryWorkRequirement.
   attr_accessor :enforce_work_requirement
   validate :work_requirement_met, if: :enforce_work_requirement
 

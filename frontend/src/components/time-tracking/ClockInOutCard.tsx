@@ -191,7 +191,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
   const requiredFrom = suggestions.loaded ? suggestions.requiredFrom : status?.work_details_required_from
   const linesRequired = detailsRequired(requiredFrom, status?.work_date)
   const taskRequired = linesRequired && (suggestions.loaded ? suggestions.taskRequired : Boolean(status?.work_task_required))
-  const lineCheck = checkLines(clockOutLines, { targetMinutes: sessionMinutes, required: linesRequired, clients: workOptions.clients, serviceTypes: workOptions.serviceTypes, taskRequired })
+  const lineCheck = checkLines(clockOutLines, { targetMinutes: sessionMinutes, required: linesRequired, serviceTypes: workOptions.serviceTypes, taskRequired })
 
   const handleClockOutSubmit = async () => {
     setShowClockOutModal(false)
@@ -521,7 +521,7 @@ export default function ClockInOutCard({ onStatusChange }: ClockInOutCardProps) 
             <p className="mt-0.5 text-xs text-gray-500">
               {linesRequired
                 ? `${requirementHint(taskRequired)} Use Internal – Cornerstone for office work and errands.`
-                : 'Pick the client and say what you did; category and task are optional. Split the session if you worked for more than one client.'}
+                : 'Pick the client and category, then the task, period and comments if they apply. Split the session if you worked for more than one client.'}
             </p>
           </div>
 

@@ -156,7 +156,7 @@ Each row has one person's hours for one date, client, category, task, period and
 | `client_id`, `client_name` | The client the work was for. Clients are businesses or individuals. |
 | `system_kind` | `"internal"` for **Internal – Cornerstone** (Cornerstone's own office work, errands, meetings, training and admin). `null` for real clients. |
 | `unassigned` | `true` when the work line has no client. Then `client_id` is `null` and `client_name` is `"Unassigned"`. These rows are always included, so totals add up. |
-| `category_id`, `category` | The line's category. For older entries that only have a legacy category, `category_id` is `null` and `category` reads `"<name> (legacy)"`. |
+| `category_id`, `category` | The line's category. For older entries that only have a legacy category, `category_id` is `null` and `category` reads `"<name> (legacy)"`. Both are `null` when a line has no category at all. Lines dated before the work-details cutover (`time_work_details_required_from`) often have none. From the cutover a category is required to save or approve an entry, but a pending row can still lack one (for example, a clock the system closed automatically), until someone fixes and approves it. |
 | `task_id`, `task`, `period_*` | Optional detail. `period_start` is the first day of the month, quarter or year the work applies to. |
 | `hours` | Decimal hours, 2 places. Work lines always add up exactly to their entry's hours. |
 | `minutes` | `hours × 60`, rounded. |

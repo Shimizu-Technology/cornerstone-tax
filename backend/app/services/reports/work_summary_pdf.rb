@@ -48,21 +48,22 @@ module Reports
     end
 
     def days(pdf)
-      rows = [ [ "Date", "Client", "What I did", "Category / Task", "Time" ] ]
+      rows = [ [ "Date", "Client", "Category / Task", "Period", "Comments", "Time" ] ]
       summary[:days].each do |day|
         day[:lines].each_with_index do |line, index|
           rows << [
             index.zero? ? format_date(day[:work_date]) : "",
             line[:client_name],
+            [ line[:category], line[:task] ].compact.join(" / "),
+            line[:period].to_s,
             line[:description].to_s,
-            [ line[:category], line[:task], line[:period] ].compact.join(" / "),
             "#{WorkLineHours.format_minutes(line[:minutes])}#{line[:approval_state] == 'pending' ? ' *' : ''}"
           ]
         end
-        rows << [ "", "", { content: "Day total", font_style: :bold }, "", { content: day[:total_label], font_style: :bold } ]
+        rows << [ "", "", "", "", { content: "Day total", font_style: :bold }, { content: day[:total_label], font_style: :bold } ]
       end
-      rows << [ { content: "No work logged in this period.", colspan: 5 } ] if rows.one?
-      table(pdf, rows, [ 70, 120, 200, 100, 50 ])
+      rows << [ { content: "No work logged in this period.", colspan: 6 } ] if rows.one?
+      table(pdf, rows, [ 62, 106, 120, 72, 130, 50 ])
       if summary[:days].any? { |day| day[:lines].any? { |line| line[:approval_state] == "pending" } }
         pdf.move_down 4
         pdf.text "* Pending approval", size: 7.5, color: MUTED

@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { api } from '../../lib/api'
 import type { ApprovalReason, PendingApprovalsParams, PendingApprovalsSummary, ServiceType, TimeCategory, TimeEntry, UnscheduledOnlyPreview } from '../../lib/api'
 import { formatDateISO, formatWorkDate } from '../../lib/dateUtils'
-import { parseCategoryFilter, workSummary, type ClientOption } from '../../lib/timeEntryWork'
+import { parseCategoryFilter, workLineText, workSummary, type ClientOption } from '../../lib/timeEntryWork'
 import EditTimeEntryModal from './EditTimeEntryModal'
 import WorkLinesSheet from './WorkLinesSheet'
 import { formatMinutes } from '../../lib/workDuration'
@@ -481,7 +481,7 @@ export default function ApprovalQueue({ onUpdate, canDeleteEntry, clients = [], 
                   <ul className="mt-1 space-y-0.5 text-xs text-primary-dark" aria-label="Work lines">
                     {entry.work_lines!.map((line) => (
                       <li key={line.id ?? line.position}>
-                        {line.client_label}{line.description ? ` — ${line.description}` : ''} · <span className="tabular-nums">{formatMinutes(line.minutes)}</span>
+                        {workLineText(line)} · <span className="tabular-nums">{formatMinutes(line.minutes)}</span>
                       </li>
                     ))}
                   </ul>

@@ -231,9 +231,10 @@ export default function WorkSummary({ currentUserId, isAdmin, users }: { current
                           <span className="tabular-nums text-right text-primary-dark md:order-last">
                             {formatMinutes(line.minutes)}{line.approval_state === 'pending' && <span className="ml-1 text-xs text-amber-700">pending</span>}
                           </span>
+                          {/* The owner's order: client, then category · task · period, then comments. */}
                           <span className="col-span-2 text-text-muted md:col-span-1">
-                            {line.description || <em>No description</em>}
-                            {[line.category, line.task, line.period].filter(Boolean).length > 0 && ` · ${[line.category, line.task, line.period].filter(Boolean).join(' / ')}`}
+                            {[line.category, line.task, line.period].filter(Boolean).join(' · ')}
+                            {line.description && <>{(line.category || line.task || line.period) && ' — '}{line.description}</>}
                           </span>
                         </li>
                       ))}

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import EditTimeEntryModal from './EditTimeEntryModal'
@@ -69,6 +69,50 @@ describe('EditTimeEntryModal', () => {
     for (const key of ['client_id', 'service_type_id', 'service_task_id', 'period_type', 'period_start', 'description', 'time_category_id', 'work_lines']) {
       expect(apiMock.updateTimeEntry.mock.calls[0][1]).not.toHaveProperty(key)
     }
+  })
+
+  describe('with the work-details cutover', () => {
+    // A single line with a client but no category.
+    const uncategorized = {
+      ...entry, hours: 7.5,
+      work_lines: [{ id: 21, position: 0, client: { id: 6, name: 'Jose Cruz' }, client_label: 'Jose Cruz', description: 'Bank rec', service_type: null, service_task: null, category_label: null, period_type: null, period_start: null, period_label: null, hours: 7.5, minutes: 450 }],
+    }
+    const renderModal = (target = uncategorized) => render(
+      <EditTimeEntryModal isOpen entry={target} clients={[{ id: 6, name: 'Jose Cruz' }]} canDelete onClose={vi.fn()} onSaved={vi.fn()} onDeleted={vi.fn()} />,
+    )
+
+    it('turns Update off when a new date moves the entry across the cutover and the line misses a category', async () => {
+      apiMock.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: '2026-06-01' } })
+      const { container } = renderModal()
+      const update = screen.getByRole('button', { name: /update/i })
+      // Before the cutover, unchanged: nothing is required and the form can close.
+      await waitFor(() => expect(screen.getByLabelText(/^Category/)).toHaveAttribute('aria-required', 'false'))
+      expect(update).toBeEnabled()
+
+      fireEvent.change(container.querySelector('input[type="date"]')!, { target: { value: '2026-06-02' } })
+
+      expect(update).toBeDisabled()
+      expect(screen.getByText('Fix the work lines before saving: Work: Choose a category')).toBeInTheDocument()
+      expect(update).toHaveAccessibleDescription(/Choose a category/)
+      fireEvent.click(update)
+      expect(apiMock.updateTimeEntry).not.toHaveBeenCalled()
+
+      fireEvent.change(screen.getByLabelText(/^Category/), { target: { value: '' } })
+      expect(update).toBeDisabled()
+    })
+
+    it('turns Update off when only the end time changes on an entry from the cutover that misses a category', async () => {
+      apiMock.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: '2026-05-01' } })
+      renderModal()
+      const update = screen.getByRole('button', { name: /update/i })
+      await waitFor(() => expect(screen.getByLabelText(/^Category/)).toHaveAttribute('aria-required', 'true'))
+      // Unchanged, it can still close.
+      expect(update).toBeEnabled()
+
+      fireEvent.change(screen.getByDisplayValue('17:00'), { target: { value: '16:30' } })
+      expect(update).toBeDisabled()
+      expect(screen.getByText(/Fix the work lines before saving: Work: Choose a category/)).toBeInTheDocument()
+    })
   })
 
   it('collects and resubmits a correction reason for an exported entry', async () => {
@@ -154,13 +198,18 @@ describe('EditTimeEntryModal', () => {
       />,
     )
 
-    fireEvent.change(screen.getByLabelText('Period month'), { target: { value: '8' } })
+    // The saved July 2026 is outside the list around the May 2026 work date,
+    // so it is kept at the top of the months.
+    const period = screen.getByLabelText(/^Period/) as HTMLSelectElement
+    expect(period.value).toBe('month:2026-07-01')
+    expect(within(period).getByRole('option', { name: 'July 2026' })).toBeInTheDocument()
+    fireEvent.change(period, { target: { value: 'month:2026-06-01' } })
     fireEvent.click(screen.getByRole('button', { name: /update/i }))
 
     await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
     const payload = apiMock.updateTimeEntry.mock.calls[0][1]
     expect(payload.work_lines).toEqual([
-      { client_id: 6, description: 'Bank rec', service_type_id: null, service_task_id: null, period_type: 'month', period_start: '2026-08-01', minutes: 450 },
+      { client_id: 6, description: 'Bank rec', service_type_id: null, service_task_id: null, period_type: 'month', period_start: '2026-06-01', minutes: 450 },
     ])
     expect(payload).not.toHaveProperty('client_id')
     expect(payload).not.toHaveProperty('description')
@@ -227,7 +276,7 @@ describe('EditTimeEntryModal', () => {
 
     // Six 0.02h lines show as 1+1+2+1+1+1 = 7 minutes: nothing is left over.
     expect(screen.getByTestId('work-lines-remaining')).toHaveTextContent('All time is assigned')
-    fireEvent.change(screen.getByLabelText('Line 2 description'), { target: { value: 'Filed checks' } })
+    fireEvent.change(screen.getByLabelText('Line 2 comments'), { target: { value: 'Filed checks' } })
     const update = screen.getByRole('button', { name: /update/i })
     expect(update).toBeEnabled()
     fireEvent.click(update)
@@ -256,7 +305,7 @@ describe('EditTimeEntryModal', () => {
     }
     render(<EditTimeEntryModal isOpen entry={clockEntry} clients={[{ id: 6, name: 'C6' }]} canDelete onClose={vi.fn()} onSaved={vi.fn()} onDeleted={vi.fn()} />)
 
-    fireEvent.change(screen.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
+    fireEvent.change(screen.getByLabelText('Work comments'), { target: { value: 'Payroll run' } })
     fireEvent.click(screen.getByRole('button', { name: /update/i }))
 
     await waitFor(() => expect(apiMock.updateTimeEntry).toHaveBeenCalled())
@@ -292,7 +341,7 @@ describe('EditTimeEntryModal', () => {
     const versioned = { ...entry, hours: 7.5, version: 4, client: { id: 6, name: 'Jose Cruz' } }
     render(<EditTimeEntryModal isOpen entry={versioned} clients={[{ id: 6, name: 'Jose Cruz' }]} canDelete onClose={vi.fn()} onSaved={onSaved} onDeleted={vi.fn()} onConflict={onConflict} />)
 
-    fireEvent.change(screen.getByLabelText('What I did'), { target: { value: 'Payroll run' } })
+    fireEvent.change(screen.getByLabelText('Work comments'), { target: { value: 'Payroll run' } })
     fireEvent.click(screen.getByRole('button', { name: /update/i }))
 
     expect(await screen.findByText('This entry was changed elsewhere after you opened it.')).toBeInTheDocument()

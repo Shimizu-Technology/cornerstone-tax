@@ -52,7 +52,7 @@ const successfulReport = {
     flagged_entries_count: 0,
     uncategorized_count: 0,
     missing_client_count: 0,
-    missing_description_count: 0,
+    missing_category_count: 0,
     long_shift_count: 0,
     overlapping_entry_count: 0,
     long_shift_threshold_hours: 12,
@@ -253,15 +253,17 @@ describe('TimeTracking log time', () => {
     apiMocks.getWorkLineSuggestions.mockResolvedValue({ data: { recent_clients: [], descriptions_by_client: {}, work_details_required_from: null } })
   })
 
-  it('asks for the client, what was done, then the category, with task and period optional', async () => {
+  it('asks for the client, category, task, period and then comments, in the owner\'s order', async () => {
     renderPage('/admin/time')
     fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
 
     const editor = within(await screen.findByTestId('work-lines-editor'))
     const labels = [
-      editor.getByLabelText('Client', { selector: 'select' }),
-      editor.getByLabelText('What I did'),
+      editor.getByLabelText(/^Client/, { selector: 'select' }),
       editor.getByLabelText(/^Category/),
+      editor.getByLabelText(/^Task/),
+      editor.getByLabelText(/^Period/),
+      editor.getByLabelText('Work comments'),
     ]
     labels.slice(1).forEach((element, index) => {
       expect(labels[index].compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -270,14 +272,14 @@ describe('TimeTracking log time', () => {
     // Legacy time categories are not offered for new entries.
     expect(editor.queryByRole('option', { name: /Tax Prep/ })).not.toBeInTheDocument()
     // Inputs are 16px on phones so iOS does not zoom.
-    expect(editor.getByLabelText('What I did').className).toContain('text-base')
+    expect(editor.getByLabelText('Work comments').className).toContain('text-base')
   })
 
   it('lists businesses before individuals in the client picker', async () => {
     renderPage('/admin/time')
     fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
 
-    const clientSelect = await within(await screen.findByTestId('work-lines-editor')).findByLabelText('Client', { selector: 'select' })
+    const clientSelect = await within(await screen.findByTestId('work-lines-editor')).findByLabelText(/^Client/, { selector: 'select' })
     await waitFor(() => expect(within(clientSelect).getAllByRole('option').map(option => option.textContent)).toEqual([
       'No client (unassigned)', "MoSa's", 'Jose Cruz',
     ]))
@@ -290,24 +292,30 @@ describe('TimeTracking log time', () => {
     const editor = within(await screen.findByTestId('work-lines-editor'))
 
     await waitFor(() => expect(editor.getAllByRole('option', { name: "MoSa's" }).length).toBeGreaterThan(0))
-    fireEvent.change(editor.getByLabelText('Client', { selector: 'select' }), { target: { value: '5' } })
-    fireEvent.change(editor.getByLabelText('What I did'), { target: { value: 'July bank rec' } })
+    fireEvent.change(editor.getByLabelText(/^Client/, { selector: 'select' }), { target: { value: '5' } })
     fireEvent.change(editor.getByLabelText(/^Category/), { target: { value: '1' } })
-    fireEvent.click(editor.getByRole('button', { name: 'Task and period' }))
     fireEvent.change(editor.getByLabelText(/^Task/), { target: { value: '11' } })
-    fireEvent.change(editor.getByLabelText('Period type'), { target: { value: 'month' } })
-    fireEvent.change(editor.getByLabelText('Period month'), { target: { value: '7' } })
-    fireEvent.change(editor.getByLabelText('Period year'), { target: { value: '2026' } })
-    expect(editor.getByText('July 2026')).toBeInTheDocument()
+    // The months listed depend on today's date; pick this month's option.
+    const period = editor.getByLabelText(/^Period/) as HTMLSelectElement
+    const thisMonth = within(within(period).getByRole('group', { name: 'Months' })).getAllByRole('option')[1] as HTMLOptionElement
+    fireEvent.change(period, { target: { value: thisMonth.value } })
+    fireEvent.change(editor.getByLabelText('Work comments'), { target: { value: 'July bank rec' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => expect(apiMocks.createTimeEntry).toHaveBeenCalled())
     const payload = apiMocks.createTimeEntry.mock.calls[0][0]
     expect(payload.work_lines).toEqual([{
       client_id: 5, description: 'July bank rec', service_type_id: 1, service_task_id: 11,
-      period_type: 'month', period_start: '2026-07-01', minutes: 540,
+      period_type: 'month', period_start: thisMonth.value.replace('month:', ''), minutes: 540,
     }])
     expect(payload).not.toHaveProperty('time_category_id')
+  })
+
+  it('puts a scheduled shift\'s notes into the first line\'s comments', async () => {
+    renderPage('/admin/time?prefill=true&date=2026-11-20&start_time=08:00&end_time=12:00&notes=Payroll%20for%20SCR')
+
+    const editor = within(await screen.findByTestId('work-lines-editor'))
+    expect((editor.getByLabelText('Work comments') as HTMLTextAreaElement).value).toBe('Payroll for SCR')
   })
 
   it('shows and keeps the legacy category when editing an old entry', async () => {
@@ -348,8 +356,8 @@ describe('TimeTracking log time', () => {
 
     const editor = within(await screen.findByTestId('work-lines-editor'))
     expect(screen.getByText(/Legacy category:/)).toBeInTheDocument()
-    expect((editor.getByLabelText('Client', { selector: 'select' }) as HTMLSelectElement).value).toBe('6')
-    expect((editor.getByLabelText('What I did') as HTMLInputElement).value).toBe('Old work')
+    expect((editor.getByLabelText(/^Client/, { selector: 'select' }) as HTMLSelectElement).value).toBe('6')
+    expect((editor.getByLabelText('Work comments') as HTMLInputElement).value).toBe('Old work')
 
     // Nothing changed: the modal closes without sending anything, so neither
     // the legacy category nor the clock times can be rewritten.
@@ -360,7 +368,7 @@ describe('TimeTracking log time', () => {
     // A description-only edit sends just the work lines, no attendance fields.
     fireEvent.click(screen.getByText('Jose Cruz'))
     const reopened = within(await screen.findByTestId('work-lines-editor'))
-    fireEvent.change(reopened.getByLabelText('What I did'), { target: { value: 'Old work, filed' } })
+    fireEvent.change(reopened.getByLabelText('Work comments'), { target: { value: 'Old work, filed' } })
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
     await waitFor(() => expect(apiMocks.updateTimeEntry).toHaveBeenCalled())
     const payload = apiMocks.updateTimeEntry.mock.calls[0][1]
@@ -385,7 +393,7 @@ describe('TimeTracking log time', () => {
     renderPage('/admin/time')
     fireEvent.click(await screen.findByText('Jose Cruz'))
     const editor = within(await screen.findByTestId('work-lines-editor'))
-    fireEvent.change(editor.getByLabelText('What I did'), { target: { value: 'New note' } })
+    fireEvent.change(editor.getByLabelText('Work comments'), { target: { value: 'New note' } })
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
 
     const callsBefore = apiMocks.getTimeEntries.mock.calls.length

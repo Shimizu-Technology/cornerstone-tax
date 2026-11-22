@@ -2036,8 +2036,8 @@ export default function Settings() {
                   </div>
                   <p id="work-details-required-from-hint" className="text-xs text-text-muted mt-1">
                     {workDetailsRequiredFrom
-                      ? 'From this work date, every line needs a client and a description (internal lines also a category). Time that misses this can’t be saved or approved.'
-                      : 'Off: client and description are optional. Pick a date to start requiring them.'}
+                      ? 'From this work date, every line needs a client and a category. Period and comments are optional. Time that misses this can’t be saved or approved.'
+                      : 'Off: nothing is required. Pick a date to start requiring a client and a category on every line.'}
                   </p>
                 </div>
 
@@ -2056,8 +2056,8 @@ export default function Settings() {
                       <span className="block text-sm font-medium text-primary-dark">Require a task on every work line</span>
                       <span id="work-task-required-hint" className="block text-xs text-text-muted mt-0.5">
                         {workTaskRequired
-                          ? `Every line also needs a category, plus a task when the category has tasks${workDetailsRequiredFrom ? '.' : ' — once “Required from” is set.'}`
-                          : 'Off: category is needed only for internal work, and the task is optional.'}
+                          ? `Every line also needs a task when its category has tasks${workDetailsRequiredFrom ? '.' : ' — once “Required from” is set.'}`
+                          : 'Off: the task is optional.'}
                       </span>
                     </span>
                   </label>

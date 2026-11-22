@@ -37,7 +37,7 @@ type ReviewFilter = HoursReportReviewFlag | 'unresolved' | 'all'
 const REVIEW_LABELS: Record<HoursReportReviewFlag, string> = {
   uncategorized: 'Uncategorized',
   missing_client: 'No client assigned',
-  missing_description: 'Missing comments',
+  missing_category: 'Missing category',
   long_shift: 'Long shift',
   overlap: 'Overlapping time',
 }
@@ -227,7 +227,7 @@ export default function HoursReportWorkspace({
   const issueCards: Array<{ filter: ReviewFilter; label: string; count: number; note: string }> = report ? [
     { filter: 'uncategorized', label: 'Uncategorized', count: report.quality.uncategorized_count, note: 'Assign a work category' },
     { filter: 'missing_client', label: 'No client assigned', count: report.quality.missing_client_count, note: 'May be valid for internal work' },
-    { filter: 'missing_description', label: 'Missing comments', count: report.quality.missing_description_count, note: 'Add context for the work' },
+    { filter: 'missing_category', label: 'Missing category', count: report.quality.missing_category_count, note: 'Required from the cutover date' },
     { filter: 'long_shift', label: `Long shifts (${report.quality.long_shift_threshold_hours}h+)`, count: report.quality.long_shift_count, note: 'Verify unusually long entries' },
     { filter: 'overlap', label: 'Overlapping time', count: report.quality.overlapping_entry_count, note: 'Two entries cover the same time' },
     { filter: 'unresolved', label: 'Excluded / unresolved', count: unresolvedEntries.length, note: 'Pending, denied, or open time' },

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { ServiceType, WorkLine, WorkLineInput } from '../../lib/api'
-import { isInternalClient, isPeriodType, type ClientOption, type PeriodType } from '../../lib/timeEntryWork'
+import { isPeriodType, type ClientOption, type PeriodType } from '../../lib/timeEntryWork'
 import { formatMinutes, parseDurationMinutes, type DurationUnit } from '../../lib/workDuration'
 
 /** One editable work line. Time is kept as typed text plus a unit toggle. */
@@ -187,14 +187,12 @@ export function checkLines(
   {
     targetMinutes,
     required,
-    clients,
     serviceTypes = [],
     taskRequired = false,
     singleCoversTarget = true,
   }: {
     targetMinutes: number | null
     required: boolean
-    clients: ClientOption[]
     /** Categories with their tasks; needed to know whether a category has tasks. */
     serviceTypes?: ServiceType[]
     /** Settings > "Require a task on every work line" (applies with `required`). */
@@ -209,24 +207,22 @@ export function checkLines(
 
   lines.forEach((line) => {
     const issues: string[] = []
+    // Messages follow the field order: client, category, task, then time.
+    // The cutover rule (TimeEntryWorkRequirement): client and category on
+    // every line; a task only with "Require a task" on and when the category
+    // has tasks. Period and comments are optional.
+    if (required) {
+      if (!line.client_id) issues.push('Choose a client')
+      if (!line.service_type_id) issues.push('Choose a category')
+      else if (taskRequired && !line.service_task_id && categoryHasTasks(serviceTypes, line.service_type_id)) issues.push('Choose a task')
+    }
+
     const minutes = single ? targetMinutes! : draftMinutes(line)
     // A session shorter than a minute has nothing to split.
     if (single && minutes === 0) { /* nothing to check */ }
     else if (minutes === null) issues.push(line.durationText.trim() ? 'Time must be minutes (45) or hours (1.5h)' : 'Add the time')
     else if (minutes <= 0) issues.push('Time must be more than 0')
     else totalMinutes += minutes
-
-    if (required) {
-      const client = clients.find((option) => String(option.id) === line.client_id)
-      if (!line.client_id) issues.push('Choose a client')
-      if (!line.description.trim()) issues.push('Say what you did')
-      if (taskRequired) {
-        if (!line.service_type_id) issues.push('Choose a category and a task')
-        else if (!line.service_task_id && categoryHasTasks(serviceTypes, line.service_type_id)) issues.push('Choose a task')
-      } else if (client && isInternalClient(client) && !line.service_type_id) {
-        issues.push('Choose a category for internal work')
-      }
-    }
     if (issues.length) problems[line.key] = issues
   })
 
@@ -240,6 +236,20 @@ export function checkLines(
   else summary = `${formatMinutes(-remainingMinutes)} over — reduce a line`
 
   return { problems, totalMinutes, remainingMinutes, canSubmit: balanced && clean && lines.length > 0, summary }
+}
+
+/**
+ * One sentence naming what stops a save: each line's problems ("Line 2:
+ * Choose a category"), then an unbalanced total. null when nothing does.
+ */
+export function lineProblemSummary(lines: WorkLineDraft[], check: LineCheck): string | null {
+  const parts = lines.flatMap((line, index) => {
+    const problems = check.problems[line.key]
+    if (!problems?.length) return []
+    return [`${lines.length > 1 ? `Line ${index + 1}` : 'Work'}: ${problems.join(', ')}`]
+  })
+  if (check.remainingMinutes !== null && check.remainingMinutes !== 0) parts.push(check.summary)
+  return parts.length ? parts.join('; ') : null
 }
 
 /**
@@ -293,11 +303,11 @@ export function useWorkLineSuggestions(enabled = true, userId?: number | null): 
  */
 export function requirementHint(taskRequired: boolean): string {
   return taskRequired
-    ? 'Every line needs a client, a description and a category, plus a task when the category has tasks.'
-    : 'Every line needs a client and a description; internal lines also need a category; the task is optional.'
+    ? 'Pick the client, category and task for each line. Period and comments are optional.'
+    : 'Pick the client and category for each line. Task, period and comments are optional.'
 }
 
-/** Whether the client/description cutover applies to this work date. */
+/** Whether the work-details cutover (client and category) applies to this work date. */
 export function detailsRequired(requiredFrom: string | null | undefined, workDate: string | null | undefined): boolean {
   return Boolean(requiredFrom && workDate && workDate >= requiredFrom)
 }

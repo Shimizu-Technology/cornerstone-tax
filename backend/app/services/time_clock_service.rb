@@ -221,7 +221,7 @@ class TimeClockService
           end_time: schedule.formatted_end_time,
           hours: schedule.hours
         } : nil,
-        # From this date, every work line needs a client and a description.
+        # From this date, every work line needs a client and a category.
         work_details_required_from: TimeEntryWorkRequirement.cutover_date&.iso8601,
         work_task_required: TimeEntryWorkRequirement.task_required?,
         # Unscheduled clock-ins by people on flexible hours skip approval.

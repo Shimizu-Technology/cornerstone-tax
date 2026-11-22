@@ -17,10 +17,13 @@ const entry = {
   locked_at: null,
   user: { id: 3, full_name: 'Sam Staff', email: 's@example.com', display_name: 'Sam' },
   work_lines: [
-    { id: 11, position: 0, client_label: 'Alpha Co', description: 'Bank recs', minutes: 360, hours: 6 },
+    {
+      id: 11, position: 0, client_label: 'Alpha Co', description: 'Bank recs', minutes: 360, hours: 6,
+      service_type: { id: 1, name: 'Bookkeeping' }, category_label: 'Bookkeeping', service_task: { id: 11, name: 'Bank Reconciliation' }, period_label: 'July 2026',
+    },
     { id: 12, position: 1, client_label: 'Unassigned', description: null, minutes: 120, hours: 2 },
   ],
-  line_issues: [{ id: 11, missing: [] }, { id: 12, missing: ['client', 'description'] }],
+  line_issues: [{ id: 11, missing: [] }, { id: 12, missing: ['client', 'category'] }],
 }
 
 describe('UnassignedTime', () => {
@@ -39,7 +42,10 @@ describe('UnassignedTime', () => {
     const onEditEntry = vi.fn()
     render(<UnassignedTime users={[{ id: 3, full_name: 'Sam Staff' }]} onEditEntry={onEditEntry} />)
 
-    expect(await screen.findByText('no client, no description')).toBeInTheDocument()
+    expect(await screen.findByText('no client, no category')).toBeInTheDocument()
+    // Each line reads in the owner's order, then its comments.
+    expect(screen.getByText("Alpha Co · Bookkeeping · Bank Reconciliation · July 2026")).toBeInTheDocument()
+    expect(screen.getByText('— Bank recs')).toBeInTheDocument()
     expect(screen.getByText('2.00h in 1 entry')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /^Fix Sam Staff/ }))

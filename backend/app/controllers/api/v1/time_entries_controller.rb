@@ -660,7 +660,11 @@ module Api
         return if performed?
         issue ||= "client"
 
-        lines = unassigned_lines_scope(issue)
+        # Read the rule's settings once, so the list, its labels and the
+        # summary can't disagree if an admin changes them mid-request.
+        cutover = TimeEntryWorkRequirement.cutover_date
+        task_required = TimeEntryWorkRequirement.task_required?
+        lines = unassigned_lines_scope(issue, cutover: cutover, task_required: task_required)
         entries = TimeEntry.where(status: "completed")
                            .where("time_entries.approval_status IS NULL OR time_entries.approval_status <> 'denied'")
                            .where(id: lines.select(:time_entry_id))
@@ -683,21 +687,22 @@ module Api
                                                   .order(work_date: :desc, start_time: :desc, id: :desc)
                                                   .offset((page - 1) * per_page).limit(per_page)
 
-        task_required = TimeEntryWorkRequirement.task_required?
-        cutover = TimeEntryWorkRequirement.cutover_date
         render json: {
           time_entries: page_entries.map do |entry|
-            # Task labels only from the cutover, matching the list above.
-            entry_task_required = task_required && cutover.present? && entry.work_date >= cutover
+            # A missing client is flagged on any date; category and task only
+            # from the cutover, matching the list above.
+            details_required = cutover.present? && entry.work_date >= cutover
             serialize_time_entry(entry).merge(
-              line_issues: entry.work_lines.map { |line| { id: line.id, missing: TimeEntryWorkRequirement.missing_for_line(line, task_required: entry_task_required) } }
+              line_issues: entry.work_lines.map do |line|
+                { id: line.id, missing: TimeEntryWorkRequirement.missing_for_line(line, task_required: task_required, details_required: details_required) }
+              end
             )
           end,
           summary: {
             entry_count: total_count,
             hours: matching_lines.sum(:hours).to_f.round(2),
             by_user: by_user,
-            cutover_date: TimeEntryWorkRequirement.cutover_date&.iso8601,
+            cutover_date: cutover&.iso8601,
             task_required: task_required
           },
           pagination: {
@@ -749,20 +754,23 @@ module Api
 
       private
 
-      def unassigned_lines_scope(issue)
-        lines = TimeEntryAllocation.left_outer_joins(:client)
+      def unassigned_lines_scope(issue, cutover:, task_required:)
+        lines = TimeEntryAllocation.all
         return lines.where(client_id: nil) if issue == "client"
 
-        conditions = "time_entry_allocations.client_id IS NULL OR COALESCE(TRIM(time_entry_allocations.description), '') = '' OR " \
-                     "(clients.system_kind = 'internal' AND time_entry_allocations.service_type_id IS NULL)"
-        cutover = TimeEntryWorkRequirement.cutover_date
-        if TimeEntryWorkRequirement.task_required? && cutover
-          # The task rule, like the rest of the cutover rule's server checks,
-          # applies only from the cutover date.
-          conditions += " OR (EXISTS (SELECT 1 FROM time_entries task_cutover WHERE task_cutover.id = time_entry_allocations.time_entry_id " \
-                        "AND task_cutover.work_date >= #{connection_quote(cutover)}) AND (time_entry_allocations.service_type_id IS NULL OR " \
-                        "(time_entry_allocations.service_task_id IS NULL AND EXISTS (SELECT 1 FROM service_tasks WHERE " \
-                        "service_tasks.service_type_id = time_entry_allocations.service_type_id AND service_tasks.is_active = TRUE))))"
+        # A missing client counts on any date. A missing category (any
+        # client) and the task rule apply only from the cutover, like the
+        # rest of the cutover rule's server checks, so older lines without a
+        # category don't flood the list. Comments are optional.
+        conditions = "time_entry_allocations.client_id IS NULL"
+        if cutover
+          details_missing = "time_entry_allocations.service_type_id IS NULL"
+          if task_required
+            details_missing += " OR (time_entry_allocations.service_task_id IS NULL AND EXISTS (SELECT 1 FROM service_tasks WHERE " \
+                               "service_tasks.service_type_id = time_entry_allocations.service_type_id AND service_tasks.is_active = TRUE))"
+          end
+          conditions += " OR (EXISTS (SELECT 1 FROM time_entries details_cutover WHERE details_cutover.id = time_entry_allocations.time_entry_id " \
+                        "AND details_cutover.work_date >= #{connection_quote(cutover)}) AND (#{details_missing}))"
         end
         lines.where(conditions)
       end

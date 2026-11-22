@@ -3,11 +3,12 @@
 require "csv"
 
 module Reports
-  # CSV of a person's work summary: one row per work line, then a blank row
+  # CSV of a person's work summary: one row per work line (in the owner's
+  # order: client, category, task, period, comments), then a blank row
   # and the totals per client (minutes and hours), like the old spreadsheets.
   module WorkSummaryCsv
     FORMULA_PREFIX = /\A[ \t\r\n]*[=+\-@]/
-    LINE_HEADERS = [ "Date", "Time", "Client", "What I did", "Category", "Task", "Period", "Minutes", "Hours", "Status" ].freeze
+    LINE_HEADERS = [ "Date", "Time", "Client", "Category", "Task", "Period", "Comments", "Minutes", "Hours", "Status" ].freeze
 
     module_function
 
@@ -19,8 +20,8 @@ module Reports
         summary[:days].each do |day|
           day[:lines].each do |line|
             csv << sanitize([
-              line[:work_date], line[:time_range], line[:client_name], line[:description], line[:category],
-              line[:task], line[:period], line[:minutes], format("%.2f", line[:hours]), line[:approval_state]
+              line[:work_date], line[:time_range], line[:client_name], line[:category], line[:task],
+              line[:period], line[:description], line[:minutes], format("%.2f", line[:hours]), line[:approval_state]
             ])
           end
         end

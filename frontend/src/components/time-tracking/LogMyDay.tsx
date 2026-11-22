@@ -5,7 +5,7 @@ import type { ClientOption } from '../../lib/timeEntryWork'
 import { formatMinutes, minutesToHoursText } from '../../lib/workDuration'
 import WorkLinesEditor from './WorkLinesEditor'
 import { readDrafts, writeDrafts, type DayDraft } from './logMyDayDrafts'
-import { checkLines, detailsRequired, draftMinutes, draftsFromEntry, linesPayload, newDraft, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
+import { checkLines, detailsRequired, draftMinutes, draftsFromEntry, linesPayload, newDraft, requirementHint, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
 
 const DAY_LOG = 'day-log'
 
@@ -162,7 +162,7 @@ export default function LogMyDay({
 
   const targetMinutes = session ? entryMinutes(session) : null
   const required = detailsRequired(suggestions.requiredFrom, date)
-  const check = checkLines(lines, { targetMinutes, required, clients, serviceTypes, taskRequired: required && suggestions.taskRequired, singleCoversTarget: false })
+  const check = checkLines(lines, { targetMinutes, required, serviceTypes, taskRequired: required && suggestions.taskRequired, singleCoversTarget: false })
   const dirty = Boolean(draft)
 
   // Warn before leaving the page while anything is unsaved.
@@ -263,7 +263,11 @@ export default function LogMyDay({
           <div>
             <h2 id="log-my-day-heading" className="text-lg font-bold text-primary-dark">Log my day</h2>
             <p className="text-sm text-text-muted">
-              {userName ? `${userName} · ` : ''}List each client and what you did, in minutes or hours. Enter on a time adds a row.
+              {userName ? `${userName} · ` : ''}
+              {required
+                ? requirementHint(suggestions.taskRequired)
+                : 'Record each line as client, category, task, period and comments.'}
+              {' '}Times in minutes or hours; Enter on a time adds a row.
             </p>
           </div>
           <div className="flex items-center gap-1">
