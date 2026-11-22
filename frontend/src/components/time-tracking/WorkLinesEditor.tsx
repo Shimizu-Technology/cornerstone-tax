@@ -6,16 +6,23 @@ import {
   clientGroupLabel,
   clientOptionLabel,
   filterClientOptions,
+  parsePeriodOptionValue,
+  periodOptionGroups,
+  periodOptionValue,
   sortClientOptions,
   type ClientOption,
+  type WorkPeriod,
 } from '../../lib/timeEntryWork'
 import { formatMinutes, minutesToHoursText, type DurationUnit } from '../../lib/workDuration'
-import { PeriodPicker } from './TimeEntryWorkFields'
 import { checkLines, draftMinutes, duplicateDraft, newDraft, type WorkLineDraft, type WorkLineSuggestions } from './workLinesModel'
 
 // 16px text on phones so iOS never zooms; 44px minimum tap targets.
 const inputClass = 'min-h-11 w-full rounded-lg border border-neutral-warm bg-white px-3 py-2 text-base md:text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-neutral-warm/30'
 const labelClass = 'mb-1 block text-sm font-medium text-primary-dark'
+// Required fields get an asterisk (repo convention: "Date *"). It's hidden
+// from screen readers, which hear aria-required instead.
+const requiredMark = <span aria-hidden="true"> *</span>
+const optionalMark = <span className="font-normal text-text-muted"> (optional)</span>
 // Chips wrap instead of truncating, so a long client name stays readable in a narrow column.
 const chipClass = 'min-h-11 max-w-full whitespace-normal break-words rounded-[1.375rem] border border-neutral-warm bg-white px-3 py-1.5 text-left text-sm leading-snug text-primary-dark hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary'
 // The table layout is driven by the editor's own width (a container query),
@@ -24,9 +31,10 @@ const chipClass = 'min-h-11 max-w-full whitespace-normal break-words rounded-[1.
 // narrower ones. Below this width each line stacks with visible labels.
 // Each line is two grid rows in the owner's order: Client | Category | Task |
 // Period | Time, then Comments across the first four columns with the line's
-// actions under Time. Minimums: 52.5rem of columns + 2rem of gaps + 1rem of
+// actions under Time. Period gets 10rem so "3rd Quarter 2026" fits in its
+// one dropdown. Minimums: 52.5rem of columns + 2rem of gaps + 1rem of
 // line padding + the 1px borders = about 55.6rem, inside the 56rem threshold.
-const gridColumns = '@4xl:grid-cols-[minmax(13rem,1.4fr)_minmax(10rem,1.1fr)_minmax(10rem,1.1fr)_minmax(9rem,1fr)_10.5rem]'
+const gridColumns = '@4xl:grid-cols-[minmax(12rem,1.4fr)_minmax(10rem,1.1fr)_minmax(10rem,1.1fr)_minmax(10rem,1fr)_10.5rem]'
 
 export interface WorkLinesEditorProps {
   lines: WorkLineDraft[]
@@ -125,7 +133,7 @@ export default function WorkLinesEditor({
       {!singleSession && (
         // Same border and padding as a line, so each title sits over its column.
         <div aria-hidden="true" className={`hidden @4xl:grid ${gridColumns} @4xl:gap-x-2 border border-transparent px-2 text-xs font-semibold uppercase tracking-wide text-text-muted`}>
-          <span>Client</span><span>Category</span><span>Task</span><span>Period</span><span>Time</span>
+          <span>Client{required && ' *'}</span><span>Category{required && ' *'}</span><span>Task{taskRequired && ' *'}</span><span>Period</span><span>Time</span>
         </div>
       )}
 
@@ -259,21 +267,16 @@ function WorkLineRow({
   const problemId = `${id}-problems`
   // The category and task pickers point at the line's message when it is
   // about them, and say they're invalid.
+  // Each field points at the line's message and says it's invalid only when
+  // the message is about that field.
+  const clientInvalid = problems.includes('Choose a client')
   const categoryInvalid = problems.includes('Choose a category')
   const taskInvalid = problems.includes('Choose a task')
+  const timeInvalid = problems.some((problem) => problem === 'Add the time' || problem.startsWith('Time must'))
   // In the table the column titles name the fields, so the labels are only
   // for screen readers there; a stacked line shows them.
   const fieldLabelClass = wholeSession ? labelClass : `${labelClass} @4xl:sr-only`
   const lineAriaLabel = (field: string) => (wholeSession ? undefined : `${lineName} ${field}`)
-  const periodType = line.period_type
-  // In the table the period sits in a narrow column: type, month or quarter,
-  // and year one under another. Stacked, the month or quarter and year share
-  // a row under the type.
-  const periodColumns = wholeSession
-    ? undefined
-    : periodType === 'month' || periodType === 'quarter'
-      ? 'grid-cols-2 [&>*:first-child]:col-span-2 @4xl:grid-cols-1 @4xl:[&>*:first-child]:col-span-1'
-      : 'grid-cols-1'
 
   const changeClient = (clientId: string) => {
     const nextClient = clients.find((option) => String(option.id) === clientId) ?? null
@@ -303,12 +306,14 @@ function WorkLineRow({
         recentClients={suggestions?.recentClients || []}
         required={required}
         disabled={disabled}
-        describedBy={problems.length ? problemId : undefined}
+        invalid={clientInvalid}
+        describedBy={clientInvalid ? problemId : undefined}
       />
 
-      <div>
+      {/* min-w-0 on each cell keeps long option text inside its grid column. */}
+      <div className="min-w-0">
         <label htmlFor={`${id}-category`} className={fieldLabelClass}>
-          Category{!categoryNeeded && <span className="font-normal text-text-muted"> (optional)</span>}
+          Category{categoryNeeded ? requiredMark : optionalMark}
         </label>
         <select
           id={`${id}-category`}
@@ -327,9 +332,9 @@ function WorkLineRow({
         </select>
       </div>
 
-      <div>
+      <div className="min-w-0">
         <label htmlFor={`${id}-task`} className={fieldLabelClass}>
-          Task{!taskNeeded && <span className="font-normal text-text-muted"> (optional)</span>}
+          Task{taskNeeded ? requiredMark : optionalMark}
         </label>
         <select
           id={`${id}-task`}
@@ -342,21 +347,22 @@ function WorkLineRow({
           aria-describedby={taskInvalid ? problemId : undefined}
           disabled={disabled || !line.service_type_id || tasks.length === 0}
         >
-          <option value="">{line.service_type_id ? (tasks.length ? (taskNeeded ? 'Choose task…' : 'No task') : 'No tasks for this category') : 'Choose a category first'}</option>
+          <option value="">{line.service_type_id ? (tasks.length ? (taskNeeded ? 'Choose task…' : 'No task') : 'No tasks') : 'Category first'}</option>
           {tasks.map((task) => <option key={task.id} value={task.id}>{task.name}</option>)}
         </select>
       </div>
 
-      <PeriodPicker
-        idPrefix={`${id}-period`}
-        value={{ period_type: line.period_type, period_start: line.period_start }}
-        onChange={(period) => onChange({ period_type: period.period_type, period_start: period.period_start })}
-        referenceDate={referenceDate}
-        className={inputClass}
-        labelClassName={fieldLabelClass}
-        stacked
-        columnsClassName={periodColumns}
-      />
+      <div className="min-w-0">
+        <label htmlFor={`${id}-period`} className={fieldLabelClass}>Period{optionalMark}</label>
+        <PeriodSelect
+          id={`${id}-period`}
+          value={{ period_type: line.period_type, period_start: line.period_start }}
+          onChange={(period) => onChange(period)}
+          referenceDate={referenceDate}
+          ariaLabel={lineAriaLabel('period')}
+          disabled={disabled}
+        />
+      </div>
 
       {wholeSession ? (
         <p className="rounded-lg bg-secondary/40 px-3 py-2 text-sm text-primary-dark">
@@ -372,12 +378,13 @@ function WorkLineRow({
           onChange={onChange}
           onEnter={onEnterOnTime}
           disabled={disabled}
-          describedBy={problems.length ? problemId : undefined}
+          invalid={timeInvalid}
+          describedBy={timeInvalid ? problemId : undefined}
         />
       )}
 
       {/* Comments: the line's own row under Client to Period in the table. */}
-      <div className="@4xl:col-span-4">
+      <div className="min-w-0 @4xl:col-span-4">
         <label htmlFor={`${id}-comments`} className={wholeSession ? labelClass : `${labelClass} @4xl:mb-0.5 @4xl:text-xs @4xl:font-semibold @4xl:text-text-muted`}>
           Comments <span className="font-normal text-text-muted">(optional)</span>
         </label>
@@ -437,6 +444,7 @@ function WorkLineClientField({
   recentClients,
   required,
   disabled,
+  invalid = false,
   describedBy,
 }: {
   id: string
@@ -448,6 +456,7 @@ function WorkLineClientField({
   recentClients: ClientOption[]
   required: boolean
   disabled: boolean
+  invalid?: boolean
   describedBy?: string
 }) {
   const [query, setQuery] = useState('')
@@ -462,8 +471,10 @@ function WorkLineClientField({
   const recentInList = query ? [] : recent
 
   return (
-    <div>
-      <label htmlFor={id} className={visibleLabel ? labelClass : `${labelClass} @4xl:sr-only`}>{visibleLabel || 'Client'}</label>
+    <div className="min-w-0">
+      <label htmlFor={id} className={visibleLabel ? labelClass : `${labelClass} @4xl:sr-only`}>
+        {visibleLabel || 'Client'}{required ? requiredMark : optionalMark}
+      </label>
       <select
         id={id}
         value={value}
@@ -471,6 +482,7 @@ function WorkLineClientField({
         className={inputClass}
         aria-label={visibleLabel ? undefined : label}
         aria-required={required}
+        aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
         disabled={disabled}
       >
@@ -514,6 +526,48 @@ function WorkLineClientField({
   )
 }
 
+/**
+ * The line's period as one dropdown: no period, then months, quarters and
+ * years around the entry's date, newest first. One control keeps a line with
+ * a period as tall as the rest of its row; the 3-part PeriodPicker stays for
+ * report filters and the old single-entry fields.
+ */
+function PeriodSelect({
+  id,
+  value,
+  onChange,
+  referenceDate,
+  ariaLabel,
+  disabled,
+}: {
+  id: string
+  value: WorkPeriod
+  onChange: (period: WorkPeriod) => void
+  referenceDate?: string
+  ariaLabel?: string
+  disabled: boolean
+}) {
+  // About two dozen options; cheap enough to build on each render.
+  const groups = periodOptionGroups(referenceDate, value)
+  return (
+    <select
+      id={id}
+      value={periodOptionValue(value.period_type, value.period_start)}
+      onChange={(event) => onChange(parsePeriodOptionValue(event.target.value))}
+      className={inputClass}
+      aria-label={ariaLabel}
+      disabled={disabled}
+    >
+      <option value="">No period</option>
+      {groups.map((group) => (
+        <optgroup key={group.label} label={group.label}>
+          {group.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </optgroup>
+      ))}
+    </select>
+  )
+}
+
 function DurationField({
   id,
   label,
@@ -522,6 +576,7 @@ function DurationField({
   onChange,
   onEnter,
   disabled,
+  invalid = false,
   describedBy,
 }: {
   id: string
@@ -531,11 +586,12 @@ function DurationField({
   onChange: (patch: Partial<WorkLineDraft>) => void
   onEnter?: () => void
   disabled: boolean
+  invalid?: boolean
   describedBy?: string
 }) {
   const hintId = `${id}-hint`
   return (
-    <div>
+    <div className="min-w-0">
       <label htmlFor={id} className={`${labelClass} @4xl:sr-only`}>Time</label>
       <div className="flex items-start gap-1">
         <input
@@ -554,6 +610,7 @@ function DurationField({
           className={`${inputClass} min-w-0 tabular-nums`}
           aria-label={label}
           aria-describedby={[hintId, describedBy].filter(Boolean).join(' ')}
+          aria-invalid={invalid || undefined}
           disabled={disabled}
           enterKeyHint={onEnter ? 'enter' : 'done'}
           autoComplete="off"

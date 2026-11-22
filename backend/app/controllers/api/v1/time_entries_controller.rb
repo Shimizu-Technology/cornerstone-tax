@@ -660,7 +660,11 @@ module Api
         return if performed?
         issue ||= "client"
 
-        lines = unassigned_lines_scope(issue)
+        # Read the rule's settings once, so the list, its labels and the
+        # summary can't disagree if an admin changes them mid-request.
+        cutover = TimeEntryWorkRequirement.cutover_date
+        task_required = TimeEntryWorkRequirement.task_required?
+        lines = unassigned_lines_scope(issue, cutover: cutover, task_required: task_required)
         entries = TimeEntry.where(status: "completed")
                            .where("time_entries.approval_status IS NULL OR time_entries.approval_status <> 'denied'")
                            .where(id: lines.select(:time_entry_id))
@@ -683,8 +687,6 @@ module Api
                                                   .order(work_date: :desc, start_time: :desc, id: :desc)
                                                   .offset((page - 1) * per_page).limit(per_page)
 
-        task_required = TimeEntryWorkRequirement.task_required?
-        cutover = TimeEntryWorkRequirement.cutover_date
         render json: {
           time_entries: page_entries.map do |entry|
             # A missing client is flagged on any date; category and task only
@@ -700,7 +702,7 @@ module Api
             entry_count: total_count,
             hours: matching_lines.sum(:hours).to_f.round(2),
             by_user: by_user,
-            cutover_date: TimeEntryWorkRequirement.cutover_date&.iso8601,
+            cutover_date: cutover&.iso8601,
             task_required: task_required
           },
           pagination: {
@@ -752,7 +754,7 @@ module Api
 
       private
 
-      def unassigned_lines_scope(issue)
+      def unassigned_lines_scope(issue, cutover:, task_required:)
         lines = TimeEntryAllocation.all
         return lines.where(client_id: nil) if issue == "client"
 
@@ -761,10 +763,9 @@ module Api
         # rest of the cutover rule's server checks, so older lines without a
         # category don't flood the list. Comments are optional.
         conditions = "time_entry_allocations.client_id IS NULL"
-        cutover = TimeEntryWorkRequirement.cutover_date
         if cutover
           details_missing = "time_entry_allocations.service_type_id IS NULL"
-          if TimeEntryWorkRequirement.task_required?
+          if task_required
             details_missing += " OR (time_entry_allocations.service_task_id IS NULL AND EXISTS (SELECT 1 FROM service_tasks WHERE " \
                                "service_tasks.service_type_id = time_entry_allocations.service_type_id AND service_tasks.is_active = TRUE))"
           end

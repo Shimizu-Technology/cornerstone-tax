@@ -52,7 +52,7 @@ const successfulReport = {
     flagged_entries_count: 0,
     uncategorized_count: 0,
     missing_client_count: 0,
-    missing_description_count: 0,
+    missing_category_count: 0,
     long_shift_count: 0,
     overlapping_entry_count: 0,
     long_shift_threshold_hours: 12,
@@ -259,10 +259,10 @@ describe('TimeTracking log time', () => {
 
     const editor = within(await screen.findByTestId('work-lines-editor'))
     const labels = [
-      editor.getByLabelText('Client', { selector: 'select' }),
+      editor.getByLabelText(/^Client/, { selector: 'select' }),
       editor.getByLabelText(/^Category/),
       editor.getByLabelText(/^Task/),
-      editor.getByLabelText('Period type'),
+      editor.getByLabelText(/^Period/),
       editor.getByLabelText('Work comments'),
     ]
     labels.slice(1).forEach((element, index) => {
@@ -279,7 +279,7 @@ describe('TimeTracking log time', () => {
     renderPage('/admin/time')
     fireEvent.click(await screen.findByRole('button', { name: 'Log Time' }))
 
-    const clientSelect = await within(await screen.findByTestId('work-lines-editor')).findByLabelText('Client', { selector: 'select' })
+    const clientSelect = await within(await screen.findByTestId('work-lines-editor')).findByLabelText(/^Client/, { selector: 'select' })
     await waitFor(() => expect(within(clientSelect).getAllByRole('option').map(option => option.textContent)).toEqual([
       'No client (unassigned)', "MoSa's", 'Jose Cruz',
     ]))
@@ -292,21 +292,21 @@ describe('TimeTracking log time', () => {
     const editor = within(await screen.findByTestId('work-lines-editor'))
 
     await waitFor(() => expect(editor.getAllByRole('option', { name: "MoSa's" }).length).toBeGreaterThan(0))
-    fireEvent.change(editor.getByLabelText('Client', { selector: 'select' }), { target: { value: '5' } })
+    fireEvent.change(editor.getByLabelText(/^Client/, { selector: 'select' }), { target: { value: '5' } })
     fireEvent.change(editor.getByLabelText(/^Category/), { target: { value: '1' } })
     fireEvent.change(editor.getByLabelText(/^Task/), { target: { value: '11' } })
-    fireEvent.change(editor.getByLabelText('Period type'), { target: { value: 'month' } })
-    fireEvent.change(editor.getByLabelText('Period month'), { target: { value: '7' } })
-    fireEvent.change(editor.getByLabelText('Period year'), { target: { value: '2026' } })
+    // The months listed depend on today's date; pick this month's option.
+    const period = editor.getByLabelText(/^Period/) as HTMLSelectElement
+    const thisMonth = within(within(period).getByRole('group', { name: 'Months' })).getAllByRole('option')[1] as HTMLOptionElement
+    fireEvent.change(period, { target: { value: thisMonth.value } })
     fireEvent.change(editor.getByLabelText('Work comments'), { target: { value: 'July bank rec' } })
-    expect(editor.getByText('July 2026')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => expect(apiMocks.createTimeEntry).toHaveBeenCalled())
     const payload = apiMocks.createTimeEntry.mock.calls[0][0]
     expect(payload.work_lines).toEqual([{
       client_id: 5, description: 'July bank rec', service_type_id: 1, service_task_id: 11,
-      period_type: 'month', period_start: '2026-07-01', minutes: 540,
+      period_type: 'month', period_start: thisMonth.value.replace('month:', ''), minutes: 540,
     }])
     expect(payload).not.toHaveProperty('time_category_id')
   })
@@ -356,7 +356,7 @@ describe('TimeTracking log time', () => {
 
     const editor = within(await screen.findByTestId('work-lines-editor'))
     expect(screen.getByText(/Legacy category:/)).toBeInTheDocument()
-    expect((editor.getByLabelText('Client', { selector: 'select' }) as HTMLSelectElement).value).toBe('6')
+    expect((editor.getByLabelText(/^Client/, { selector: 'select' }) as HTMLSelectElement).value).toBe('6')
     expect((editor.getByLabelText('Work comments') as HTMLInputElement).value).toBe('Old work')
 
     // Nothing changed: the modal closes without sending anything, so neither

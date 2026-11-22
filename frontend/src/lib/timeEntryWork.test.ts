@@ -3,6 +3,9 @@ import {
   categoryFilterValue,
   workLineSummary,
   workLineText,
+  parsePeriodOptionValue,
+  periodOptionGroups,
+  periodOptionValue,
   clientOptionLabel,
   filterClientOptions,
   parseCategoryFilter,
@@ -131,5 +134,38 @@ describe('workLineSummary and workLineText', () => {
   it('leaves out a missing category and keeps a legacy label', () => {
     expect(workLineSummary({ client_label: 'SCR', service_type: null, category_label: null })).toBe('SCR')
     expect(workLineSummary({ client_label: 'SCR', service_type: null, category_label: 'Tax Prep (legacy)' })).toBe('SCR · Tax Prep (legacy)')
+  })
+})
+
+describe('periodOptionGroups', () => {
+  const labels = (reference: string, current?: { period_type: 'month' | 'quarter' | 'year' | ''; period_start: string }) =>
+    Object.fromEntries(periodOptionGroups(reference, current).map((group) => [group.label, group.options.map((option) => option.label)]))
+
+  it('lists next month back to 12 months ago across a year boundary', () => {
+    const months = labels('2027-01-15').Months
+    expect(months[0]).toBe('February 2027')
+    expect(months[1]).toBe('January 2027')
+    expect(months[2]).toBe('December 2026')
+    expect(months.at(-1)).toBe('January 2026')
+    expect(months).toHaveLength(14)
+  })
+
+  it('lists next quarter back 4 quarters, and next year back to 2 years ago', () => {
+    const groups = labels('2026-12-31')
+    expect(groups.Quarters).toEqual(['1st Quarter 2027', '4th Quarter 2026', '3rd Quarter 2026', '2nd Quarter 2026', '1st Quarter 2026', '4th Quarter 2025'])
+    expect(groups.Years).toEqual(['Year 2027', 'Year 2026', 'Year 2025', 'Year 2024'])
+  })
+
+  it('keeps an out-of-range saved period at the top of its group, once', () => {
+    expect(labels('2026-11-18', { period_type: 'year', period_start: '2019-01-01' }).Years[0]).toBe('Year 2019')
+    expect(labels('2026-11-18', { period_type: 'quarter', period_start: '2026-07-01' }).Quarters.filter((label) => label === '3rd Quarter 2026')).toHaveLength(1)
+  })
+
+  it('round-trips the select value', () => {
+    expect(periodOptionValue('quarter', '2026-07-01')).toBe('quarter:2026-07-01')
+    expect(periodOptionValue('', '')).toBe('')
+    expect(parsePeriodOptionValue('quarter:2026-07-01')).toEqual({ period_type: 'quarter', period_start: '2026-07-01' })
+    expect(parsePeriodOptionValue('')).toEqual({ period_type: '', period_start: '' })
+    expect(parsePeriodOptionValue('week:2026-07-01')).toEqual({ period_type: '', period_start: '' })
   })
 })

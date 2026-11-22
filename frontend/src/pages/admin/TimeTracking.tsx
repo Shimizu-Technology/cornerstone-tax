@@ -8,7 +8,7 @@ import WorkLinesEditor from '../../components/time-tracking/WorkLinesEditor'
 import VersionConflictPanel from '../../components/time-tracking/VersionConflictPanel'
 import LogMyDay from '../../components/time-tracking/LogMyDay'
 import WorkSummary from '../../components/time-tracking/WorkSummary'
-import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, linesPayload, newDraft, useWorkLineSuggestions, type WorkLineDraft } from '../../components/time-tracking/workLinesModel'
+import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, lineProblemSummary, linesPayload, newDraft, useWorkLineSuggestions, type WorkLineDraft } from '../../components/time-tracking/workLinesModel'
 import type { HoursReportDownloadType, HoursReportEmployee, HoursReportParams, HoursReportResponse, PendingApprovalsSummary, TimeEntry as TimeEntryItem } from '../../lib/api'
 import { Skeleton, SkeletonTimeEntry } from '../../components/ui/Skeleton'
 import { FadeIn } from '../../components/ui/FadeIn'
@@ -308,6 +308,35 @@ export default function TimeTracking() {
   const modalLinesChanged = JSON.stringify(linesPayload(lines, modalTargetMinutes)) !== JSON.stringify(linesPayload(initialLines, modalTargetMinutes))
   const modalHoursChanged = Boolean(editingEntry && !editingDayLog && Math.round(editingEntry.hours * 60) !== modalTargetMinutes)
   const modalSendsLines = !editingActiveClock && (!editingEntry || modalLinesChanged || (modalHoursChanged && lines.length > 1))
+  // What a save would send. Edits send only the attendance fields that
+  // changed (resending an unchanged HH:MM would drop a clock entry's seconds
+  // and its approval).
+  const buildModalTimeFields = () => editingEntry ? attendanceChanges({
+    workDate: [formData.work_date, editingEntry.work_date],
+    startTime: editingDayLog ? null : [formData.start_time, editingEntry.start_time || '08:00'],
+    endTime: editingDayLog || editingActiveClock ? null : [formData.end_time, editingEntry.end_time || '17:00'],
+    breakMinutes: editingDayLog || editingActiveClock ? null : [formData.break_minutes, editingEntry.break_minutes],
+  }) : {
+    work_date: formData.work_date,
+    start_time: formData.start_time,
+    end_time: formData.end_time,
+    break_minutes: formData.break_minutes
+  }
+  const buildEditPayload = () => editingEntry ? {
+    ...buildModalTimeFields(),
+    ...(editingActiveClock
+      ? changedWorkFieldsPayload(workFieldsFromEntry(editingEntry), workFields)
+      : modalSendsLines ? { work_lines: linesPayload(lines, modalTargetMinutes) } : {}),
+  } : {}
+  const modalHasChanges = !editingEntry || Object.keys(buildEditPayload()).length > 0
+  // Any save of a finished entry is checked against the work-details rule
+  // (the server re-checks it), even one that only moves the date across the
+  // cutover or only changes the end time. Lines that are sent must also add
+  // up. An unchanged form can still close.
+  const modalLinesBlockSave = !editingActiveClock && modalHasChanges &&
+    ((modalSendsLines && !modalLineCheck.canSubmit) || (modalLinesRequired && Object.keys(modalLineCheck.problems).length > 0))
+  // New entries show their line problems inline; edits also say why Update is off.
+  const modalLinesBlockMessage = modalLinesBlockSave && editingEntry ? lineProblemSummary(lines, modalLineCheck) : null
 
   // Owner display: "You" for self, real name for others
   const ownerLabel = (entry: TimeEntryItem): string => {
@@ -764,25 +793,8 @@ export default function TimeTracking() {
     setError(null)
 
     try {
-      // Edits send only the attendance fields that changed (resending an
-      // unchanged HH:MM would drop a clock entry's seconds and its approval).
-      const timeFields = editingEntry ? attendanceChanges({
-        workDate: [formData.work_date, editingEntry.work_date],
-        startTime: editingDayLog ? null : [formData.start_time, editingEntry.start_time || '08:00'],
-        endTime: editingDayLog || editingActiveClock ? null : [formData.end_time, editingEntry.end_time || '17:00'],
-        breakMinutes: editingDayLog || editingActiveClock ? null : [formData.break_minutes, editingEntry.break_minutes],
-      }) : {
-        work_date: formData.work_date,
-        start_time: formData.start_time,
-        end_time: formData.end_time,
-        break_minutes: formData.break_minutes
-      }
       const linesField = modalSendsLines ? { work_lines: linesPayload(lines, modalTargetMinutes) } : {}
-
-      const editPayload = editingEntry ? {
-        ...timeFields,
-        ...(editingActiveClock ? changedWorkFieldsPayload(workFieldsFromEntry(editingEntry), workFields) : linesField),
-      } : {}
+      const editPayload = buildEditPayload()
 
       if (editingEntry && Object.keys(editPayload).length === 0) {
         // Nothing changed: close without a request (an empty update is an error).
@@ -1958,6 +1970,11 @@ export default function TimeTracking() {
                     }}
                   />
                 )}
+                {modalLinesBlockMessage && !modalVersionConflict && (
+                  <p id="log-time-lines-block" role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Fix the work lines before saving: {modalLinesBlockMessage}
+                  </p>
+                )}
                 {/* Actions */}
                 <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t border-neutral-warm bg-white px-4 py-3 md:static md:mx-0 md:border-0 md:px-0 md:pt-4">
                   <div>
@@ -1985,7 +2002,8 @@ export default function TimeTracking() {
                     {!(editingEntry?.locked_at) && (
                       <button
                         type="submit"
-                        disabled={saving || (modalSendsLines && !modalLineCheck.canSubmit)}
+                        disabled={saving || modalLinesBlockSave}
+                        aria-describedby={modalLinesBlockMessage ? 'log-time-lines-block' : undefined}
                         className="min-h-11 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
                       >
                         {saving ? 'Saving...' : (editingEntry ? 'Update' : 'Save')}

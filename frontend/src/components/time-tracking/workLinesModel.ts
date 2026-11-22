@@ -239,6 +239,20 @@ export function checkLines(
 }
 
 /**
+ * One sentence naming what stops a save: each line's problems ("Line 2:
+ * Choose a category"), then an unbalanced total. null when nothing does.
+ */
+export function lineProblemSummary(lines: WorkLineDraft[], check: LineCheck): string | null {
+  const parts = lines.flatMap((line, index) => {
+    const problems = check.problems[line.key]
+    if (!problems?.length) return []
+    return [`${lines.length > 1 ? `Line ${index + 1}` : 'Work'}: ${problems.join(', ')}`]
+  })
+  if (check.remainingMinutes !== null && check.remainingMinutes !== 0) parts.push(check.summary)
+  return parts.length ? parts.join('; ') : null
+}
+
+/**
  * Whether a category has tasks to choose from. With "Require a task" on, a
  * line needs a task only then (the server applies the same rule to active
  * tasks; the category list only carries active ones).

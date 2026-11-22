@@ -223,6 +223,21 @@ RSpec.describe "Time tracking settings", type: :request do
       expect(json).to include(entry_ids: [ only_unscheduled.id ], count: 1, needs_work_details_count: 1)
     end
 
+    it "on confirm, approves an entry with a client and a category and skips one missing its category" do
+      Setting.set("time_work_details_required_from", "2026-11-01")
+      client = Client.create!(first_name: "A", last_name: "A", client_type: "business", business_name: "Alpha Co")
+      bookkeeping = ServiceType.create!(name: "Bookkeeping")
+      only_unscheduled.work_lines.first.update_columns(client_id: client.id, service_type_id: bookkeeping.id, description: nil)
+      second.work_lines.first.update_columns(client_id: client.id, service_type_id: nil, description: "Bank recs")
+
+      confirm(only_unscheduled, second)
+
+      expect(response).to have_http_status(:ok)
+      expect(json).to include(approved_count: 1, approved_entry_ids: [ only_unscheduled.id ], ineligible_count: 1, skipped_count: 1)
+      expect(only_unscheduled.reload.approval_status).to eq("approved")
+      expect(second.reload.approval_status).to eq("pending")
+    end
+
     it "approves the previewed entries and nothing else" do
       confirm(only_unscheduled, second)
 

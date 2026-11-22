@@ -7,7 +7,7 @@ import TimeEntryWorkFields from './TimeEntryWorkFields'
 import WorkLinesEditor from './WorkLinesEditor'
 import VersionConflictPanel from './VersionConflictPanel'
 import { EMPTY_WORK_FIELDS, changedWorkFieldsPayload, workFieldsFromEntry, type WorkFieldsValue } from './timeEntryWorkForm'
-import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, linesPayload, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
+import { attendanceChanges, checkLines, detailsRequired, draftsFromEntry, lineProblemSummary, linesPayload, useWorkLineSuggestions, type WorkLineDraft } from './workLinesModel'
 
 interface EditableTimeEntry {
   id: number
@@ -201,6 +201,43 @@ export default function EditTimeEntryModal({
   const linesChanged = JSON.stringify(linesPayload(lines, targetMinutes)) !== JSON.stringify(linesPayload(initialLines, targetMinutes))
   const hoursChanged = !isDayLog && entry?.hours !== undefined && Math.round(entry.hours * 60) !== targetMinutes
 
+  // What a save would send, built once for the Update gate and the request.
+  // Work lines are sent when they changed, or when the hours changed and the
+  // entry is split (its lines must be re-balanced to the new hours).
+  const sendLines = !isActiveClockEntry && (isDayLog ? linesChanged : linesChanged || (hoursChanged && lines.length > 1))
+  const buildPayload = () => {
+    if (!entry) return {}
+    const shouldSubmitDetailedBreaks = breakRows.length > 0 || (entry.breaks?.length ?? 0) > 0
+    // Only attendance fields the user actually changed are sent. Resending
+    // an unchanged HH:MM would drop a clock entry's seconds, change its
+    // hours and send an approved entry back for review.
+    const attendance = attendanceChanges({
+      workDate: [formData.work_date, entry.work_date],
+      startTime: [formData.start_time, entry.start_time || '08:00'],
+      endTime: isActiveClockEntry ? null : [formData.end_time, entry.end_time || '17:00'],
+      breakMinutes: isActiveClockEntry ? null : [formData.break_minutes, entry.break_minutes],
+    })
+    const breaksChanged = !isActiveClockEntry && shouldSubmitDetailedBreaks && !breakRowsUntouched
+    return isDayLog ? {
+      ...attendance,
+      ...(linesChanged ? { work_lines: linesPayload(lines, null) } : {}),
+    } : {
+      ...attendance,
+      // Only what the user changed, so concurrent edits are not overwritten.
+      ...(isActiveClockEntry ? changedWorkFieldsPayload(workFieldsFromEntry(entry), workFields) : {}),
+      ...(breaksChanged ? { breaks: breakRows } : {}),
+      ...(sendLines ? { work_lines: linesPayload(lines, targetMinutes) } : {}),
+    }
+  }
+  const hasChanges = Object.keys(buildPayload()).length > 0
+  // Any save of a finished entry is checked against the work-details rule
+  // (the server re-checks it), even one that only moves the date across the
+  // cutover or only changes the end time. Lines that are sent must also add
+  // up. An unchanged form can still close.
+  const linesBlockSave = !isActiveClockEntry && hasChanges &&
+    ((sendLines && !lineCheck.canSubmit) || (linesRequired && Object.keys(lineCheck.problems).length > 0))
+  const linesBlockMessage = linesBlockSave ? lineProblemSummary(lines, lineCheck) : null
+
   const setLocalError = (message: string | null) => {
     setError(message)
     onError?.(message)
@@ -213,30 +250,7 @@ export default function EditTimeEntryModal({
     setLocalError(null)
 
     try {
-      const shouldSubmitDetailedBreaks = breakRows.length > 0 || (entry.breaks?.length ?? 0) > 0
-      // Work lines are sent when they changed, or when the hours changed and
-      // the entry is split (its lines must be re-balanced to the new hours).
-      const sendLines = !isActiveClockEntry && (linesChanged || (hoursChanged && lines.length > 1))
-      // Only attendance fields the user actually changed are sent. Resending
-      // an unchanged HH:MM would drop a clock entry's seconds, change its
-      // hours and send an approved entry back for review.
-      const attendance = attendanceChanges({
-        workDate: [formData.work_date, entry.work_date],
-        startTime: [formData.start_time, entry.start_time || '08:00'],
-        endTime: isActiveClockEntry ? null : [formData.end_time, entry.end_time || '17:00'],
-        breakMinutes: isActiveClockEntry ? null : [formData.break_minutes, entry.break_minutes],
-      })
-      const breaksChanged = !isActiveClockEntry && shouldSubmitDetailedBreaks && !breakRowsUntouched
-      const payload = isDayLog ? {
-        ...attendance,
-        ...(linesChanged ? { work_lines: linesPayload(lines, null) } : {}),
-      } : {
-        ...attendance,
-        // Only what the user changed, so concurrent edits are not overwritten.
-        ...(isActiveClockEntry ? changedWorkFieldsPayload(workFieldsFromEntry(entry), workFields) : {}),
-        ...(breaksChanged ? { breaks: breakRows } : {}),
-        ...(sendLines ? { work_lines: linesPayload(lines, targetMinutes) } : {}),
-      }
+      const payload = buildPayload()
 
       // Nothing changed: close without a request (an empty update is an error).
       if (Object.keys(payload).length === 0) {
@@ -579,6 +593,12 @@ export default function EditTimeEntryModal({
                   />
                 ) : error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 
+                {linesBlockMessage && !versionConflict && (
+                  <p id="edit-entry-lines-block" role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Fix the work lines before saving: {linesBlockMessage}
+                  </p>
+                )}
+
                 <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t border-neutral-warm bg-white px-4 py-3 md:static md:mx-0 md:border-0 md:px-0 md:pt-4">
                   <button
                     type="button"
@@ -592,7 +612,7 @@ export default function EditTimeEntryModal({
 
                   <div className="flex gap-3">
                     <button type="button" onClick={onClose} className="min-h-11 rounded-lg px-4 py-2 font-medium text-primary-dark transition-colors hover:bg-neutral-warm">Cancel</button>
-                    {!isLocked && <button type="submit" disabled={saving || deleting || (!isActiveClockEntry && (linesChanged || (hoursChanged && lines.length > 1)) && !lineCheck.canSubmit)} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-dark disabled:opacity-50">{saving ? 'Saving...' : 'Update'}</button>}
+                    {!isLocked && <button type="submit" disabled={saving || deleting || linesBlockSave} aria-describedby={linesBlockMessage ? 'edit-entry-lines-block' : undefined} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-dark disabled:opacity-50">{saving ? 'Saving...' : 'Update'}</button>}
                   </div>
                 </div>
               </form>

@@ -75,11 +75,11 @@ describe('ClockInOutCard clock-out', () => {
   it('starts from the saved details and sends the whole session as one line', async () => {
     const sheet = await openClockOut()
 
-    expect((sheet.getByLabelText('Client', { selector: 'select' }) as HTMLSelectElement).value).toBe('5')
+    expect((sheet.getByLabelText(/^Client/, { selector: 'select' }) as HTMLSelectElement).value).toBe('5')
     expect((sheet.getByLabelText(/^Category/) as HTMLSelectElement).value).toBe('1')
     expect(sheet.getByText(/the whole session/)).toBeInTheDocument()
 
-    fireEvent.change(sheet.getByLabelText('Client', { selector: 'select' }), { target: { value: '' } })
+    fireEvent.change(sheet.getByLabelText(/^Client/, { selector: 'select' }), { target: { value: '' } })
     fireEvent.change(sheet.getByLabelText(/^Category/), { target: { value: '2' } })
     fireEvent.change(sheet.getByLabelText('Work comments'), { target: { value: 'Payroll run' } })
     submitClockOut()
@@ -98,9 +98,15 @@ describe('ClockInOutCard clock-out', () => {
     // Task and period sit inline under the category, with no toggle.
     expect(sheet.queryByRole('button', { name: /task and period/i })).not.toBeInTheDocument()
     expect((sheet.getByLabelText(/^Task/) as HTMLSelectElement).value).toBe('11')
-    fireEvent.change(sheet.getByLabelText('Period type'), { target: { value: 'month' } })
+    // One dropdown, newest first around the Guam work date (Dec 1, 2026).
+    const period = sheet.getByLabelText(/^Period/) as HTMLSelectElement
+    const months = within(period).getByRole('group', { name: 'Months' })
+    expect(within(months).getAllByRole('option').slice(0, 2).map((option) => option.textContent)).toEqual(['January 2027', 'December 2026'])
+    fireEvent.change(period, { target: { value: 'month:2026-12-01' } })
+    submitClockOut()
 
-    expect(sheet.getByText('December 2026')).toBeInTheDocument()
+    await waitFor(() => expect(apiMock.clockOut).toHaveBeenCalled())
+    expect(apiMock.clockOut.mock.calls[0][4][0]).toMatchObject({ period_type: 'month', period_start: '2026-12-01' })
   })
 
   it('splits the session across clients and blocks clock-out until nothing is left', async () => {

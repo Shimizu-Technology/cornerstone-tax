@@ -80,6 +80,71 @@ export function periodLabel(type: string | null | undefined, start: string | nul
   return String(parts.year)
 }
 
+export interface PeriodOption {
+  /** `${type}:${period_start}`, e.g. "month:2026-07-01". */
+  value: string
+  label: string
+}
+
+export interface PeriodOptionGroup {
+  label: 'Months' | 'Quarters' | 'Years'
+  type: PeriodType
+  options: PeriodOption[]
+}
+
+/** The select value for a period, or '' for none. */
+export function periodOptionValue(type: string | null | undefined, start: string | null | undefined): string {
+  return isPeriodType(type) && start ? `${type}:${start}` : ''
+}
+
+/** Parse a period select value back into its type and start ('' for none). */
+export function parsePeriodOptionValue(value: string): WorkPeriod {
+  const [type, start] = value.split(':')
+  if (!isPeriodType(type) || !parseIsoDate(start)) return { period_type: '', period_start: '' }
+  return { period_type: type, period_start: start }
+}
+
+function guamTodayIso(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Guam', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+}
+
+function periodOptionLabel(type: PeriodType, start: string): string {
+  const label = periodLabel(type, start) || start
+  return type === 'year' ? `Year ${label}` : label
+}
+
+/**
+ * Periods for the one-dropdown picker on a work line, newest first: next
+ * month back to 12 months ago, next quarter back 4 quarters, next year back
+ * to 2 years ago, all around the reference date (the entry's date, else
+ * today in Guam). A current value outside those ranges is kept at the top
+ * of its group, so editing an old entry never drops its period.
+ */
+export function periodOptionGroups(referenceDate?: string | null, current?: WorkPeriod | null): PeriodOptionGroup[] {
+  const reference = parseIsoDate(referenceDate) ?? parseIsoDate(guamTodayIso())!
+  // Months counted from year 0, so stepping back crosses years cleanly.
+  const monthIndex = reference.year * 12 + (reference.month - 1)
+  const monthStart = (index: number) => `${Math.floor(index / 12)}-${pad((index % 12) + 1)}-01`
+  const quarterIndex = monthIndex - (monthIndex % 3)
+  const build = (type: PeriodType, starts: string[]): PeriodOption[] =>
+    starts.map((start) => ({ value: `${type}:${start}`, label: periodOptionLabel(type, start) }))
+
+  const groups: PeriodOptionGroup[] = [
+    { label: 'Months', type: 'month', options: build('month', Array.from({ length: 14 }, (_, step) => monthStart(monthIndex + 1 - step))) },
+    { label: 'Quarters', type: 'quarter', options: build('quarter', Array.from({ length: 6 }, (_, step) => monthStart(quarterIndex + 3 - step * 3))) },
+    { label: 'Years', type: 'year', options: build('year', Array.from({ length: 4 }, (_, step) => `${reference.year + 1 - step}-01-01`)) },
+  ]
+
+  const currentValue = periodOptionValue(current?.period_type, current?.period_start)
+  if (currentValue && isPeriodType(current?.period_type)) {
+    const group = groups.find((item) => item.type === current!.period_type)!
+    if (!group.options.some((option) => option.value === currentValue)) {
+      group.options.unshift({ value: currentValue, label: periodOptionLabel(current!.period_type as PeriodType, current!.period_start) })
+    }
+  }
+  return groups
+}
+
 interface CategorizedEntry {
   service_type?: { id: number; name: string } | null
   time_category?: { id: number; name: string } | null

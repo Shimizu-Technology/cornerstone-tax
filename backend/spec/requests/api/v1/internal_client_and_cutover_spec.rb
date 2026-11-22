@@ -119,6 +119,21 @@ RSpec.describe "Internal client and work details cutover", type: :request do
       expect(response).to have_http_status(:created)
     end
 
+    it "applies to a duration-only day log" do
+      day_log = lambda do |lines|
+        post "/api/v1/time_entries", params: { time_entry: { work_date: work_date.iso8601, work_lines: lines } }.to_json, headers: headers_for(employee)
+      end
+
+      day_log.call([ { client_id: client_a.id, description: "Bank recs", minutes: 45 } ])
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json[:error]).to eq("This entry needs category")
+
+      day_log.call([ { client_id: client_a.id, service_type_id: bookkeeping.id, minutes: 45 } ])
+      expect(response).to have_http_status(:created)
+      expect(json[:time_entry]).to include(duration_only: true)
+      expect(json.dig(:time_entry, :work_lines, 0)).to include(description: be_blank)
+    end
+
     it "asks for a client and a category when an entry has hours but no lines" do
       entry = build(:time_entry, user: employee, work_date: work_date, hours: 1.0, status: "completed")
       allow(entry).to receive(:current_work_lines).and_return([])

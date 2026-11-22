@@ -95,7 +95,7 @@ describe('WorkLinesEditor (day grid)', () => {
       screen.getByLabelText('Work client'),
       screen.getByLabelText(/^Work category/),
       screen.getByLabelText(/^Work task/),
-      screen.getByLabelText('Period type'),
+      screen.getByLabelText('Work period'),
       screen.getByLabelText('Work time'),
       screen.getByLabelText('Work comments'),
       screen.getByRole('button', { name: 'Duplicate work' }),
@@ -108,13 +108,87 @@ describe('WorkLinesEditor (day grid)', () => {
     // Task and period are inline: no toggle to open them.
     expect(screen.queryByRole('button', { name: /task and period|^period$/i })).not.toBeInTheDocument()
     expect(screen.getByLabelText(/^Work task/)).toBeDisabled()
-    expect(within(screen.getByLabelText(/^Work task/)).getAllByRole('option')[0]).toHaveTextContent('Choose a category first')
+    expect(within(screen.getByLabelText(/^Work task/)).getAllByRole('option')[0]).toHaveTextContent('Category first')
   })
 
-  it('titles the table columns Client, Category, Task, Period and Time', () => {
+  it('titles the table columns Client, Category, Task, Period and Time, marking required ones', () => {
+    const header = () => Array.from(document.querySelector('[data-testid="work-lines-editor"] > div[aria-hidden="true"]')!.children).map((cell) => cell.textContent)
+    const { unmount } = render(<Harness />)
+    expect(header()).toEqual(['Client', 'Category', 'Task', 'Period', 'Time'])
+    unmount()
+    render(<Harness required />)
+    expect(header()).toEqual(['Client *', 'Category *', 'Task', 'Period', 'Time'])
+  })
+
+  it('marks Task required with "Require a task" on', () => {
+    render(<Harness required taskRequired />)
+    const header = Array.from(document.querySelector('[data-testid="work-lines-editor"] > div[aria-hidden="true"]')!.children).map((cell) => cell.textContent)
+    expect(header).toEqual(['Client *', 'Category *', 'Task *', 'Period', 'Time'])
+  })
+
+  it('stars required labels (hidden from screen readers) and keeps "(optional)" on the rest', () => {
+    render(<Harness required />)
+    const labelFor = (field: HTMLElement) => document.querySelector(`label[for="${field.id}"]`)!
+    expect(labelFor(screen.getByLabelText('Work client', { exact: true }))).toHaveTextContent('Client *')
+    expect(labelFor(screen.getByLabelText('Work category'))).toHaveTextContent('Category *')
+    expect(labelFor(screen.getByLabelText('Work task'))).toHaveTextContent('Task (optional)')
+    expect(labelFor(screen.getByLabelText('Work period'))).toHaveTextContent('Period (optional)')
+    expect(labelFor(screen.getByLabelText('Work category')).querySelector('[aria-hidden="true"]')).toHaveTextContent('*')
+  })
+
+  it('picks the period from one dropdown, newest first around the entry date', () => {
+    function Dated() {
+      const [lines, setLines] = useState<WorkLineDraft[]>([newDraft({ period_type: 'month', period_start: '2024-03-01' })])
+      return <WorkLinesEditor lines={lines} onChange={setLines} targetMinutes={null} clients={clients} serviceTypes={serviceTypes} referenceDate="2026-11-18" mode="day" idPrefix="t" />
+    }
+    render(<Dated />)
+    const period = screen.getByLabelText('Work period') as HTMLSelectElement
+    const groupOptions = (name: string) => within(within(period).getByRole('group', { name })).getAllByRole('option').map((option) => option.textContent)
+    // The saved March 2024 is out of range, so it leads the months.
+    expect(groupOptions('Months')).toEqual(['March 2024', 'December 2026', 'November 2026', 'October 2026', 'September 2026', 'August 2026', 'July 2026', 'June 2026',
+      'May 2026', 'April 2026', 'March 2026', 'February 2026', 'January 2026', 'December 2025', 'November 2025'])
+    expect(groupOptions('Quarters')).toEqual(['1st Quarter 2027', '4th Quarter 2026', '3rd Quarter 2026', '2nd Quarter 2026', '1st Quarter 2026', '4th Quarter 2025'])
+    expect(groupOptions('Years')).toEqual(['Year 2027', 'Year 2026', 'Year 2025', 'Year 2024'])
+    expect(period.value).toBe('month:2024-03-01')
+
+    fireEvent.change(period, { target: { value: 'quarter:2026-07-01' } })
+    expect(period.value).toBe('quarter:2026-07-01')
+    fireEvent.change(period, { target: { value: '' } })
+    expect(period.value).toBe('')
+  })
+
+  it('disables the period with the rest of the line while saving', () => {
+    render(<WorkLinesEditor lines={[newDraft()]} onChange={vi.fn()} targetMinutes={null} clients={clients} serviceTypes={serviceTypes} mode="day" idPrefix="t" disabled />)
+    expect(screen.getByLabelText('Work period')).toBeDisabled()
+  })
+
+  it('marks only the field a problem is about as invalid', () => {
+    render(<Harness required />)
+    const client = screen.getByLabelText('Work client', { exact: true })
+    const time = screen.getByLabelText('Work time', { exact: true })
+    expect(client).toHaveAttribute('aria-invalid', 'true')
+    expect(client).toHaveAccessibleDescription(/Choose a client/)
+    expect(time).toHaveAttribute('aria-invalid', 'true')
+
+    fireEvent.change(client, { target: { value: '2' } })
+    expect(client).not.toHaveAttribute('aria-invalid')
+    expect(client).not.toHaveAccessibleDescription(/Choose/)
+    fireEvent.change(time, { target: { value: '30' } })
+    expect(time).not.toHaveAttribute('aria-invalid')
+    expect(time).toHaveAccessibleDescription('= 30m (0.50h)')
+  })
+
+  it('names each line\'s period for screen readers', () => {
     render(<Harness />)
-    const header = document.querySelector('[data-testid="work-lines-editor"] > div[aria-hidden="true"]')
-    expect(Array.from(header!.children).map((cell) => cell.textContent)).toEqual(['Client', 'Category', 'Task', 'Period', 'Time'])
+    fireEvent.click(screen.getByRole('button', { name: 'Add line' }))
+    expect(screen.getByLabelText('Line 1 period')).toBeInTheDocument()
+    expect(screen.getByLabelText('Line 2 period')).toBeInTheDocument()
+  })
+
+  it('says "No tasks" for a category without tasks', () => {
+    render(<Harness />)
+    fireEvent.change(screen.getByLabelText(/^Work category/), { target: { value: '10' } })
+    expect(within(screen.getByLabelText('Work task')).getAllByRole('option')[0]).toHaveTextContent(/^No tasks$/)
   })
 
   it('clears a category that does not fit the new client', () => {
@@ -208,7 +282,7 @@ describe('WorkLinesEditor (day grid)', () => {
 
     it('keeps every field labelled for screen readers when the table hides the visible labels', () => {
       render(<ManyClients />)
-      for (const name of ['Line 1 client', 'Line 1 category', 'Line 1 task', 'Line 1 time']) {
+      for (const name of ['Line 1 client', 'Line 1 category', 'Line 1 task', 'Line 1 period', 'Line 1 time']) {
         const field = screen.getByLabelText(name)
         const label = document.querySelector(`label[for="${field.id}"]`)
         expect(label).not.toBeNull()
