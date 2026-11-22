@@ -5,7 +5,7 @@ A unified digital platform for Cornerstone Accounting & Business Services (Guam)
 ## Quick Start
 
 ### Prerequisites
-- Ruby 3.3+
+- Ruby 3.3.14+
 - Node.js 18+
 - PostgreSQL 14+
 
